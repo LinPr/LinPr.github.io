@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>linux on Mr.LinPr Hugo Site</title>
+    <link>https://LinPr.github.io/tags/linux/</link>
+    <description>Recent content in linux on Mr.LinPr Hugo Site</description>
+    <image>
+      <title>Mr.LinPr Hugo Site</title>
+      <url>https://LinPr.github.io/%3Clink%20or%20path%20of%20image%20for%20opengraph,%20twitter-cards%3E</url>
+      <link>https://LinPr.github.io/%3Clink%20or%20path%20of%20image%20for%20opengraph,%20twitter-cards%3E</link>
+    </image>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Fri, 09 Feb 2024 12:08:15 +0800</lastBuildDate>
+    <atom:link href="https://LinPr.github.io/tags/linux/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Unix_System_Call</title>
+      <link>https://LinPr.github.io/posts/unix_system_call/</link>
+      <pubDate>Fri, 09 Feb 2024 12:08:15 +0800</pubDate>
+      <guid>https://LinPr.github.io/posts/unix_system_call/</guid>
+      <description>常用 Unix 函数总结 1. 文件操作 文件流操作 #include &amp;lt;stdio.h&amp;gt; 打开，关闭 FILE* fopen(const char* filename, const char* mode); int fclose(FILE* stream); 数据块读写，大小为 size * numb size_t fread(void *ptr, size_t size, size_t numb, FILE *stream); size_t fwrite(void *ptr, size_t size, size_t numb, FILE *stream); 格式化读，由format参数指定读的数据格式，由 ... 参数指定接收的容器 int fscanf(FILE *stream, const char *format, …); int fprintf(FILE *stream, const char *format, ...); int scanf(const char *format, …); int printf(const char *format, ...); //相当于fprintf(stdout,format,…); 从字符串中读取指定的格式 int sscanf(char *str, const char *format, …); int sprintf(char *str, const char *format, .</description>
+    </item>
+  </channel>
+</rss>

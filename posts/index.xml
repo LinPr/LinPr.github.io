@@ -1,13 +1,34 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
-    <title>Posts on My New Hugo Site</title>
+    <title>Posts on Mr.LinPr Hugo Site</title>
     <link>https://LinPr.github.io/posts/</link>
-    <description>Recent content in Posts on My New Hugo Site</description>
+    <description>Recent content in Posts on Mr.LinPr Hugo Site</description>
+    <image>
+      <title>Mr.LinPr Hugo Site</title>
+      <url>https://LinPr.github.io/%3Clink%20or%20path%20of%20image%20for%20opengraph,%20twitter-cards%3E</url>
+      <link>https://LinPr.github.io/%3Clink%20or%20path%20of%20image%20for%20opengraph,%20twitter-cards%3E</link>
+    </image>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Wed, 07 Feb 2024 23:03:14 +0800</lastBuildDate>
+    <lastBuildDate>Fri, 09 Feb 2024 12:15:13 +0800</lastBuildDate>
     <atom:link href="https://LinPr.github.io/posts/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Go_Http连接建立和处理</title>
+      <link>https://LinPr.github.io/posts/go_http%E8%BF%9E%E6%8E%A5%E5%BB%BA%E7%AB%8B%E5%92%8C%E5%A4%84%E7%90%86/</link>
+      <pubDate>Fri, 09 Feb 2024 12:15:13 +0800</pubDate>
+      <guid>https://LinPr.github.io/posts/go_http%E8%BF%9E%E6%8E%A5%E5%BB%BA%E7%AB%8B%E5%92%8C%E5%A4%84%E7%90%86/</guid>
+      <description>http 连接建立和处理 接收 http 请求并执行的过程 go func() { if err := s.ListenAndServe(); err != nil &amp;amp;&amp;amp; err != http.ErrServerClosed { log.Fatalf(&amp;#34;s.ListenAndServe err: %v&amp;#34;, err) } }() 前面提到， 在路由引初始化完成后，注册对应的路由和 handler，接下来在 main 函数中 http.Server 就会监听指定的端口，我们来看下http.Server 是如何接收请求并执行对应的处理函数的
+httpServer 会调用 Serve(l net.Listener 函数，这个函数主要做了以下几件事情
+在一个循环里面不断监听套接字是否有链接请求上来，如果有的话，创建一个新的连接对象 这个连接对象中有，有两个成员，一个是套接字对象（实现了conn接口），一个是指向service对象的指针 最后一行，通过启动一个新的协程来处理连接事务，并对外提供服务 func (srv *Server) newConn(rwc net.Conn) *conn { c := &amp;amp;conn{ server: srv, rwc: rwc, } if debugServerConnections { c.rwc = newLoggingConn(&amp;#34;server&amp;#34;, c.rwc) } return c } func (srv *Server) Serve(l net.</description>
+    </item>
+    <item>
+      <title>Unix_System_Call</title>
+      <link>https://LinPr.github.io/posts/unix_system_call/</link>
+      <pubDate>Fri, 09 Feb 2024 12:08:15 +0800</pubDate>
+      <guid>https://LinPr.github.io/posts/unix_system_call/</guid>
+      <description>常用 Unix 函数总结 1. 文件操作 文件流操作 #include &amp;lt;stdio.h&amp;gt; 打开，关闭 FILE* fopen(const char* filename, const char* mode); int fclose(FILE* stream); 数据块读写，大小为 size * numb size_t fread(void *ptr, size_t size, size_t numb, FILE *stream); size_t fwrite(void *ptr, size_t size, size_t numb, FILE *stream); 格式化读，由format参数指定读的数据格式，由 ... 参数指定接收的容器 int fscanf(FILE *stream, const char *format, …); int fprintf(FILE *stream, const char *format, ...); int scanf(const char *format, …); int printf(const char *format, ...); //相当于fprintf(stdout,format,…); 从字符串中读取指定的格式 int sscanf(char *str, const char *format, …); int sprintf(char *str, const char *format, .</description>
+    </item>
     <item>
       <title>Fist Blog</title>
       <link>https://LinPr.github.io/posts/fist-blog/</link>
