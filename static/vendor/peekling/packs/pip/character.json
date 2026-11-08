@@ -1,0 +1,333 @@
+{
+  "format": 1,
+  "name": "pip",
+  "version": "0.1.1",
+  "license": "Apache-2.0",
+  "metadata": {
+    "title": "Pip",
+    "author": "Prajwal S. Venkateshmurthy",
+    "description": "A warm-gold corgi who trots into every little celebration.",
+    "tags": [
+      "pip",
+      "native-v0.1",
+      "hd-adaptive"
+    ]
+  },
+  "assets": {
+    "atlases": {
+      "columns": 16,
+      "rows": 5,
+      "logicalCellSize": 64,
+      "lineage": "pip-generated-hd-v2",
+      "variants": [
+        {
+          "src": "atlas-1x.png",
+          "density": 1,
+          "sourceCellSize": 64,
+          "sha256": "40c99a46a7acd5c1df87e072fedcf57871a4e7546353d4e2ead07d80da2eb9d1"
+        },
+        {
+          "src": "atlas-2x.png",
+          "density": 2,
+          "sourceCellSize": 128,
+          "sha256": "24905f6ed953571ec3ea6b8e855a48e78eccba8a94027c82ce7dd0fb8ca9e442"
+        }
+      ]
+    }
+  },
+  "states": {
+    "idle": {
+      "frames": [
+        0,
+        1
+      ],
+      "durations": [
+        900,
+        180
+      ],
+      "loop": true
+    },
+    "move:N": {
+      "frames": [
+        2,
+        3
+      ],
+      "fps": 6,
+      "loop": true
+    },
+    "move:NE": {
+      "frames": [
+        4,
+        5
+      ],
+      "fps": 6,
+      "loop": true
+    },
+    "move:E": {
+      "frames": [
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "fps": 8,
+      "loop": true
+    },
+    "move:SE": {
+      "frames": [
+        12,
+        13
+      ],
+      "fps": 6,
+      "loop": true
+    },
+    "move:W": {
+      "frames": [
+        14,
+        15,
+        16,
+        17,
+        18,
+        19
+      ],
+      "fps": 8,
+      "loop": true
+    },
+    "move:SW": {
+      "frames": [
+        20,
+        21
+      ],
+      "fps": 6,
+      "loop": true
+    },
+    "move:NW": {
+      "frames": [
+        22,
+        23
+      ],
+      "fps": 6,
+      "loop": true
+    },
+    "move:S": {
+      "frames": [
+        24,
+        25
+      ],
+      "fps": 6,
+      "loop": true
+    },
+    "click": {
+      "frames": [
+        26,
+        27,
+        28,
+        29,
+        30
+      ],
+      "durations": [
+        110,
+        110,
+        120,
+        140,
+        180
+      ],
+      "loop": false
+    },
+    "double-click": {
+      "frames": [
+        26,
+        27,
+        28,
+        29,
+        30
+      ],
+      "durations": [
+        80,
+        80,
+        90,
+        100,
+        140
+      ],
+      "loop": false
+    },
+    "context-click": {
+      "frames": [
+        41,
+        42,
+        43,
+        44,
+        45
+      ],
+      "durations": [
+        120,
+        140,
+        160,
+        180,
+        240
+      ],
+      "loop": false
+    },
+    "scroll": {
+      "frames": [
+        31,
+        32,
+        33,
+        34,
+        35
+      ],
+      "durations": [
+        100,
+        100,
+        110,
+        120,
+        180
+      ],
+      "loop": false
+    },
+    "scroll:fall": {
+      "frames": [
+        64,
+        65,
+        66,
+        67,
+        68,
+        69
+      ],
+      "fps": 9,
+      "loop": true
+    },
+    "scroll:fly": {
+      "frames": [
+        70,
+        71,
+        72,
+        73,
+        74,
+        75
+      ],
+      "fps": 8,
+      "loop": true
+    },
+    "happy": {
+      "frames": [
+        36,
+        37,
+        38,
+        39,
+        40
+      ],
+      "durations": [
+        100,
+        110,
+        120,
+        140,
+        180
+      ],
+      "loop": false
+    },
+    "success": {
+      "frames": [
+        36,
+        37,
+        38,
+        39,
+        40
+      ],
+      "durations": [
+        120,
+        120,
+        140,
+        160,
+        220
+      ],
+      "loop": false
+    },
+    "error": {
+      "frames": [
+        41,
+        42,
+        43,
+        44,
+        45
+      ],
+      "durations": [
+        160,
+        180,
+        200,
+        220,
+        300
+      ],
+      "loop": false
+    },
+    "music:headphones": {
+      "frames": [
+        46,
+        47,
+        48,
+        49,
+        50,
+        51
+      ],
+      "fps": 6,
+      "loop": true
+    },
+    "thinking": {
+      "frames": [
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61
+      ],
+      "durations": [
+        120,
+        120,
+        140,
+        140,
+        160,
+        180,
+        180,
+        200,
+        220,
+        320
+      ],
+      "loop": true
+    },
+    "sleep": {
+      "frames": [
+        62,
+        63
+      ],
+      "durations": [
+        900,
+        1500
+      ],
+      "loop": true
+    }
+  },
+  "capabilities": {
+    "locomotion": {
+      "directions": {
+        "N": "move:N",
+        "NE": "move:NE",
+        "E": "move:E",
+        "SE": "move:SE",
+        "S": "move:S",
+        "SW": "move:SW",
+        "W": "move:W",
+        "NW": "move:NW"
+      }
+    }
+  },
+  "defaults": {
+    "scale": 1
+  }
+}

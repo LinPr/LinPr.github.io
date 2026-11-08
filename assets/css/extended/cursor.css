@@ -1,0 +1,141 @@
+/* =========================================================
+   自定义鼠标样式
+   箭头 / 手型 / 文本光标 全部内联 SVG（不额外发请求）
+   设计取向：轻盈的玻璃质感 + 靛紫描边，和站点的液态玻璃同一套语言
+   ========================================================= */
+
+/* ---------- 默认箭头 ---------- */
+/* 白到淡靛的渐变填充 + 靛紫描边，深浅背景都看得清 */
+html,
+body {
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><defs><linearGradient id='a' x1='0' y1='0' x2='0.7' y2='1'><stop offset='0' stop-color='%23ffffff'/><stop offset='1' stop-color='%23e8ecff'/></linearGradient></defs><path d='M6.5 3.2 L6.5 24.4 L11.9 19.2 L15.3 26.6 L18.9 24.9 L15.5 17.7 L22.6 17.5 Z' fill='url(%23a)' stroke='%234f46e5' stroke-width='1.7' stroke-linejoin='round' stroke-linecap='round'/></svg>") 7 3, auto;
+}
+
+:root[data-theme="dark"] html,
+:root[data-theme="dark"] body {
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><defs><linearGradient id='a' x1='0' y1='0' x2='0.7' y2='1'><stop offset='0' stop-color='%23f8fafc'/><stop offset='1' stop-color='%23c7d2fe'/></linearGradient></defs><path d='M6.5 3.2 L6.5 24.4 L11.9 19.2 L15.3 26.6 L18.9 24.9 L15.5 17.7 L22.6 17.5 Z' fill='url(%23a)' stroke='%23a5b4fc' stroke-width='1.7' stroke-linejoin='round' stroke-linecap='round'/></svg>") 7 3, auto;
+}
+
+/* ---------- 可点击元素：伸出手的小手 ---------- */
+a,
+button,
+summary,
+label,
+select,
+input[type="button"],
+input[type="submit"],
+input[type="checkbox"],
+input[type="radio"],
+.theme-toggle,
+.top-link,
+[role="button"],
+.entry-link,
+.archive-entry,
+#menu li a,
+.post-tags a,
+.terms-tags li a {
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><defs><linearGradient id='h' x1='0' y1='0' x2='0.6' y2='1'><stop offset='0' stop-color='%23ffffff'/><stop offset='1' stop-color='%23e9edff'/></linearGradient></defs><path d='M11.4 16.6 V8.1 a1.85 1.85 0 0 1 3.7 0 V14.4 m0 -1.3 a1.75 1.75 0 0 1 3.5 0 V14.9 m0 -1.4 a1.75 1.75 0 0 1 3.5 0 V17.4 m0 -1.1 a1.65 1.65 0 0 1 3.3 0 v4.4 c0 4.2 -3.1 7.2 -7.2 7.2 -2.5 0 -4.5 -1 -6 -2.7 l-3.4 -4.3 a1.75 1.75 0 0 1 2.55 -2.4 l1.05 1.05 z' fill='url(%23h)' stroke='%236366f1' stroke-width='1.6' stroke-linejoin='round' stroke-linecap='round'/></svg>") 14 5, pointer;
+}
+
+:root[data-theme="dark"] a,
+:root[data-theme="dark"] button,
+:root[data-theme="dark"] summary,
+:root[data-theme="dark"] label,
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] input[type="button"],
+:root[data-theme="dark"] input[type="submit"],
+:root[data-theme="dark"] input[type="checkbox"],
+:root[data-theme="dark"] input[type="radio"],
+:root[data-theme="dark"] .theme-toggle,
+:root[data-theme="dark"] .top-link,
+:root[data-theme="dark"] [role="button"],
+:root[data-theme="dark"] .entry-link,
+:root[data-theme="dark"] .archive-entry,
+:root[data-theme="dark"] #menu li a,
+:root[data-theme="dark"] .post-tags a,
+:root[data-theme="dark"] .terms-tags li a {
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><defs><linearGradient id='h' x1='0' y1='0' x2='0.6' y2='1'><stop offset='0' stop-color='%23f8fafc'/><stop offset='1' stop-color='%23c7d2fe'/></linearGradient></defs><path d='M11.4 16.6 V8.1 a1.85 1.85 0 0 1 3.7 0 V14.4 m0 -1.3 a1.75 1.75 0 0 1 3.5 0 V14.9 m0 -1.4 a1.75 1.75 0 0 1 3.5 0 V17.4 m0 -1.1 a1.65 1.65 0 0 1 3.3 0 v4.4 c0 4.2 -3.1 7.2 -7.2 7.2 -2.5 0 -4.5 -1 -6 -2.7 l-3.4 -4.3 a1.75 1.75 0 0 1 2.55 -2.4 l1.05 1.05 z' fill='url(%23h)' stroke='%23a5b4fc' stroke-width='1.6' stroke-linejoin='round' stroke-linecap='round'/></svg>") 14 5, pointer;
+}
+
+/* ---------- 文本：细长的竖线光标 ---------- */
+p,
+li,
+td,
+th,
+blockquote,
+figcaption,
+.entry-content,
+.post-content,
+.post-description,
+.archive-meta,
+.entry-footer,
+input[type="text"],
+input[type="search"],
+input[type="email"],
+textarea {
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='26' viewBox='0 0 14 26'><path d='M7 4 v18' stroke='%236366f1' stroke-width='1.9' stroke-linecap='round'/><path d='M4 2.2 h6 M4 23.8 h6' stroke='%236366f1' stroke-width='1.5' stroke-linecap='round' opacity='0.75'/></svg>") 7 12, text;
+}
+
+:root[data-theme="dark"] p,
+:root[data-theme="dark"] li,
+:root[data-theme="dark"] td,
+:root[data-theme="dark"] th,
+:root[data-theme="dark"] blockquote,
+:root[data-theme="dark"] figcaption,
+:root[data-theme="dark"] .entry-content,
+:root[data-theme="dark"] .post-content,
+:root[data-theme="dark"] .post-description,
+:root[data-theme="dark"] .archive-meta,
+:root[data-theme="dark"] .entry-footer,
+:root[data-theme="dark"] input[type="text"],
+:root[data-theme="dark"] input[type="search"],
+:root[data-theme="dark"] input[type="email"],
+:root[data-theme="dark"] textarea {
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='26' viewBox='0 0 14 26'><path d='M7 4 v18' stroke='%23a5b4fc' stroke-width='1.9' stroke-linecap='round'/><path d='M4 2.2 h6 M4 23.8 h6' stroke='%23a5b4fc' stroke-width='1.5' stroke-linecap='round' opacity='0.75'/></svg>") 7 12, text;
+}
+
+/* ---------- 不可点、不可选的地方保持箭头 ---------- */
+#sky,
+#cosmos,
+#daylight,
+.bloom,
+.petal,
+.peekling-character-hit,
+.theme-toggle svg,
+.top-link svg,
+.post-single,
+.home-info {
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><path d='M6.5 3.2 L6.5 24.4 L11.9 19.2 L15.3 26.6 L18.9 24.9 L15.5 17.7 L22.6 17.5 Z' fill='%23ffffff' stroke='%234f46e5' stroke-width='1.7' stroke-linejoin='round'/></svg>") 7 3, auto;
+}
+
+:root[data-theme="dark"] #sky,
+:root[data-theme="dark"] #cosmos,
+:root[data-theme="dark"] #daylight,
+:root[data-theme="dark"] .bloom,
+:root[data-theme="dark"] .petal,
+:root[data-theme="dark"] .peekling-character-hit,
+:root[data-theme="dark"] .post-single,
+:root[data-theme="dark"] .home-info {
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><path d='M6.5 3.2 L6.5 24.4 L11.9 19.2 L15.3 26.6 L18.9 24.9 L15.5 17.7 L22.6 17.5 Z' fill='%23f8fafc' stroke='%23a5b4fc' stroke-width='1.7' stroke-linejoin='round'/></svg>") 7 3, auto;
+}
+
+/* ---------- 触屏设备不启用自定义光标 ---------- */
+@media (hover: none) and (pointer: coarse) {
+    html,
+    body,
+    a,
+    button,
+    p {
+        cursor: auto !important;
+    }
+}
+
+/* ---------- 点击烟花的画布 ---------- */
+#click-firework {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 95; /* 在内容之上、桌宠之下（桌宠是 2147483646） */
+    pointer-events: none;
+}

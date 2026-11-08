@@ -1,0 +1,76 @@
+:host{all:initial!important;position:fixed!important;inset:0!important;pointer-events:none!important}:host([data-peekling-host][hidden]){display:none!important}:host([data-peekling-host]){z-index:2147483646!important;contain:strict!important;overflow:hidden!important}.sprite{display:block;position:absolute;background-repeat:no-repeat;transform-origin:0 0}:host([data-peekling-content]){z-index:2147483645!important;color:var(--peekling-surface-color, #262626)!important;font:500 14px/1.4 system-ui!important}:host([data-peekling-content][hidden]){display:none!important}:host([data-peekling-interaction]){z-index:2147483647!important;contain:strict!important;overflow:hidden!important}:host([data-peekling-interaction][hidden]){display:none!important}.peekling-character-hit{-webkit-appearance:none;appearance:none;position:absolute;margin:0;padding:0;border:0;border-radius:28%;background:transparent;color:#262626;pointer-events:auto;cursor:pointer;transform-origin:0 0;-webkit-tap-highlight-color:transparent;-webkit-backface-visibility:hidden;backface-visibility:hidden}.peekling-character-hit[data-peekling-draggable]{cursor:grab;touch-action:none}.peekling-character-hit[data-peekling-draggable]:active{cursor:grabbing}.peekling-character-hit:focus-visible{outline:3px solid #2f6f1d;outline-offset:3px}.peekling-character-indicator{position:absolute;top:-2px;right:-2px;display:grid;box-sizing:border-box;min-width:16px;height:16px;padding:0 4px;place-items:center;border:2px solid #fafafa;border-radius:999px;background:#ff4d4f;color:#fff;font:700 10px/1 system-ui}.peekling-character-indicator[data-kind=dot]{min-width:12px;width:12px;height:12px;padding:0}.surface{position:absolute;box-sizing:border-box;width:min(var(--peekling-surface-width, 320px),calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:auto;padding:var(--peekling-surface-padding, 12px 14px);border:1px solid var(--peekling-surface-border, #d9d9d3);border-radius:var(--peekling-surface-radius, 14px);background:var(--peekling-surface-background, #fafafa);pointer-events:auto}.surface [hidden]{display:none!important}.title{display:block}.surface p{margin:0}.surface a{display:inline-flex;min-width:44px;min-height:44px;align-items:center;justify-content:center;margin-top:6px;color:var(--peekling-surface-link, #174f00)}.surface a:focus-visible{outline:3px solid;outline-offset:3px}:host([data-peekling-controls]){z-index:2147483647!important;color:#262626!important;font:600 14px/1.25 system-ui!important}.peekling-visibility-trigger{position:fixed;right:0;bottom:0;width:64px;height:64px;border:0;background:transparent;opacity:0;pointer-events:none}.peekling-visibility-trigger:focus-visible{opacity:1;outline:3px solid;background:#fafafa}.peekling-visibility-panel{position:fixed;right:16px;bottom:16px;box-sizing:border-box;width:min(272px,calc(100vw - 32px));padding:16px;border:1px solid #d9d9d3;border-radius:18px;background:#fafafa;pointer-events:auto}.peekling-visibility-panel h2{margin:0 0 12px}.peekling-visibility-option{display:block;width:100%;min-height:44px;padding:10px 12px;border:0;background:transparent;color:inherit;font:inherit}.peekling-visibility-option:hover,.peekling-visibility-option:focus-visible{outline:2px solid}
+
+/* =========================================================
+   本站补丁：让 Peekling 自带的气泡（.surface）长成站点的液态玻璃。
+   注意：这股样式注入在 shadow root 里，读不到 [data-theme]，
+   所以配色全部走自定义属性 —— 它们会从 :root 继承进 shadow tree。
+   具体颜色在 assets/css/extended/effects.css 里按主题定义。
+   ========================================================= */
+
+/* 未读角标：本站不做通知，直接关掉 */
+.peekling-character-indicator {
+    display: none !important;
+}
+
+/* 运行时还会渲染一个只写着角色名（peek）的小标签，
+   和我们的内容气泡重复，隐藏掉。
+   注意标识在 data-peekling-surface 属性上，不是 class。 */
+[data-peekling-surface="peekling:name"] {
+    display: none !important;
+}
+
+.surface {
+    padding: 14px 16px !important;
+    border-radius: 16px !important;
+    border: 1px solid var(--pk-bubble-border, rgba(255, 255, 255, 0.78)) !important;
+    background-color: var(--pk-bubble-bg, rgba(255, 252, 246, 0.72)) !important;
+    background-image: var(--pk-bubble-sheen, none) !important;
+    box-shadow: var(--pk-bubble-shadow, 0 10px 24px -12px rgba(72, 96, 128, 0.18)) !important;
+    backdrop-filter: blur(18px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(180%) !important;
+    color: var(--pk-bubble-color, #2b3a55) !important;
+    font: 500 14px/1.55 system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif !important;
+    animation: peekling-surface-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes peekling-surface-in {
+    from { opacity: 0; transform: translateY(6px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.surface .title {
+    display: block;
+    margin-bottom: 4px;
+    font-weight: 700 !important;
+    font-size: 13px !important;
+    letter-spacing: 0.02em;
+    color: var(--pk-bubble-title, #6366f1) !important;
+}
+
+.surface p {
+    margin: 0 !important;
+    color: var(--pk-bubble-text, #3c4a63) !important;
+}
+
+.surface a {
+    margin-top: 8px !important;
+    min-width: auto !important;
+    min-height: auto !important;
+    padding: 5px 10px;
+    border-radius: 9px;
+    color: var(--pk-bubble-link, #4f46e5) !important;
+    background: var(--pk-bubble-link-bg, rgba(99, 102, 241, 0.10));
+    font-size: 13px !important;
+    text-decoration: none;
+}
+
+/* 角色可拖动时给个抓手光标 */
+.peekling-character-hit {
+    cursor: pointer !important;
+}
+.peekling-character-hit[data-peekling-draggable] {
+    cursor: grab !important;
+}
+.peekling-character-hit[data-peekling-draggable]:active {
+    cursor: grabbing !important;
+}

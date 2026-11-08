@@ -1,0 +1,150 @@
+{{- /* 站点自定义脚本：阅读进度 / 滚动入场 / 目录高亮 / 顶栏状态 */ -}}
+<script>
+    (() => {
+        "use strict";
+        const doc = document;
+        const root = doc.documentElement;
+        root.classList.add("js");
+
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        /* ---------- 顶栏滚动状态 ---------- */
+        const header = doc.querySelector(".header");
+        const syncHeader = () => {
+            if (header) header.classList.toggle("is-scrolled", window.scrollY > 8);
+        };
+        syncHeader();
+        window.addEventListener("scroll", syncHeader, { passive: true });
+
+        /* ---------- 阅读进度条 ---------- */
+        const article = doc.querySelector(".post-single");
+        if (article) {
+            const bar = doc.createElement("div");
+            bar.id = "reading-progress";
+            bar.setAttribute("aria-hidden", "true");
+            doc.body.appendChild(bar);
+
+            const updateProgress = () => {
+                const rect = article.getBoundingClientRect();
+                const total = rect.height - window.innerHeight;
+                const scrolled = Math.min(Math.max(-rect.top, 0), Math.max(total, 0));
+                const pct = total > 0 ? (scrolled / total) * 100 : 0;
+                bar.style.width = Math.min(Math.max(pct, 0), 100) + "%";
+            };
+            updateProgress();
+            window.addEventListener("scroll", updateProgress, { passive: true });
+            window.addEventListener("resize", updateProgress);
+        }
+
+        /* ---------- 滚动进入视口 ---------- */
+        const revealTargets = doc.querySelectorAll(
+            ".main .post-entry, .main .terms-tags li, .main .archive-entry, .main .paginav"
+        );
+        if (!reduceMotion && "IntersectionObserver" in window && revealTargets.length) {
+            const io = new IntersectionObserver(
+                (entries) => {
+                    entries.forEach((entry) => {
+                        if (!entry.isIntersecting) return;
+                        entry.target.classList.add("is-visible");
+                        io.unobserve(entry.target);
+                    });
+                },
+                { rootMargin: "0px 0px -6% 0px", threshold: 0.06 }
+            );
+            revealTargets.forEach((el, index) => {
+                el.classList.add("reveal");
+                el.style.transitionDelay = Math.min(index, 6) * 55 + "ms";
+                io.observe(el);
+            });
+        }
+
+        /* ---------- 目录随滚动高亮 ---------- */
+        const toc = doc.querySelector(".toc");
+        const content = doc.querySelector(".post-content");
+        if (toc && content && "IntersectionObserver" in window) {
+            const map = new Map();
+            toc.querySelectorAll('a[href^="#"]').forEach((link) => {
+                const id = decodeURIComponent(link.getAttribute("href").slice(1));
+                const heading = doc.getElementById(id);
+                if (heading) map.set(heading, link);
+            });
+
+            if (map.size) {
+                const setActive = (link) => {
+                    toc.querySelectorAll("a.active").forEach((a) => a.classList.remove("active"));
+                    toc.querySelectorAll("li.active").forEach((li) => li.classList.remove("active"));
+                    if (!link) return;
+                    link.classList.add("active");
+                    if (link.parentElement) link.parentElement.classList.add("active");
+                };
+
+                const spy = new IntersectionObserver(
+                    (entries) => {
+                        entries.forEach((entry) => {
+                            if (entry.isIntersecting) setActive(map.get(entry.target));
+                        });
+                    },
+                    { rootMargin: "-12% 0px -72% 0px", threshold: 0 }
+                );
+                map.forEach((_, heading) => spy.observe(heading));
+            }
+        }
+
+        /* ---------- 图片加载淡入 ---------- */
+        doc.querySelectorAll(".post-content img").forEach((img) => {
+            img.style.opacity = "0";
+            img.style.transition = "opacity .5s ease";
+            const show = () => { img.style.opacity = "1"; };
+            if (img.complete) show();
+            else {
+                img.addEventListener("load", show, { once: true });
+                img.addEventListener("error", show, { once: true });
+            }
+        });
+    })();
+</script>
+
+{{- /* 白天蓝天白云层 */ -}}
+<div id="daylight" aria-hidden="true">
+    {{- /* 静态点缀的小花 */ -}}
+    <div class="bloom bloom-1"></div>
+    <div class="bloom bloom-2"></div>
+    <div class="bloom bloom-3"></div>
+    <div class="bloom bloom-4"></div>
+    <div class="bloom bloom-5"></div>
+    <div class="bloom bloom-6"></div>
+    <div class="bloom bloom-7"></div>
+    <div class="bloom bloom-8"></div>
+    <div class="bloom bloom-9"></div>
+    <div class="bloom bloom-10"></div>
+    {{- /* 樱花雨由 JS 生成 */ -}}
+</div>
+
+{{- /* 夜晚星空层 */ -}}
+<div id="cosmos" aria-hidden="true"></div>
+
+{{- /* 流星画布 */ -}}
+<canvas id="sky" aria-hidden="true"></canvas>
+
+{{- with resources.Get "js/meteors.js" }}
+    {{- $js := . | minify | fingerprint "sha256" }}
+<script defer src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}" crossorigin="anonymous"></script>
+{{- end }}
+
+{{- with resources.Get "js/blossom.js" }}
+    {{- $js := . | minify | fingerprint "sha256" }}
+<script defer src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}" crossorigin="anonymous"></script>
+{{- end }}
+
+{{- /* 桌宠：Peekling（Apache-2.0，https://peekling.com/），自托管运行时 + 角色包 */ -}}
+<script defer src="/vendor/peekling/peekling.min.js"></script>
+{{- /* 点击烟花：全屏 canvas 粒子，仅鼠标设备启用 */ -}}
+{{- with resources.Get "js/click-firework.js" }}
+    {{- $fw := . | minify | fingerprint "sha256" }}
+<script defer src="{{ $fw.RelPermalink }}" integrity="{{ $fw.Data.Integrity }}" crossorigin="anonymous"></script>
+{{- end }}
+
+{{- with resources.Get "js/pet-peekling.js" }}
+    {{- $js := . | minify | fingerprint "sha256" }}
+<script defer src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}" crossorigin="anonymous"></script>
+{{- end }}

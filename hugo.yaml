@@ -1,0 +1,111 @@
+baseURL: 'https://linpr.github.io/'
+locale: 'zh-CN'
+title: 'LinPr 的博客'
+theme: 'hugo-PaperMod'
+defaultContentLanguage: 'zh'
+
+enableRobotsTXT: true
+hasCJKLanguage: true
+summaryLength: 70
+
+pagination:
+  pagerSize: 10
+
+outputs:
+  home: [HTML, RSS, JSON]
+
+params:
+  env: production
+  title: LinPr 的博客
+  description: 记录 Go、C++、Unix 系统编程与后端开发的学习笔记。
+  keywords: [Golang, C++, Unix, 系统编程, 后端, 读书笔记]
+  author: LinPr
+  images: ["/og-image.png"]
+  DateFormat: "2006-01-02"
+  defaultTheme: auto
+  disableThemeToggle: false
+
+  ShowReadingTime: true
+  ShowShareButtons: true
+  ShowPostNavLinks: true
+  ShowBreadCrumbs: true
+  ShowCodeCopyButtons: true
+  ShowWordCount: true
+  ShowRssButtonInSectionTermList: true
+  UseHugoToc: true
+  showtoc: true
+  tocopen: false
+  hidemeta: false
+  hideSummary: false
+  disableSpecial1stPost: false
+  disableScrollToTop: false
+  comments: false
+
+  assets:
+    favicon: /favicon.svg
+    favicon16x16: /favicon-16x16.png
+    favicon32x32: /favicon-32x32.png
+    apple_touch_icon: /apple-touch-icon.png
+
+  label:
+    text: "LinPr"
+    icon: /images/avatar-96.png
+    iconHeight: 34
+
+  homeInfoParams:
+    Title: "Hi, I'm LinPr"
+    Content: |
+      Go 开发者，也读一点 C++ 和 Unix。平时喜欢做两件事：把重复的运维操作写成命令行工具，把看不明白的系统拆开来看清楚。
+
+      这里主要放读源码和读书的笔记，大多是自己留的备忘，写得不严谨的地方欢迎指正。
+
+      近期在做 [s6cmd](https://github.com/LinPr/s6cmd)（S3 命令行）、[sqltui](https://github.com/LinPr/sqltui)（数据库 TUI）、[grafana-openobserve-datasource](https://github.com/LinPr/grafana-openobserve-datasource)（OpenObserve 数据源插件）。
+
+  socialIcons:
+    - name: github
+      url: "https://github.com/LinPr"
+
+  editPost:
+    URL: "https://github.com/LinPr/LinPr.github.io/edit/main/content"
+    Text: "编辑本文"
+    appendFilePath: true
+
+  fuseOpts:
+    isCaseSensitive: false
+    shouldSort: true
+    location: 0
+    distance: 1000
+    threshold: 0.4
+    minMatchCharLength: 0
+    limit: 10
+    keys: ["title", "permalink", "summary", "content"]
+
+menu:
+  main:
+    - identifier: archives
+      name: 归档
+      url: /archives/
+      weight: 10
+    - identifier: categories
+      name: 分类
+      url: /categories/
+      weight: 20
+    - identifier: tags
+      name: 标签
+      url: /tags/
+      weight: 30
+    - identifier: search
+      name: 搜索
+      url: /search/
+      weight: 40
+
+pygmentsUseClasses: true
+markup:
+  highlight:
+    noClasses: false
+    guessSyntax: true
+    lineNos: false
+    codeFences: true
+  tableOfContents:
+    startLevel: 2
+    endLevel: 4
