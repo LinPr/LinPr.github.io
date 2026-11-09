@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 700" width="900" height="700" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="fa" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto">
+      <path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="fo" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto">
+      <path d="M0,0 L7,3.2 L0,6.4 z" fill="#c2410c"/>
+    </marker>
+  </defs>
+  <rect width="900" height="700" fill="#ffffff"/>
+
+  <text x="450" y="32" text-anchor="middle" font-size="19" font-weight="700" fill="#1e293b">一个扩展点 ≠ 一次调用：Filter / Score 的扇出</text>
+  <text x="450" y="54" text-anchor="middle" font-size="12.5" fill="#64748b">外层在节点维度并行，内层在插件维度串行；Score 之后还有两趟收尾</text>
+
+  <!-- one pod -->
+  <rect x="40" y="86" width="180" height="56" rx="9" fill="#eef2ff" stroke="#a5b4fc"/>
+  <text x="130" y="109" text-anchor="middle" font-size="13.5" font-weight="700" fill="#3730a3">一个 Pod</text>
+  <text x="130" y="128" text-anchor="middle" font-size="11" fill="#4f46e5">调度周期里只处理它一个</text>
+
+  <!-- candidate sampling -->
+  <rect x="250" y="80" width="330" height="68" rx="9" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="266" y="101" font-size="12.5" font-weight="700" fill="#334155">候选节点不是「全部节点」</text>
+  <text x="266" y="119" font-size="11" fill="#64748b">PreFilterResult 可能先砍掉一批；</text>
+  <text x="266" y="135" font-size="11" fill="#64748b">numNodesToFind() 还会按总量抽样</text>
+
+  <line x1="220" y1="114" x2="246" y2="114" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#fa)"/>
+
+  <!-- nodes -->
+  <g>
+    <rect x="612" y="66" width="96" height="30" rx="6" fill="#ecfeff" stroke="#67e8f9"/>
+    <text x="660" y="86" text-anchor="middle" font-size="11" fill="#155e75">node A</text>
+    <rect x="612" y="102" width="96" height="30" rx="6" fill="#ecfeff" stroke="#67e8f9"/>
+    <text x="660" y="122" text-anchor="middle" font-size="11" fill="#155e75">node B</text>
+    <rect x="612" y="138" width="96" height="30" rx="6" fill="#ecfeff" stroke="#67e8f9"/>
+    <text x="660" y="158" text-anchor="middle" font-size="11" fill="#155e75">node C</text>
+    <text x="660" y="184" text-anchor="middle" font-size="11" fill="#94a3b8">…（抽样后的一批）</text>
+  </g>
+  <path d="M580,104 L608,84" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#fa)"/>
+  <path d="M580,114 L608,117" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#fa)"/>
+  <path d="M580,124 L608,150" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#fa)"/>
+
+  <!-- Filter box -->
+  <rect x="40" y="212" width="820" height="132" rx="12" fill="#fbfdff" stroke="#bfdbfe" stroke-dasharray="5 4"/>
+  <text x="58" y="234" font-size="12.5" font-weight="700" fill="#1d4ed8">Filter：每个节点一次，每次内部再按插件顺序串行</text>
+
+  <rect x="70" y="248" width="120" height="42" rx="7" fill="#ecfeff" stroke="#67e8f9"/>
+  <text x="130" y="274" text-anchor="middle" font-size="11.5" fill="#155e75">node A</text>
+  <rect x="210" y="248" width="120" height="42" rx="7" fill="#ecfeff" stroke="#67e8f9"/>
+  <text x="270" y="274" text-anchor="middle" font-size="11.5" fill="#155e75">node B</text>
+  <rect x="350" y="248" width="120" height="42" rx="7" fill="#ecfeff" stroke="#67e8f9"/>
+  <text x="410" y="274" text-anchor="middle" font-size="11.5" fill="#155e75">node C</text>
+  <text x="500" y="274" font-size="11" fill="#94a3b8">← 这三格并行</text>
+
+  <rect x="70" y="302" width="400" height="32" rx="6" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="270" y="323" text-anchor="middle" font-size="11" fill="#475569" font-family="ui-monospace,monospace">NodeAffinity → NodePorts → TaintToleration → …</text>
+  <text x="490" y="323" font-size="11" fill="#94a3b8">← 这一行串行，第一个失败就返回</text>
+
+  <!-- Score box -->
+  <rect x="40" y="364" width="820" height="196" rx="12" fill="#fffdf8" stroke="#fed7aa" stroke-dasharray="5 4"/>
+  <text x="58" y="386" font-size="12.5" font-weight="700" fill="#c2410c">Score：同样每节点一次，但之后还有两趟</text>
+
+  <text x="70" y="410" font-size="11.5" font-weight="700" fill="#9a3412">① 取原始分（节点并行）</text>
+  <rect x="70" y="418" width="330" height="34" rx="6" fill="#fff7ed" stroke="#fdba74"/>
+  <text x="235" y="440" text-anchor="middle" font-size="11" fill="#9a3412" font-family="ui-monospace,monospace">每个节点 × 每个插件 → rawScore</text>
+
+  <text x="70" y="480" font-size="11.5" font-weight="700" fill="#9a3412">② 归一化（插件并行，实现了 ScoreExtensions 才跑）</text>
+  <rect x="70" y="488" width="330" height="34" rx="6" fill="#fff7ed" stroke="#fdba74"/>
+  <text x="235" y="510" text-anchor="middle" font-size="11" fill="#9a3412" font-family="ui-monospace,monospace">NormalizeScore → [0, 100]</text>
+
+  <text x="70" y="546" font-size="11.5" font-weight="700" fill="#9a3412">③ 检查范围、乘权重、求和（节点并行）</text>
+  <rect x="70" y="554" width="330" height="34" rx="6" fill="#fff7ed" stroke="#fdba74"/>
+  <text x="235" y="576" text-anchor="middle" font-size="11" fill="#9a3412" font-family="ui-monospace,monospace">TotalScore = Σ(raw × weight)</text>
+
+  <line x1="235" y1="452" x2="235" y2="474" stroke="#c2410c" stroke-width="1.5" marker-end="url(#fo)"/>
+  <line x1="235" y1="522" x2="235" y2="540" stroke="#c2410c" stroke-width="1.5" marker-end="url(#fo)"/>
+
+  <rect x="430" y="418" width="410" height="120" rx="8" fill="#fffbeb" stroke="#fde68a"/>
+  <text x="446" y="440" font-size="11.5" font-weight="700" fill="#854d0e">范围检查在归一化之后</text>
+  <text x="446" y="460" font-size="11" fill="#a16207">没实现 NormalizeScore 的插件，原始分自己就必须在</text>
+  <text x="446" y="476" font-size="11" fill="#a16207">[MinScore, MaxScore] = [0, 100] 内；越界不是「分数不准」，</text>
+  <text x="446" y="492" font-size="11" fill="#a16207">而是整个调度周期报错：</text>
+  <text x="446" y="514" font-size="10.5" fill="#92400e" font-family="ui-monospace,monospace">returns an invalid score %v, it should in</text>
+  <text x="446" y="530" font-size="10.5" fill="#92400e" font-family="ui-monospace,monospace">the range of [%v, %v] after normalizing</text>
+
+  <!-- bottom -->
+  <rect x="40" y="588" width="820" height="72" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="58" y="610" font-size="11.5" font-weight="700" fill="#334155">和 nginx 的根本不对称</text>
+  <text x="58" y="630" font-size="11.5" fill="#475569">nginx 的阶段是一维时间轴上的一个点：一个请求，一个 handler；</text>
+  <text x="58" y="648" font-size="11.5" fill="#475569">scheduler 的阶段是一个二维格子：阶段 × 对象（节点），而且对象还是抽样过的。</text>
+
+  <text x="450" y="686" text-anchor="middle" font-size="11" fill="#94a3b8">依据 Kubernetes pkg/scheduler/algorithm.go 与 framework/runtime/framework.go</text>
+</svg>
