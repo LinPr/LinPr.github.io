@@ -4,39 +4,59 @@ date: 2026-11-09T16:00:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "openresty", "nginx", "架构"]
 author: "LinPr"
-description: "一个请求和一个 Pod，同一套「阶段 + 钩子」的骨架，长出了两种完全不同的细节。这篇是我把 OpenResty 和 kube-scheduler 摆在一起读的笔记。"
+description: "一个 HTTP 请求和一个 Pod，用的都是「阶段 + 钩子」的结构，却在实现上走了两条路。本文对照 nginx phase engine 与 kube-scheduler scheduling framework，拆解可插拔插件架构的三个核心问题。"
 ---
 
-最近在啃 kube-scheduler 的 framework 包。
+最近在读 kube-scheduler 的 framework 包。
 
-读之前我有点心理准备，觉得调度器这种东西，逻辑总该是硬的。结果翻开 `pkg/scheduler/framework/plugins/` 目录，看到的是一串小包：`nodename`、`nodeports`、`tainttoleration`、`imagelocality`……每个都只回答一个很窄的问题。框架本身反而对调度几乎一无所知——它不知道什么叫「资源够用」，也不知道什么叫「污点」，它只知道**什么时候该叫谁**。
+读之前我以为调度器的代码是一整块紧耦合的逻辑。打开 `pkg/scheduler/framework/plugins/` 才发现，目录下是二十多个独立插件包：`nodename`、`nodeports`、`tainttoleration`、`imagelocality`……每个包只实现一个很窄的判定。framework 本身不定义任何调度语义——它不知道什么是「资源充足」，也不知道什么是「污点」，只负责在确定的时机调用确定的插件。
 
-这种写法我熟。写 OpenResty 的时候，nginx 也是这么干的。
+同样的组织方式，nginx 已经用了二十年。
 
-于是我把两边摆在一起看。看久了发现，所谓可插拔的插件架构，要回答的其实就三个问题：
+把 OpenResty 和 scheduler 放在一起读之后，我认为可插拔的插件架构最终都要回答三个问题：
 
-- **控制流归谁？** 是插件自己决定下一步，还是框架说了算？
-- **顺序从哪来？** 同一个阶段里有好几个插件，谁先谁后，由谁定？
-- **搞砸了怎么办？** 插件返回一个失败，是终止、跳过，还是补救？
+1. **控制流归谁？** 由插件决定下一步，还是由框架决定？
+2. **顺序由谁确定？** 同一阶段的多个插件如何排序，跨阶段又如何排序？
+3. **失败如何处理？** 插件返回失败后，框架是终止、跳过，还是补偿？
 
-这三个问题听着琐碎，可答案一不同，整个架构的气质就变了。下面先说 OpenResty——它的答案最短，也最经典——再说 scheduler。最后回头聊几句，这三问对平时写程序有什么用。
+这三个问题的答案一旦不同，架构的行为就会完全不同。下面先讲 OpenResty，它的答案最简洁；再讲 scheduler，它的题目更难；最后回到这三个问题上做对照。
 
-## 一、OpenResty：先有流水线，才谈得上插件
+## 一、OpenResty：阶段固定，执行由 checker 驱动
 
-nginx 处理一个 HTTP 请求，走的是一条固定的流水线。源码里就是一个枚举，从 `POST_READ` 一路排到 `LOG`，中间不带商量的：
+### 1.1 阶段顺序由枚举定义
+
+nginx 处理一个 HTTP 请求走的是固定流水线。`ngx_http_core_module.h` 用枚举定义了全部阶段：
+
+```c
+typedef enum {
+    NGX_HTTP_POST_READ_PHASE = 0,
+    NGX_HTTP_SERVER_REWRITE_PHASE,
+    NGX_HTTP_FIND_CONFIG_PHASE,
+    NGX_HTTP_REWRITE_PHASE,
+    NGX_HTTP_POST_REWRITE_PHASE,
+    NGX_HTTP_PREACCESS_PHASE,
+    NGX_HTTP_ACCESS_PHASE,
+    NGX_HTTP_POST_ACCESS_PHASE,
+    NGX_HTTP_PRECONTENT_PHASE,
+    NGX_HTTP_CONTENT_PHASE,
+    NGX_HTTP_LOG_PHASE
+} ngx_http_phases;
+```
+
+枚举值同时是数组下标，顺序在编译期固定。插件不能新增阶段，只能在已有阶段内注册 handler。完整的阶段顺序如下：
 
 ```
-一个请求在 nginx 里的时间轴
+一个 HTTP 请求的 phase 顺序
 
-  POST_READ            realip 之类，改改请求本身
+  POST_READ            读取并预处理请求（realip 等）
      |
   SERVER_REWRITE       server_rewrite_by_lua*
      |
-  FIND_CONFIG          按 URI 找到 location
+  FIND_CONFIG          按 URI 匹配 location
      |
   REWRITE              rewrite_by_lua*
      |
-  POST_REWRITE         URI 变了就跳回 FIND_CONFIG
+  POST_REWRITE         检测 URI 是否变更，变更则跳回 FIND_CONFIG
      |
   PREACCESS            limit_req / limit_conn
      |
@@ -51,9 +71,9 @@ nginx 处理一个 HTTP 请求，走的是一条固定的流水线。源码里�
   LOG                  log_by_lua*
 ```
 
-这张图好懂，但它藏着一个前提：**这些阶段是写死在枚举里的。** 插件没办法新增一个阶段，只能往已有的格子里插队。
+### 1.2 执行器是 checker，插件只返回状态码
 
-那「插队」这件事是谁在管？看驱动这套流水线的代码，只有这么几行（`ngx_http_core_module.c`）：
+驱动这套阶段的是 `ngx_http_core_run_phases()`，核心逻辑只有几行：
 
 ```c
 while (ph[r->phase_handler].checker) {
@@ -64,22 +84,56 @@ while (ph[r->phase_handler].checker) {
 }
 ```
 
-注意，这里没有「调用插件」这回事，只有「调用 checker」。checker 是阶段自己的执行器，由它来决定要不要、以及按什么顺序调用这一阶段的 handler。插件返回的那个整数，是被 checker 解读的：
+这里被调用的是 `checker`，不是插件。`checker` 是阶段的执行函数，由它决定是否调用、以及按什么顺序调用本阶段的 handler。插件返回的整数由 `checker` 解释，同一个返回值在不同阶段含义不同：
 
-- `NGX_DECLINED`：这一步我没意见，往下走；
-- `NGX_OK`：这一格我办完了（在 rewrite 阶段，这甚至是「结束请求」）；
-- 一个 HTTP 状态码：请求到此为止。
+| 返回值 | `generic` checker 中的语义 | `rewrite` checker 中的语义 |
+|---|---|---|
+| `NGX_OK` | 本阶段完成，跳到 `next` | 结束整个请求 |
+| `NGX_DECLINED` | 本 handler 不处理，继续下一个 | 本 handler 不处理，继续下一个 |
+| `NGX_AGAIN` | 挂起请求，让出执行权 | 结束整个请求 |
+| `NGX_DONE` | 挂起请求，让出执行权 | 挂起请求，让出执行权 |
+| HTTP 状态码 | 以该状态码结束请求 | 以该状态码结束请求 |
 
-所以插件其实什么都没掌控，它只交出**一个信号**。怎么理解这个信号，是阶段的事。
+`rewrite` checker 的代码只有三个分支，其余返回值全部落到最后一行：
 
-顺序也差不多。模块在配置加载时（`postconfiguration` 回调）把自己的 handler 塞进 `cmcf->phases[阶段].handlers`，等所有模块都注册完，nginx 把 11 个阶段的数组摊平成一条一维数组：
+```c
+if (rc == NGX_DECLINED) { r->phase_handler++; return NGX_AGAIN; }
+if (rc == NGX_DONE)     { return NGX_OK; }
+
+/* NGX_OK, NGX_AGAIN, NGX_ERROR, NGX_HTTP_... */
+ngx_http_finalize_request(r, rc);
+return NGX_OK;
+```
+
+所以 `NGX_OK` 在 `generic` 里是「继续」，在 `rewrite` 里是「终止」，`NGX_AGAIN` 在 `generic` 里是「让出」，在 `rewrite` 里也是「终止」。
+
+因此插件不持有控制流，它只返回一个整数；控制流的语义由框架侧的 `checker` 定义。
+
+### 1.3 阶段内顺序等于注册顺序，实现方式是数组摊平
+
+模块在 `postconfiguration` 回调里把自己的 handler 追加到 `cmcf->phases[阶段].handlers`。所有模块注册完毕后，`ngx_http_init_phase_handlers()` 把 11 个阶段的 handler 数组摊平成一条 `ngx_http_phase_handler_t` 数组：
+
+```c
+typedef struct {
+    ngx_http_phase_handler_pt  checker;
+    ngx_http_handler_pt        handler;
+    ngx_uint_t                 next;
+} ngx_http_phase_handler_t;
+```
+
+摊平过程中有两个关键实现细节：
+
+1. **handler 倒序写入。** `for (j = nelts - 1; j >= 0; j--)` 倒序遍历、正序写入，最终数组里保持注册顺序。所谓「同阶段按注册顺序执行」就是这样实现的，运行时没有任何排序动作。
+2. **同阶段共享同一个 `next`。** 跳转目标按阶段计算，不按 handler 计算。
+
+摊平后的结构大致如下：
 
 ```
-注册时，各模块往自己的阶段里 append
+注册阶段，各模块追加到自己所属阶段的数组
 
-  phases[REWRITE].handlers = [ ngx_http_rewrite_handler , m2 , m3 ]
+  phases[REWRITE].handlers = [ ngx_http_rewrite_handler, m2, m3 ]
 
-配置加载末尾，摊平
+配置加载末尾，摊平为一维数组
 
   phase_engine.handlers =
     [0] checker=rewrite        handler=...SERVER_REWRITE...
@@ -87,21 +141,40 @@ while (ph[r->phase_handler].checker) {
     [2] checker=rewrite        handler=ngx_http_rewrite_handler
     [3] checker=rewrite        handler=m2
     [4] checker=rewrite        handler=m3
-    [5] checker=post_rewrite               <- URI 变了就跳回 [1]
+    [5] checker=post_rewrite   next -> [1]，URI 变更时跳回
     ...
 ```
 
-摊平的时候是倒着拷的，所以数组里保持了注册顺序；而同一个阶段的所有 handler 共用**同一个 `next`**——跳转目标是按阶段算的，不是按 handler 算的。这就是「同阶段按注册顺序执行、跨阶段按枚举位置执行」的全部实现。
+补充一点：`LOG` 阶段不在这条数组里。它由 `ngx_http_log_request()` 单独遍历 `phases[NGX_HTTP_LOG_PHASE].handlers` 执行，所以 `init_phase_handlers()` 的循环条件是 `i < NGX_HTTP_LOG_PHASE`。
 
-OpenResty 就是一堆普通的 nginx 模块，只是它的 handler 里跑的是 Lua。官方文档里那张图，画的就是它能挂的位置：
+### 1.4 OpenResty 的注册方式
 
-{{< figure src="/images/posts/scheduler-framework/openresty-phases-official.png" caption="lua-nginx-module 文档里的指令位置图：一个请求从左到右流过，每一行是一种 Lua 入口" >}}
+OpenResty 是一组普通的 nginx 模块，区别只在于 handler 中执行的是 Lua。官方文档的指令位置图列出了全部 Lua 入口：
 
-这张图有个容易看岔的地方：它画的不是「框架会按什么顺序调用你」，而是「**我应该把这段 Lua 写在哪**」。里面 `init_by_lua`、`ssl_*`、`header_filter` 这些根本不是一个 request phase，实现机制也完全不同（它们挂的是函数指针，不是 phase handler），可站在使用者角度，它们都只是「能插代码的地方」，于是就画在同一根轴上了。
+{{< figure src="/images/posts/scheduler-framework/openresty-phases-official.png" caption="lua-nginx-module 文档中的 Lua 指令位置图：一个请求从左到右流过，每一行对应一类 Lua 入口" >}}
 
-那顺序到底重不重要？我觉得最能说明问题的，是一个很小的细节。
+这张图回答的是「一段 Lua 应该写在哪个指令里」，不是「框架按什么顺序调用插件」。图中 `init_by_lua*`、`ssl_*_by_lua*`、`header_filter_by_lua*`、`body_filter_by_lua*` 这些入口不属于 phase，它们的实现机制是函数指针挂载，与 phase handler 完全不同。之所以画在同一条轴上，是因为从使用者角度看，它们都属于「可插入代码的位置」。
 
-`rewrite_by_lua*` 和 `access_by_lua*` 的文档写着「默认在阶段末尾执行」。听起来像个排序标记，实际上它是一次**运行时的数组重排**：第一次执行到这一格时，lua 直接把自己的那格用 `memmove` 挪到这个阶段的最后一格。
+真正注册进 phase engine 的只有四个阶段：
+
+| 阶段 | Lua 指令 | 注册条件 |
+|---|---|---|
+| `SERVER_REWRITE` | `server_rewrite_by_lua*` | 配置中出现该指令 |
+| `REWRITE` | `rewrite_by_lua*` | 配置中出现该指令 |
+| `ACCESS` | `access_by_lua*` | 配置中出现该指令 |
+| `LOG` | `log_by_lua*` | 配置中出现该指令 |
+
+`content_by_lua*` 不参与 phase 注册，它直接设置 location 的 content handler：
+
+```c
+clcf->handler = ngx_http_lua_content_handler;
+```
+
+注册是有条件的：只有配置里出现对应指令时，`requires_rewrite`、`requires_access` 这类标志才会置位，才会执行 `ngx_array_push`。这一点与 nginx 内置模块不同——内置模块只要编译进来就无条件注册。
+
+### 1.5 postpone：运行期重排 phase 数组
+
+`rewrite_by_lua*` 和 `access_by_lua*` 的文档写的是「默认在该阶段末尾执行」。这不是排序语义标记，而是一次运行期的数组重排：
 
 ```c
 last_ph = &ph[cur_ph->next - 1];
@@ -112,73 +185,70 @@ if (cur_ph < last_ph) {
             (last_ph - cur_ph) * sizeof(ngx_http_phase_handler_t));
     *last_ph = tmp;
 
-    r->phase_handler--;   /* 重做当前这格 */
+    r->phase_handler--;   /* 重做当前这一格 */
     return NGX_DECLINED;
 }
 ```
 
-它改的是 `cmcf` 里那份**共享**的数组，不是请求私有的。所以整个进程只挪一次：第一个走到这里的请求付这个代价，后面的请求拿到手时数组已经排好了。
+这段代码有三个要点：
 
-这件事有意思的地方不在代码，在**动机**。框架没提供「我想排在后面」的接口，插件于是自己动手改了框架的数据结构。这在 C 里能做，因为那个数组就是个裸指针；但代价也明摆着——它只在单线程、重排幂等、且没人并发读写的前提下成立。
+1. **修改的是 `cmcf->phase_engine.handlers`。** 这是进程内共享的配置结构，不是请求私有的，整个配置生命周期只重排一次。
+2. **`postponed_to_rewrite_phase_end` 置位后不再复位。** 第一个执行到这里的请求承担重排开销，后续请求看到的数组已经排好序。
+3. **`r->phase_handler--` 配合 `NGX_DECLINED` 表示重做当前项。** 重做时 Lua handler 已在阶段末尾，条件不再成立，正常向下执行。
 
-可它至少证明了一件事：**「我这个插件必须排在别人后面」，是真实存在、而且躲不开的需求。**
+这个实现说明了一件事：框架没有提供「声明本插件应排在阶段末尾」的接口，模块只能直接修改 phase 数组。这种做法成立的前提是单线程、重排幂等、且没有并发读写该数组。
 
-小结一下 OpenResty 的答案：
+### 1.6 小结
 
-- 控制流：**框架的**。插件只交一个返回码。
-- 顺序：**注册的**。同阶段看注册先后，跨阶段看枚举写死。
-- 失败：**硬编码的**。每个 checker 自己写好了失败之后干什么。
+- **控制流**：由框架持有。插件返回整数，`checker` 决定如何解释。
+- **顺序**：由注册顺序决定。同阶段按注册顺序，跨阶段由枚举固定。
+- **失败**：硬编码在各个 `checker` 中，按阶段分别定义。
 
-这三条都很朴素，但撑住了 nginx 二十年的扩展生态。
+## 二、scheduler：阶段是函数调用，插件在扩展点注册
 
-## 二、scheduler：同一个骨架，换了一道更难的题
+转到 kube-scheduler，首先要换掉一个前提：这里处理的不是「一个请求」，而是一次决策。
 
-带着这三个问题去看 kube-scheduler，第一个要换掉的观念是：这里处理的不是「一个请求」，而是「**一次决策**」。
+HTTP 请求的结果是二元的——成功响应或错误响应。一个 Pod 进来面对的却是数百上千个候选节点，最终只能选择一个。这个差别决定了后续大部分设计。
 
-一个 HTTP 请求只对应一个响应，要么成，要么败。可一个 Pod 进来，面对的是几百上千个节点，最后只能挑一个。这个差别，几乎决定了后面所有的细节。
+{{< figure src="/images/posts/scheduler-framework/scheduler-framework-official.png" caption="Kubernetes 文档中的 scheduling framework 图：调度队列、调度周期、绑定周期，以及节点维度的扇出" >}}
 
-{{< figure src="/images/posts/scheduler-framework/scheduler-framework-official.png" caption="Kubernetes 文档里的 scheduling framework 图：队列、调度周期、绑定周期，以及节点维度的扇出" >}}
-
-骨架还是那个骨架——一串阶段，每段留钩子，插件挂上去：
+整体流程如下：
 
 ```
-一个 Pod 的一生
+一个 Pod 的调度流程
 
   队列  activeQ / backoffQ / unschedulableQ
     |
     v
-  PreEnqueue --> QueueSort          决定下一个处理谁
+  PreEnqueue --> QueueSort            决定下一个处理哪个 Pod
     |
-  +----------------------------------------------------------
-  | 调度周期（串行，一次只处理一个 Pod）
-  |
+  +---------------------------------------------------------- 调度周期（串行）
   |   PreFilter --> Filter --> [PostFilter]
   |                   |             ^
   |                   |             |
-  |                   |             全部淘汰才进，通常做抢占
+  |                   |        所有节点均不通过时才进入
+  |                   |        默认实现为 DefaultPreemption
   |                   |
-  |                   +-- 每个候选节点跑一次
+  |                   +-- 每个候选节点调用一次
   |
   |   PreScore --> Score --> Reserve --> Permit
   |                  |
-  |                  每节点一次，之后还要归一化、乘权重、求和
+  |              每个候选节点调用一次，
+  |              之后还有归一化、权重计算和求和
   |
   +----------------------------------------------------------
                                |
                                v
-  +----------------------------------------------------------
-  | 绑定周期（异步执行，可以和下一个 Pod 的调度周期重叠）
-  |
+  +---------------------------------------------------------- 绑定周期（异步）
   |   PreBind --> Bind --> PostBind
-  |
   +----------------------------------------------------------
 ```
 
-粗看还是那些东西。但细看会发现几处 nginx 没有的复杂度——每一处，我都能追到「一次决策」这四个字上。
+与 nginx 相比，有六处不同。
 
-### 1. 阶段顺序：没有数组了，只有函数调用
+### 2.1 阶段顺序由函数调用表达
 
-scheduler 里没有 `init_phase_handlers` 那样的摊平，也没有 checker。阶段顺序就是 `schedule_one.go` 里函数调用的先后：
+scheduler 没有 `init_phase_handlers()`，没有 `checker`，也没有 `next` 下标。阶段顺序就是 `schedule_one.go` 中的调用先后：
 
 ```go
 a.findNodesThatFitPod(ctx, fwk, state, podInfo)   // PreFilter + Filter
@@ -187,144 +257,197 @@ a.reserve(...)                                    // Reserve
 schedFramework.RunPermitPlugins(...)              // Permit
 ```
 
-少了一层抽象，换来的是**每个扩展点可以有自己的脾气**。Filter 是「第一个失败就返回」；PreFilter 却要「遇到 Unschedulable 还得把剩下的跑完」；Bind 是「第一个认领的说了算，后面的全部跳过」。这些语义没法统一，nginx 那种通用 checker 在这里根本写不出来。
+代价是缺少统一执行抽象，收益是每个扩展点可以定义自己的失败语义。举三个例子：
 
-### 2. 插件顺序：从链接顺序变成配置文件
+- `RunFilterPlugins`：第一个返回非 `Success` 的插件立即返回，后续插件不再执行。
+- `RunPreFilterPlugins`：遇到 `Unschedulable` 时记录状态并继续执行剩余插件，因为后续抢占需要全部插件的评估结果。
+- `RunBindPlugins`：第一个返回 `Success` 的插件认领该 Pod，剩余插件跳过。
 
-nginx 的顺序取决于模块链接的先后，用户改起来很别扭——你在配置里看不出谁先跑，得翻源码。scheduler 把它做成了配置的一部分：
+这三套逻辑无法用同一个 `checker` 表达，因此 scheduler 不做统一抽象。
+
+### 2.2 插件顺序由配置决定
+
+nginx 的插件顺序取决于模块链接顺序，从配置文件里看不出来。scheduler 把它显式化为配置项：
 
 ```go
 type PluginSet struct {
     // Enabled specifies plugins that should be enabled in addition to default plugins.
     // These are called after default plugins and in the same order specified here.
     Enabled []Plugin
+}
 ```
 
-默认插件在前，用户加的在后，各按自己列表里的顺序。直白得让人放心。
+默认插件在前，`Enabled` 中的插件在后，各自按列表顺序执行。字段注释明确写了执行顺序就是列表顺序。
 
-不过有个坑：如果你用的是 `multiPoint` 写法，`expandMultiPointPlugins()` 会按三段重新拆开——显式写在具体扩展点里的排最前，只写在 multiPoint 里的其次，其余垫底。**你 YAML 里写的顺序，不等于实际执行的顺序。** 这一点我读源码之前完全没想到。
+需要注意：使用 `multiPoint` 写法时，`expandMultiPointPlugins()` 会按三段重新排列：
 
-### 3. 失败：从硬编码变成数据
+1. `overridePlugins`：在具体扩展点中显式写过的插件，顺序按其在扩展点中的位置。
+2. `multiPointEnabled`：只在 multiPoint 中出现、未在扩展点中出现的插件。
+3. `enabledSet` 中的其余插件。
 
-这是我觉得 scheduler 最现代的一处设计。
+也就是说，YAML 中书写的顺序不一定等于最终执行顺序。
 
-nginx 的失败语义，是每个 checker 各自写死的——`NGX_OK` 在 generic 阶段是「往下走」，在 rewrite 阶段却是「结束请求」，同一个返回值两种含义。scheduler 把它提炼成了一个值：`Status`。
+### 2.3 失败语义由 Status 表达
 
-插件返回 `framework.NewStatus(code, msg)`，框架根据 code 决定下一步：
+nginx 的失败语义分散在各个 `checker` 中，同一个返回值在不同阶段含义不同。scheduler 把它收敛为一个值：`Status`。
 
-| code | 框架的反应 |
+插件返回 `framework.NewStatus(code, msg)`，框架依据 code 决定后续动作：
+
+| code | 框架的处理 |
 |---|---|
-| `Success` | 继续下一个插件 |
-| `Skip` | 记下名字，配对的扩展点（PreFilter ↔ Filter）也一起跳过 |
-| `Unschedulable` | 这个节点不行，换下一个 |
-| `UnschedulableAndUnresolvable` | 连抢占都救不了，别再试了 |
-| `Error` | 插件自己挂了，Pod 退避重试 |
+| `Success` | 继续执行下一个插件 |
+| `Skip` | 记录插件名，配对的扩展点（如 PreFilter ↔ Filter）一并跳过 |
+| `Unschedulable` | 该节点不可行，换下一个节点 |
+| `UnschedulableAndUnresolvable` | 不可行且无法通过抢占解决，本轮终止 |
+| `Error` | 插件内部错误，Pod 进入退避重试 |
 
-强的地方不在于种类多，而在于**同一个「失败」，在不同扩展点上可以被分别定义**。最能说明问题的是 PreFilter：
+关键不在分类数量，而在于**同一个 code 在不同扩展点上有不同处理**。`RunPreFilterPlugins` 是最清楚的例子：
 
 ```go
 if s.Code() == fwk.UnschedulableAndUnresolvable {
-    // 抢占也没用，剩下的不用跑了
+    // 抢占无法解决，剩余插件不必执行
     return nil, s, nil
 }
 if s.Code() == fwk.Unschedulable {
-    // 还有机会靠抢占救回来，而抢占需要所有插件的信息
+    // 仍可能通过抢占解决，而抢占需要全部插件的评估结果
     returnStatus = s
     continue
 }
 ```
 
-同样是「不行」，一个是「立刻收工」，一个是「把活干完再说」。nginx 表达不了这个区别，因为它的返回码是对**阶段**说的，而这里的 `Status` 是对**决策**说的。
+同样表示不可行，一个立即返回，一个记录后继续。nginx 的返回码只能表达「这个阶段怎么走」，scheduler 的 `Status` 能表达「这次决策怎么走」。
 
-顺带说一个实践上的坑：在 PreFilter 里图省事，所有情况都返回 `UnschedulableAndUnresolvable`，等于把抢占静悄悄地关掉了。Pod 会一直 Pending，而且没人告诉你为什么。
+实践上有一个容易犯的错误：在 PreFilter 中对所有失败都返回 `UnschedulableAndUnresolvable`，等价于关闭抢占，而且不会有任何日志提示。
 
-### 4. 一个阶段跑几次：扇出
+### 2.4 调用次数是扇出
 
-这是两边最根本的不对称，也是那张官方图唯一试图表达、却最容易被划过去的东西。
+这是两边最根本的差异。
 
-nginx 的阶段，是**一维时间轴上的一个点**：一个请求，一次调用。
-scheduler 的阶段，是**一个二维格子**：阶段 × 对象。
+- **nginx 的阶段**：请求处理流程上的一个位置，每个请求调用一次。
+- **scheduler 的扩展点**：阶段与对象的二维组合，`Filter` 和 `Score` 对每个候选节点各调用一次。
 
-{{< figure src="/images/posts/scheduler-framework/scheduler-fanout-score.svg" caption="Filter 与 Score 的扇出：外层在节点维度并行，内层在插件维度串行；Score 之后还有两趟收尾" >}}
+{{< figure src="/images/posts/scheduler-framework/scheduler-fanout-score.svg" caption="Filter 与 Score 的扇出：外层在节点维度并行，内层在插件维度串行；Score 之后还有归一化和加权汇总两轮" >}}
 
-Filter 是每个候选节点跑一次，节点之间并行、节点内部的插件串行。Score 更夸张，跑三趟：先拿原始分，再让每个插件把分数归一到 `[0, 100]`，最后做范围检查、乘权重、求和。
+`Score` 的执行分三轮：
 
-范围检查放在归一化**之后**，这点很重要：实现了 `NormalizeScore` 的插件，原始分可以随便给；没实现的，原始分自己就必须落在 `[0, 100]` 里。选错了不会「分数不准」，会直接让整个调度周期报错。
+1. **每个节点并行执行所有 Score 插件**，插件之间串行，得到原始分数。
+2. **每个插件并行执行 `NormalizeScore`**，将分数归一化到 `[MinScore, MaxScore]`；`ScoreExtensions()` 返回 nil 的插件跳过这一轮。
+3. **每个节点并行执行范围检查、乘权重、求和**，`TotalScore = Σ(score × weight)`。
 
-还有一种更隐蔽的扇出在前头：**「每个节点」并不等于「全部节点」**。默认情况下 `numFeasibleNodesToFind()` 会按总量抽样——50% 起步，节点越多比例越低，最低 5%，但至少 100 个。也就是说，你的 Score 插件不一定会看到每一个节点。如果打分逻辑依赖全局视角，这一点得先想清楚。
+范围检查放在归一化之后。实现了 `NormalizeScore` 的插件，原始分数可以不在 `[0, 100]` 内；未实现的插件，原始分数必须自己落在 `[0, 100]` 内。越界不会导致「分数不准」，而是让整个调度周期返回错误：
 
-### 5. 状态：`CycleState`，以及它多装的那点东西
+```go
+err := fmt.Errorf("plugin %q returns an invalid score %v, it should in the range of [%v, %v] after normalizing",
+    pl.Name(), score, fwk.MinScore, fwk.MaxScore)
+```
 
-两边都用了同一个套路：阶段之间不靠返回值传数据，而是共享一个短命的容器。
+另一点容易被忽略：**候选节点不等于全部节点**。`numFeasibleNodesToFind()` 会对节点抽样：
 
-OpenResty 是 `ngx.ctx`，每个请求一份；scheduler 是 `CycleState`，每个调度周期一份。PreFilter 里 `Write`，Filter 和 Score 里 `Read`，写法几乎是照抄的。
+- 节点总数小于 `minFeasibleNodesToFind`（100）时，返回全部节点。
+- 否则按百分比抽样，默认比例为 `max(50 - numAllNodes/125, 5)`，即从 50% 起随规模递减，最低 5%。
+- 计算结果低于 100 时按 100 计。
 
-但 `CycleState` 多装了一样东西：**流程控制标记**。`GetSkipFilterPlugins()`、`GetSkipScorePlugins()` 这些也放在里面——框架把「这个插件这次要不要跳过」也当成了要跨阶段传递的状态。
+此外，如果当前 profile 既不配置打分插件、也没有 extender 过滤，`numNodesToFind()` 直接返回 1，即找到第一个可行节点即可。
 
-这其实是在说：在 scheduler 里，**控制流本身也是数据**。nginx 里对应的东西是 `r->phase_handler` 和 `r->uri_changed`，都直接挂在请求结构上，插件只读不写。
+### 2.5 跨阶段状态由 CycleState 承载
 
-### 6. 有失败，还有「失败之后」
+两边采用同一个模式：阶段之间不通过返回值传递数据，而是共享一个生命周期与本次处理绑定的容器。
 
-nginx 的失败是终点：请求扔了，没有东西需要善后。scheduler 不是——**它操作的资源是有状态的、有生命周期的**。
+- OpenResty：`ngx.ctx`，每个请求一份。
+- scheduler：`CycleState`，每个调度周期一份。
 
-所以它有两样 nginx 里根本不存在的东西：
+`CycleState` 的接口是：
 
-- `Filter` 把所有节点都淘汰了，调度周期**不算结束**，会进 `PostFilter`（默认实现是 `DefaultPreemption`，驱逐低优先级的 Pod 来腾位置）。「这个 Pod 现在放不下」不等于「这个 Pod 没救了」。
-- `Reserve` 一旦占了节点上的资源，后面 `Permit` 拒绝、等待超时、或者 `PreBind` / `Bind` 失败，框架都会把所有 `Reserve` 插件的 `Unreserve` **逆序**调一遍。逆序是为了和分配严格对称，像压栈出栈；而且文档明确要求 `Unreserve` 幂等，因为它可能在 `Reserve` 根本没被调用的情况下也被调用。
+```go
+Read(key StateKey) (StateData, error)
+Write(key StateKey, val StateData)
+Delete(key StateKey)
+Clone() CycleState
+```
 
-## 三、三个问题，两个答案
+用法与 `ngx.ctx` 基本一致：`PreFilter` 中 `Write`，`Filter` 和 `Score` 中 `Read`。有两点需要注意：
 
-把两边的答案并排放在一张表里：
+1. `CycleState` 的生命周期是单次调度周期。Pod 调度失败重新入队后是一份新的状态，不能当作跨周期缓存。
+2. key 冲突时后写入的覆盖先写入的。自定义插件应使用包级常量或自定义类型作为 key。
 
-| | OpenResty / nginx | kube-scheduler |
+与 `ngx.ctx` 的差别在于，`CycleState` 除了承载业务数据，还承载流程控制标记：`GetSkipFilterPlugins()`、`GetSkipScorePlugins()`、`ShouldSkipAllPostFilterPlugins()` 都存在其中。框架把「本次是否跳过某个插件」也作为跨阶段传递的状态。
+
+### 2.6 失败之后还有补偿
+
+nginx 的失败是终点：请求终止，没有资源需要回收。scheduler 不同，因为**它操作的资源有状态、有生命周期**。
+
+具体体现在两处：
+
+1. **`PostFilter` 是失败后的第二个入口。** `Filter` 淘汰所有节点时，调度周期并不结束，而是进入 `PostFilter`（默认实现 `DefaultPreemption`，尝试驱逐低优先级 Pod 腾出位置）。代码中对该分支有明确的前置判断：
+
+    ```go
+    if !schedFramework.HasPostFilterPlugins() {
+        logger.V(3).Info("No PostFilter plugins are registered, so no preemption will be performed")
+    }
+    ```
+
+    没有注册 PostFilter 插件，就不会执行抢占。这行日志在排查「Pod 长期 Pending 但没有任何 Pod 被驱逐」时很有用。
+
+2. **`Unreserve` 是 `Reserve` 的逆操作。** `Reserve` 成功后，如果 `Permit` 拒绝、等待超时，或者 `PreBind` / `Bind` 失败，框架会按 **Reserve 执行的逆序**调用所有 `Unreserve`：
+
+    ```go
+    // Execute the Unreserve operation of each reserve plugin in the
+    // *reverse* order in which the Reserve operation was executed.
+    for i := len(f.reservePlugins) - 1; i >= 0; i-- {
+    ```
+
+    逆序是为了让回收顺序与分配顺序严格对称。文档同时要求 `Unreserve` 必须幂等，因为它可能在 `Reserve` 从未被调用的情况下也被调用。
+
+## 三、逐项对照
+
+| 维度 | OpenResty / nginx | kube-scheduler |
 |---|---|---|
-| 执行对象 | 一个请求 | 一个 Pod × 一批节点 |
-| 阶段 | 11 个，编译期枚举 | 12 个扩展点，接口方法 |
-| 阶段顺序 | 摊平后的数组 + checker | 函数调用顺序 |
-| 阶段内顺序 | 模块注册先后 | `Enabled` 列表（经 MultiPoint 重排） |
-| 失败语义 | checker 里写死 | `Status` code，数据 |
-| 跨阶段状态 | `ngx.ctx` | `CycleState`（还装着控制标记） |
+| 处理对象 | 一个 HTTP 请求 | 一个 Pod × 一批候选节点 |
+| 阶段定义 | 11 个，编译期枚举 | 12 个经典扩展点，Go 接口 |
+| 阶段顺序 | 摊平后的数组 + `checker` | 函数调用顺序 |
+| 阶段内顺序 | 模块注册顺序 | `Enabled` 列表（经 MultiPoint 重排） |
+| 失败语义 | `checker` 中硬编码 | `Status` code |
+| 跨阶段状态 | `ngx.ctx` | `CycleState`（含流程控制标记） |
 | 失败后补偿 | 无 | `PostFilter` / `Unreserve` |
-| 运行时能否改顺序 | 能（postpone 直接改数组） | 不能（初始化后只读） |
-| 扩展方式 | 加载 .so / Lua 文件 | 编进二进制 |
+| 运行期能否调整顺序 | 能，postpone 直接重排数组 | 不能，初始化后为只读切片 |
+| 插件加载方式 | 编译进 nginx，或 Lua 文件 | 编译进 kube-scheduler 二进制 |
 
-上半张表都是现象。再往下追一层，根子只有一句话：**nginx 处理的是无状态的短命请求，scheduler 处理的是有状态的长期资源。**
+表中「12 个经典扩展点」指 `PreEnqueue`、`QueueSort`、`PreFilter`、`Filter`、`PostFilter`、`PreScore`、`Score`、`Reserve`、`Permit`、`PreBind`、`Bind`、`PostBind`，也就是官方框架图覆盖的那一组。`v0.36.4` 的接口定义中另有 `Sign`（KEP-5598，批处理签名）与 `PlacementGenerate`、`PlacementScore`（PodGroup 调度）等新增扩展点。
 
-请求失败了，丢掉就行，没有东西需要撤销，所以 nginx 的失败模型可以是「终止」——最简单的那个。
+表格里都是现象。再追一层，根本原因只有一句：**nginx 处理的是无状态的短生命周期请求，scheduler 处理的是有状态的长期资源。**
 
-可 Pod 不是。`Reserve` 占了资源，`PreBind` 挂了存储卷，后面任何一步失败，都必须有人把这些东西还原。所以它必须有 `Unreserve`，而且必须逆序；所以它必须有 `PostFilter` 这个「失败之后的第二个入口」。
+请求失败后丢弃即可，没有已占用的资源需要归还，所以 nginx 采用「终止」这一最简单的失败模型就够了。
 
-这些不是 scheduler 的设计师比 nginx 的设计师想得多，是**题目本身变难了**。
+Pod 不同。`Reserve` 已经占用了节点资源，`PreBind` 可能已经挂载存储卷，后续任何一步失败都必须由框架还原。因此它必须有 `Unreserve`，而且必须逆序；因此它必须有 `PostFilter` 这个失败后的第二个入口。
 
-## 四、如果让我去设计一个插件架构
+这些差异不来自设计水平的高低，而来自领域模型本身。
 
-看了这两套东西，我大致会按这个顺序想问题。
+## 四、设计启示
 
-**先把阶段定死，再开放钩子。** 阶段是骨架，必须是少数、稳定、可枚举的。OpenResty 真正挂进 phase 引擎的只有四个阶段（server_rewrite、rewrite、access、log），`content_by_lua` 连阶段都不占，直接写 location 的 handler；scheduler 也不过 12 个扩展点。插件只能往格子里填，不能加格子——这不是吝啬，是保护。格子一多，框架就什么都不敢保证了。
+综合两边的做法，如果自己设计一个插件架构，我会按下面的顺序考虑。
 
-**顺序要显式，别让它取决于加载顺序。** nginx 的顺序取决于模块链接的先后，这是个历史包袱：配置里看不出来谁先跑，得翻源码。scheduler 用 `Enabled` 列表把这层显式化，虽然 MultiPoint 又加了一层隐式重排，但方向是对的。**任何「顺序影响结果」的系统，都该让顺序在用户手里可见、可写。**
+1. **先固定阶段，再开放钩子。** 阶段必须是少数、稳定、可枚举的。OpenResty 真正注册进 phase engine 的只有 4 个阶段，scheduler 只有 12 个经典扩展点。插件只能填充阶段内部，不能新增阶段——这是框架能够对执行顺序作出承诺的前提。
 
-**失败语义要做成数据。** `NGX_DECLINED`、`NGX_OK`、`NGX_DONE` 在不同 checker 里含义不同，这是「返回码语义取决于上下文」的经典反面教材。scheduler 的 `Status` 也没完全摆脱上下文（`Skip` 只在部分扩展点有意义），但它至少把「有哪几种失败」「每种意味着什么」摆到了明面上。
+2. **顺序要显式，不要依赖加载顺序。** nginx 的顺序取决于模块链接顺序，这是历史包袱。scheduler 用 `Enabled` 列表把它显式化，方向是对的。只要顺序会影响结果，就应该让使用者能看到、能修改。
 
-**状态放显式容器，别靠返回值传。** `ngx.ctx` 和 `CycleState` 都是这个思路，天生请求隔离，不用考虑并发。代价是隐式：你读一个 key 的时候，不知道是谁写的、什么时候写的、还在不在。所以 scheduler 才需要专门写清楚「只活一次调度周期」「后写的赢」这种注意事项——**显式容器的代价，是隐式的数据依赖。**
+3. **失败语义要做成数据。** `NGX_OK` 在不同 `checker` 中含义不同，属于「返回码语义依赖上下文」的典型问题。scheduler 的 `Status` 也没有完全摆脱上下文——`Skip` 只在部分扩展点有意义——但它至少把「有哪几种失败、各自意味着什么」定义清楚了。
 
-**有副作用的操作，必须配一个反操作。** `Reserve` / `Unreserve` 是最好的例子。只要一个 API 有「占资源」的动作，就应该同时定义「怎么还回去」，而且要保证它可以被重复调用，因为调用方不知道它到底有没有真的执行过。
+4. **状态放在显式容器里。** `ngx.ctx` 和 `CycleState` 都是这个思路，天然按请求隔离，不需要考虑并发。代价是隐式依赖：读取一个 key 时，你不知道是谁写的、什么时候写的。因此必须把「生命周期是单次调度周期」「后写覆盖先写」这类约束写入文档。
 
-这五条里，前四条在两边都能看到影子，第五条只有 scheduler 需要——又绕回了那句话。
+5. **有副作用的操作必须配一个反操作。** `Reserve` / `Unreserve` 是最好的例子。只要一个接口有「占用资源」的动作，就应该同时定义「如何归还」，并保证它可以被重复调用，因为调用方无法确定它是否真的执行过。
 
-## 最后
+前四条在两边都能找到对应实现，第五条只有 scheduler 需要，原因仍然是那个领域差异。
 
-回到标题。可插拔的插件式架构，说到底就是把两件事分开：
+## 五、结语
 
-> **「什么时候做」归框架，「具体怎么做」归插件。**
+可插拔的插件架构，本质上是在划分一条边界：
 
-OpenResty 的分界线画在阶段上：你写 Lua，框架负责把你叫醒。
-scheduler 的分界线画在扩展点上，而且因为要做决策、要处理有状态的资源，这条线画得精细得多——一份数据要在框架和插件之间来回走十几个回合。
+> **「什么时候执行」归框架，「具体如何执行」归插件。**
 
-读这两套代码最大的收获，倒不是什么新范式。是发现**同一个骨架，在两种题目下会长出完全不同的细节**。
+OpenResty 把这条边界画在阶段上：你写 Lua，框架负责在正确的时机调用。scheduler 把边界画在扩展点上，并且因为要做决策、要处理有状态的资源，这条边界被切得更细——一次决策过程中，数据要在框架和插件之间往返十几个步骤。
 
-所以下次再看到「把流程拆成阶段、每段留钩子」的设计，我大概会先把那三个问题问一遍：控制流在谁手里？顺序从哪来？失败了谁收场？问完，架构的形状基本就出来了。
+读完这两套代码，我最大的收获是发现**同一套结构在不同领域下会生长出完全不同的细节**。与其记住每个阶段的名字，不如记住那三个问题：控制流归谁、顺序由谁确定、失败如何处理。把这三个问题问清楚，一个插件架构的行为基本也就清楚了。
 
 ---
 
-*nginx 部分依据 nginx 1.20.2（`src/http/ngx_http.c`、`src/http/ngx_http_core_module.c`）与 lua-nginx-module（commit c9a0808）的 phase 注册和 postpone 逻辑；scheduler 部分依据 `k8s.io/kube-scheduler@v0.36.4` 的 framework 接口与 `pkg/scheduler` 下的运行时实现。`PRECONTENT` 这个名字是 nginx 1.13.4 才有的，更早的版本叫 `TRY_FILES`。*
+*nginx 部分依据 nginx 1.20.2 源码（`src/http/ngx_http.c`、`src/http/ngx_http_core_module.c`、`src/http/ngx_http_request.c`）与 lua-nginx-module（commit c9a0808）的 phase 注册和 postpone 逻辑；scheduler 部分依据 `k8s.io/kube-scheduler@v0.36.4` 与 `pkg/scheduler/framework/runtime/framework.go`、`pkg/scheduler/algorithm.go`、`pkg/scheduler/schedule_one.go` 的实现。`PRECONTENT` 是 nginx 1.13.4 引入的名称，更早的版本叫 `TRY_FILES`。*
