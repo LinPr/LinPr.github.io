@@ -15,3 +15,4 @@ Thumbs.db
 
 # 本地临时目录（预览缓存、调试截图等）
 .work/
+.chrome-art/
