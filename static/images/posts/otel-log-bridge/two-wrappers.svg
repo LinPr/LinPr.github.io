@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 700" width="900" height="700" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto">
+      <path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+  <rect width="900" height="700" fill="#ffffff"/>
+
+  <text x="450" y="34" text-anchor="middle" font-size="20" font-weight="700" fill="#1e293b">一条日志穿过两次包装</text>
+  <text x="450" y="57" text-anchor="middle" font-size="13" fill="#64748b">桥接点把可扩展性切成两层：之前是宿主的 handler，之后是 SDK 的 processor</text>
+
+  <!-- zone A -->
+  <rect x="126" y="176" width="386" height="82" rx="12" fill="none" stroke="#f59e0b" stroke-width="1.4" stroke-dasharray="6 4"/>
+
+  <!-- app -->
+  <rect x="140" y="96" width="360" height="62" rx="9" fill="#eef2ff" stroke="#a5b4fc"/>
+  <text x="160" y="121" font-size="15" font-weight="700" fill="#3730a3">业务代码</text>
+  <text x="160" y="142" font-size="12" fill="#4f46e5">slog.InfoContext(ctx, "msg", "k", v)</text>
+
+  <!-- host lib -->
+  <rect x="140" y="186" width="360" height="62" rx="9" fill="#ecfdf5" stroke="#6ee7b7"/>
+  <text x="160" y="211" font-size="15" font-weight="700" fill="#065f46">宿主日志库 log/slog</text>
+  <text x="160" y="232" font-size="12" fill="#047857">baggageHandler -&gt; jsonHandler -&gt; otelslog</text>
+
+  <!-- bridge -->
+  <rect x="140" y="276" width="360" height="62" rx="9" fill="#fff7ed" stroke="#fdba74"/>
+  <text x="160" y="301" font-size="15" font-weight="700" fill="#9a3412">桥接 Bridge：唯一的翻译点</text>
+  <text x="160" y="322" font-size="12" fill="#c2410c">slog.Record -&gt; log.Record；struct 变字符串</text>
+
+  <!-- SDK -->
+  <rect x="126" y="356" width="386" height="82" rx="12" fill="none" stroke="#3b82f6" stroke-width="1.4" stroke-dasharray="6 4"/>
+  <rect x="140" y="366" width="360" height="62" rx="9" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="160" y="391" font-size="15" font-weight="700" fill="#1e40af">Logs SDK</text>
+  <text x="160" y="412" font-size="12" fill="#1d4ed8">newRecord(ctx) -&gt; severityProcessor -&gt; Batch</text>
+
+  <!-- exporter -->
+  <rect x="140" y="456" width="360" height="62" rx="9" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="160" y="481" font-size="15" font-weight="700" fill="#334155">Exporter</text>
+  <text x="160" y="502" font-size="12" fill="#64748b">stdout / file / OTLP http、gRPC</text>
+
+  <!-- backend -->
+  <rect x="140" y="546" width="360" height="62" rx="9" fill="#f5f3ff" stroke="#c4b5fd"/>
+  <text x="160" y="571" font-size="15" font-weight="700" fill="#5b21b6">后端</text>
+  <text x="160" y="592" font-size="12" fill="#6d28d9">Collector / Grafana / Jaeger / ...</text>
+
+  <!-- arrows -->
+  <line x1="320" y1="158" x2="320" y2="182" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ab)"/>
+  <line x1="320" y1="248" x2="320" y2="272" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ab)"/>
+  <line x1="320" y1="338" x2="320" y2="362" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ab)"/>
+  <line x1="320" y1="428" x2="320" y2="452" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ab)"/>
+  <line x1="320" y1="518" x2="320" y2="542" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ab)"/>
+
+  <!-- annotation A -->
+  <text x="530" y="188" font-size="13.5" font-weight="700" fill="#b45309">扩展层 1 · handler 包装</text>
+  <text x="530" y="211" font-size="12" fill="#64748b">输入是 slog.Record，字段还是 Go 值</text>
+  <text x="530" y="231" font-size="12" fill="#64748b">看不到 trace_id：SDK 还没填</text>
+  <text x="530" y="251" font-size="12" fill="#64748b">只影响这一条 handler 链</text>
+
+  <!-- annotation bridge -->
+  <text x="530" y="289" font-size="13.5" font-weight="700" fill="#c2410c">信息在这里降级</text>
+  <text x="530" y="312" font-size="12" fill="#64748b">attribute.Value 里没有 struct 类型</text>
+  <text x="530" y="332" font-size="12" fill="#64748b">struct 变字符串，下游无法还原</text>
+
+  <!-- annotation B -->
+  <text x="530" y="368" font-size="13.5" font-weight="700" fill="#1d4ed8">扩展层 2 · processor 包装</text>
+  <text x="530" y="391" font-size="12" fill="#64748b">输入是 log.Record，与日志库无关</text>
+  <text x="530" y="411" font-size="12" fill="#64748b">trace_id / span_id 已经填好</text>
+  <text x="530" y="431" font-size="12" fill="#64748b">影响所有进入 SDK 的记录</text>
+
+  <text x="450" y="660" text-anchor="middle" font-size="12.5" fill="#475569">能在翻译前解决的交给 handler，需要跨库统一或要看 trace 上下文的交给 processor</text>
+</svg>
