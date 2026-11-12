@@ -3,6 +3,8 @@ title: '从 OpenResty phase engine 到 scheduler framework：看懂可插拔的�
 date: 2026-11-09T16:00:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "openresty", "nginx", "架构"]
+series: ["kube-scheduler"]
+weight: 1
 author: "LinPr"
 description: "一个 HTTP 请求和一个 Pod，用的都是「阶段 + 钩子」的结构，却在实现上走了两条路。本文对照 nginx phase engine 与 kube-scheduler scheduling framework，拆解可插拔插件架构的三个核心问题。"
 ---
@@ -244,7 +246,7 @@ HTTP 请求的结果是二元的——成功响应或错误响应。一个 Pod �
   +----------------------------------------------------------
 ```
 
-与 nginx 相比，有六处不同。
+与 nginx 相比，有七处不同。
 
 ### 2.1 阶段顺序由函数调用表达
 
@@ -261,7 +263,7 @@ schedFramework.RunPermitPlugins(...)              // Permit
 
 - `RunFilterPlugins`：第一个返回非 `Success` 的插件立即返回，后续插件不再执行。
 - `RunPreFilterPlugins`：遇到 `Unschedulable` 时记录状态并继续执行剩余插件，因为后续抢占需要全部插件的评估结果。
-- `RunBindPlugins`：第一个返回 `Success` 的插件认领该 Pod，剩余插件跳过。
+- `RunBindPlugins`：返回 `Skip` 的插件让给下一个；第一个不返回 `Skip` 的插件认领这个 Pod，无论成功还是失败，剩余插件都不再调用。
 
 这三套逻辑无法用同一个 `checker` 表达，因此 scheduler 不做统一抽象。
 
@@ -291,15 +293,17 @@ type PluginSet struct {
 
 nginx 的失败语义分散在各个 `checker` 中，同一个返回值在不同阶段含义不同。scheduler 把它收敛为一个值：`Status`。
 
-插件返回 `framework.NewStatus(code, msg)`，框架依据 code 决定后续动作：
+插件返回 `fwk.NewStatus(code, msg)`，框架依据 code 决定后续动作。但同一个 code 落在不同扩展点上，框架的处理并不相同：
 
-| code | 框架的处理 |
-|---|---|
-| `Success` | 继续执行下一个插件 |
-| `Skip` | 记录插件名，配对的扩展点（如 PreFilter ↔ Filter）一并跳过 |
-| `Unschedulable` | 该节点不可行，换下一个节点 |
-| `UnschedulableAndUnresolvable` | 不可行且无法通过抢占解决，本轮终止 |
-| `Error` | 插件内部错误，Pod 进入退避重试 |
+| code | 在 PreFilter 返回 | 在 Filter 返回 |
+|---|---|---|
+| `Success` | 继续下一个插件 | 继续下一个插件；全部通过则节点可行 |
+| `Skip` | 记录插件名，本周期跳过它的 Filter | 不允许，被当作 `Error` |
+| `Unschedulable` | 记下失败，**继续**执行剩余插件 | 该节点不可行，但可以作为抢占候选 |
+| `UnschedulableAndUnresolvable` | **立即终止**，所有节点都视为不可解决 | 该节点不可行，且不参与抢占 |
+| `Error` | 本轮失败，Pod 进入退避 | 本轮失败，Pod 进入退避 |
+
+还有两个只在特定扩展点使用的 code：`Wait` 只能由 Permit 返回，表示「先别绑定，等我的信号」；`Pending` 用于等待外部条件的场景，与 `Unschedulable` 一样被视为拒绝。
 
 关键不在分类数量，而在于**同一个 code 在不同扩展点上有不同处理**。`RunPreFilterPlugins` 是最清楚的例子：
 
@@ -347,7 +351,7 @@ err := fmt.Errorf("plugin %q returns an invalid score %v, it should in the range
 - 否则按百分比抽样，默认比例为 `max(50 - numAllNodes/125, 5)`，即从 50% 起随规模递减，最低 5%。
 - 计算结果低于 100 时按 100 计。
 
-此外，如果当前 profile 既不配置打分插件、也没有 extender 过滤，`numNodesToFind()` 直接返回 1，即找到第一个可行节点即可。
+此外，如果当前 profile 既没有打分插件、也没有 extender 过滤，`numFeasibleNodesToFind()` 直接返回 1：不需要比较，找到第一个可行节点就够了。
 
 ### 2.5 跨阶段状态由 CycleState 承载
 
@@ -365,10 +369,26 @@ Delete(key StateKey)
 Clone() CycleState
 ```
 
-用法与 `ngx.ctx` 基本一致：`PreFilter` 中 `Write`，`Filter` 和 `Score` 中 `Read`。有两点需要注意：
+用法与 `ngx.ctx` 基本一致：`PreFilter` 中 `Write`，`Filter` 和 `Score` 中 `Read`。但实现上有一个 `ngx.ctx` 不需要考虑的问题：并发。
 
-1. `CycleState` 的生命周期是单次调度周期。Pod 调度失败重新入队后是一份新的状态，不能当作跨周期缓存。
-2. key 冲突时后写入的覆盖先写入的。自定义插件应使用包级常量或自定义类型作为 key。
+```go
+// pkg/scheduler/framework/cycle_state.go
+type CycleState struct {
+    // storage is keyed with StateKey, and valued with StateData.
+    storage sync.Map
+    // ...
+    skipFilterPlugins        sets.Set[string]
+    skipScorePlugins         sets.Set[string]
+    skipAllPostFilterPlugins bool
+    // ...
+}
+```
+
+nginx 的一个 worker 是单线程的，同一个请求的 `ngx.ctx` 不会被并发访问。scheduler 的 Filter 和 Score 却是在多个节点上并行执行的，它们读的是**同一份** `CycleState`，所以底层用 `sync.Map`。这带来三条约束：
+
+1. PreFilter 写入的数据，在 Filter 阶段应当只读。并行的 Filter 如果修改共享数据，需要插件自己加锁（`VolumeBinding` 的状态里就嵌了一个 `sync.Mutex`）。
+2. 抢占模拟要在节点上「假装移除」Pod，会修改状态。所以它先调用 `Clone()` 复制一份，在副本上做，不影响正式的调度周期。
+3. 生命周期是单次调度周期。Pod 失败重新入队后是一份新的状态，不能当作跨周期缓存；key 冲突时后写覆盖先写，自定义插件应使用包级常量作为 key。
 
 与 `ngx.ctx` 的差别在于，`CycleState` 除了承载业务数据，还承载流程控制标记：`GetSkipFilterPlugins()`、`GetSkipScorePlugins()`、`ShouldSkipAllPostFilterPlugins()` 都存在其中。框架把「本次是否跳过某个插件」也作为跨阶段传递的状态。
 
@@ -398,6 +418,61 @@ nginx 的失败是终点：请求终止，没有资源需要回收。scheduler �
 
     逆序是为了让回收顺序与分配顺序严格对称。文档同时要求 `Unreserve` 必须幂等，因为它可能在 `Reserve` 从未被调用的情况下也被调用。
 
+### 2.7 调度周期串行，绑定周期异步
+
+nginx 处理 I/O 的方式是「让出」：handler 返回 `NGX_AGAIN` 或 `NGX_DONE`，请求挂起，worker 去处理别的事件，I/O 就绪后再从当前 phase 继续。一个 worker 可以同时推进成千上万个请求。
+
+scheduler 面对的是同样的问题：绑定要写 API Server，挂载卷要等外部控制器，都是慢操作。它的做法是把一次调度拆成两段：
+
+```go
+// pkg/scheduler/schedule_one.go
+scheduleResult, assumedPodInfo, status := sched.schedulingCycle(schedulingCycleCtx, state, schedFramework, podInfo, start, podsToActivate)
+if !status.IsSuccess() {
+    sched.FailureHandler(schedulingCycleCtx, schedFramework, assumedPodInfo, status, scheduleResult.nominatingInfo, start)
+    return
+}
+
+// bind the pod to its host asynchronously (we can do this b/c of the assumption step above).
+go sched.runBindingCycle(ctx, state, schedFramework, scheduleResult, assumedPodInfo, start, podsToActivate)
+```
+
+调度周期（PreFilter 到 Permit）是串行的，一次只处理一个 Pod；绑定周期（PreBind 到 PostBind）放进 goroutine 异步执行，调度器马上开始处理下一个 Pod。
+
+注释里的「assumption step」是这个设计能成立的关键。调度周期结束前，调度器先把 Pod「假定」写进自己的缓存：
+
+```go
+// pkg/scheduler/algorithm.go
+// AssumeAndReserveInCache assumes the pod into the scheduler cache and runs Reserve plugins.
+// If Reserve plugins fail, the assumption is rolled back from the cache.
+func (a *SchedulingAlgorithm) AssumeAndReserveInCache(...) (*framework.QueuedPodInfo, *fwk.Status) {
+    assumedPodInfo := a.prepareAssumedPod(logger, state, podInfo, host)
+    if err := a.cache.AssumePod(logger, assumedPodInfo.Pod); err != nil {
+        return assumedPodInfo, fwk.AsStatus(err)
+    }
+    // ...
+    if status := a.reserve(ctx, state, schedFramework, assumedPodInfo, podInfo.Pod, host); !status.IsSuccess() {
+        a.UnreserveAndForgetFromCache(ctx, state, schedFramework, assumedPodInfo, host)
+        return assumedPodInfo, status
+    }
+    return assumedPodInfo, nil
+}
+```
+
+下一个 Pod 的调度周期开始时，会用缓存更新节点快照（`UpdateSnapshot`），这时它已经能看到上一个 Pod 占用的资源，即使那个 Pod 的绑定 API 调用还没返回。这是一种**乐观执行**：先假设绑定会成功，让后续决策基于这个假设；绑定真的失败时，由 `Unreserve` 和 `ForgetPod` 把假设撤回。
+
+Permit 的 `Wait` 也建立在这个结构上。插件返回 `Wait` 后，Pod 被放进 waiting pods 表，调度周期照常结束；绑定周期的 goroutine 一开始就调用 `WaitOnPermit` 阻塞，直到插件发出 `Allow` 或 `Reject`，或者超时。等待只占用一个 goroutine，不占用调度周期。gang 调度就是利用这一点，让一组 Pod 在 Permit 处汇合。
+
+两边对照：
+
+| | nginx | scheduler |
+|---|---|---|
+| 慢操作 | 网络 I/O | API 写入、卷挂载、等待同组 Pod |
+| 让出方式 | 返回 `NGX_AGAIN`，事件就绪后重入 phase | 拆成两个周期，绑定在 goroutine 中执行 |
+| 后续处理看到什么 | 不涉及共享资源 | 通过 assume 看到「假定已绑定」的结果 |
+| 失败回滚 | 不需要 | `Unreserve` + `ForgetPod` |
+
+nginx 的请求之间不共享资源，挂起一个请求不影响别的请求。调度器的 Pod 之间共享节点资源，异步之后必须有一个机制让后来者看到先来者的决定，assume 就是这个机制。
+
 ## 三、逐项对照
 
 | 维度 | OpenResty / nginx | kube-scheduler |
@@ -409,10 +484,12 @@ nginx 的失败是终点：请求终止，没有资源需要回收。scheduler �
 | 失败语义 | `checker` 中硬编码 | `Status` code |
 | 跨阶段状态 | `ngx.ctx` | `CycleState`（含流程控制标记） |
 | 失败后补偿 | 无 | `PostFilter` / `Unreserve` |
+| 慢操作 | `NGX_AGAIN` 挂起，事件驱动重入 | 绑定周期异步，assume 乐观写缓存 |
+| 跨阶段状态的并发 | 单线程，无并发 | Filter/Score 并行读，`sync.Map` |
 | 运行期能否调整顺序 | 能，postpone 直接重排数组 | 不能，初始化后为只读切片 |
 | 插件加载方式 | 编译进 nginx，或 Lua 文件 | 编译进 kube-scheduler 二进制 |
 
-表中「12 个经典扩展点」指 `PreEnqueue`、`QueueSort`、`PreFilter`、`Filter`、`PostFilter`、`PreScore`、`Score`、`Reserve`、`Permit`、`PreBind`、`Bind`、`PostBind`，也就是官方框架图覆盖的那一组。`v0.36.4` 的接口定义中另有 `Sign`（KEP-5598，批处理签名）与 `PlacementGenerate`、`PlacementScore`（PodGroup 调度）等新增扩展点。
+表中「12 个经典扩展点」指 `PreEnqueue`、`QueueSort`、`PreFilter`、`Filter`、`PostFilter`、`PreScore`、`Score`、`Reserve`、`Permit`、`PreBind`、`Bind`、`PostBind`，也就是官方框架图覆盖的那一组。`v0.36.4` 的接口定义中另有 `Sign`（KEP-5598，批处理签名），以及服务于 PodGroup 调度的 `PlacementGenerate`、`PlacementScore`、`PlacementFeasible`、`PodGroupPostFilter` 等新增扩展点。
 
 表格里都是现象。再追一层，根本原因只有一句：**nginx 处理的是无状态的短生命周期请求，scheduler 处理的是有状态的长期资源。**
 
@@ -432,11 +509,13 @@ Pod 不同。`Reserve` 已经占用了节点资源，`PreBind` 可能已经挂�
 
 3. **失败语义要做成数据。** `NGX_OK` 在不同 `checker` 中含义不同，属于「返回码语义依赖上下文」的典型问题。scheduler 的 `Status` 也没有完全摆脱上下文——`Skip` 只在部分扩展点有意义——但它至少把「有哪几种失败、各自意味着什么」定义清楚了。
 
-4. **状态放在显式容器里。** `ngx.ctx` 和 `CycleState` 都是这个思路，天然按请求隔离，不需要考虑并发。代价是隐式依赖：读取一个 key 时，你不知道是谁写的、什么时候写的。因此必须把「生命周期是单次调度周期」「后写覆盖先写」这类约束写入文档。
+4. **状态放在显式容器里。** `ngx.ctx` 和 `CycleState` 都是这个思路，天然按请求或调度周期隔离。代价有两个：一是隐式依赖，读取一个 key 时，你不知道是谁写的、什么时候写的；二是一旦阶段内部有并行，容器就必须并发安全，写入方和读取方还要约定好谁能改。scheduler 的 Filter 并行执行，所以 `CycleState` 用 `sync.Map`，并且约定 Filter 阶段只读。
 
 5. **有副作用的操作必须配一个反操作。** `Reserve` / `Unreserve` 是最好的例子。只要一个接口有「占用资源」的动作，就应该同时定义「如何归还」，并保证它可以被重复调用，因为调用方无法确定它是否真的执行过。
 
-前四条在两边都能找到对应实现，第五条只有 scheduler 需要，原因仍然是那个领域差异。
+6. **慢操作移出主循环，用乐观假设保持一致。** nginx 用事件驱动挂起请求，scheduler 把绑定拆成异步周期。后者多出来的一步是 assume：既然后续决策依赖前一个决策的结果，就先假定它成功，失败再撤回。
+
+前四条在两边都能找到对应实现，后两条只有 scheduler 需要，原因仍然是那个领域差异。
 
 ## 五、结语
 
@@ -447,6 +526,8 @@ Pod 不同。`Reserve` 已经占用了节点资源，`PreBind` 可能已经挂�
 OpenResty 把这条边界画在阶段上：你写 Lua，框架负责在正确的时机调用。scheduler 把边界画在扩展点上，并且因为要做决策、要处理有状态的资源，这条边界被切得更细——一次决策过程中，数据要在框架和插件之间往返十几个步骤。
 
 读完这两套代码，我最大的收获是发现**同一套结构在不同领域下会生长出完全不同的细节**。与其记住每个阶段的名字，不如记住那三个问题：控制流归谁、顺序由谁确定、失败如何处理。把这三个问题问清楚，一个插件架构的行为基本也就清楚了。
+
+框架讲完了，下一篇[《kube-scheduler in-tree 插件源码拆解》](/posts/kubernetes-scheduler-in-tree-plugins/)看框架里实际装了什么：24 个内置插件分别在这套规则下做了哪些决定。
 
 ---
 
