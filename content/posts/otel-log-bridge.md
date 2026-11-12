@@ -565,11 +565,44 @@ return providers.Shutdown(ctx)
 
 注意最后那条日志是在 `Shutdown` 之前打的，它会进入队列，由 `Shutdown` 内部的 `ForceFlush` 送出。如果放在 `Shutdown` 之后，就写不出去了。
 
-**四、导出错误默认只到 stderr。**
+**四、导出错误会回流进日志管道，但是以 INFO 级别。**
 
-`Processor.OnEmit` 返回的 error 由 SDK 交给 `otel.Handle`，默认实现打印到 stderr，不进你的日志管道。collector 挂掉的时候，业务日志里看不到任何异常。
+先说结论：**用 slog 的时候，不设置 `otel.SetErrorHandler` 也能看到 OTel 内部的错误。** 原因是默认的 ErrorHandler 并没有自己往 stderr 写，而是调用了标准库的 `log.Print`：
 
-生产环境应该设置 `otel.SetErrorHandler`，至少把它接到自己的日志里。这个工程目前没有设置，是一个可以补的点。
+```go
+func (d *ErrDelegator) Handle(err error) {
+    if eh := d.delegate.Load(); eh != nil {
+        (*eh).Handle(err)
+        return
+    }
+    log.Print(err)
+}
+```
+
+而 `slog.SetDefault` 会把标准库 `log` 的默认输出替换掉：
+
+```go
+func SetDefault(l *Logger) {
+    defaultLogger.Store(l)
+    if _, ok := l.Handler().(*defaultHandler); !ok {
+        capturePC := log.Flags()&(log.Lshortfile|log.Llongfile) != 0
+        log.SetOutput(&handlerWriter{l.Handler(), &logLoggerLevel, capturePC})
+        log.SetFlags(0)
+    }
+}
+```
+
+于是 `otel.Handle` → `log.Print` → `handlerWriter` → `otelslog.Handler` → SDK，这条链路是通的。初始化顺序也刚好对得上：`setupLoggerBridge` 里先 `slog.SetDefault`，之后才可能产生导出错误。
+
+这是 slog 分支独有的现象。换成 zap 或 logrus 的桥接，没有人去动标准库 `log` 的输出，同样一句 `log.Print` 就直接写到 stderr，不会进 OTel 管道。
+
+这个结论有三个前提，值得确认一下：
+
+1. **级别是 INFO。** `handlerWriter` 用的是 `logLoggerLevel`，零值是 `LevelInfo`。如果配置里的 `Level` 是 `warn` 或 `error`，`severityProcessor` 会把这条记录过滤掉，等于什么都没看到。默认配置是 `info`，所以默认情况下能看到。
+2. **记录本身是 INFO，不是 ERROR。** 按 `severity=ERROR` 配的告警不会因为 collector 挂掉而响，它们会安静地躺在 INFO 里。
+3. **导出失败会形成一条自引用回路。** `BatchProcessor.exportBatch` 在导出失败时调用 `otel.Handle(err)`；这条错误变成一条 INFO 日志重新入队，下个周期再导出、再失败。collector 挂掉期间，大约每个导出周期就会稳定地产生一条这样的记录，并且和业务日志抢那 2048 条的队列。
+
+所以更准确的说法是：**用 slog 时默认就能看到这些错误，但看到的方式不一定是你想要的。** 只是排查用，保持默认就够了；如果要让它们带上 ERROR 级别、避免回流、或者写到独立的目标，再设置 `otel.SetErrorHandler`。这个工程目前用的是默认行为，不算缺陷，但值得知道它是怎么走的。
 
 **五、双写不要靠业务代码调用两次。**
 
@@ -589,7 +622,7 @@ return providers.Shutdown(ctx)
 
 1. **翻译是不可逆的降级。** struct 变字符串、自定义类型被压平，桥接之后无法还原。
 2. **能力上限由桥接实现决定。** 宿主库有而 OTel 没有的概念（zap 的 namespace、logrus 的 formatter），桥接表达不了，就丢了。
-3. **错误处理要自己接。** SDK 默认只把错误写到 stderr，不接 `SetErrorHandler` 就等于放弃了这部分可观测性。
+3. **错误处理的默认路径要心里有数。** SDK 默认把错误交给标准库的 `log.Print`；用 slog 时它会被 `SetDefault` 接到 OTel 管道上，但记录是 INFO 级别，而且导出失败会回流。要精确控制，仍然需要 `SetErrorHandler`。
 
 回到文章开头那三个问题：
 
