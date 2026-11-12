@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 560" width="700" height="560" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto">
+      <path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+  <rect width="700" height="560" fill="#ffffff"/>
+
+  <text x="350" y="32" text-anchor="middle" font-size="18" font-weight="700" fill="#1e293b">一条消息的四个决策点</text>
+  <text x="350" y="54" text-anchor="middle" font-size="12" fill="#64748b">投递语义不是 topic 的开关，而是这四处配置组合出来的结果</text>
+
+  <!-- producer -->
+  <rect x="40" y="84" width="300" height="62" rx="9" fill="#eef2ff" stroke="#a5b4fc"/>
+  <text x="58" y="109" font-size="14" font-weight="700" fill="#3730a3">业务代码 · Producer</text>
+  <text x="58" y="130" font-size="11.5" fill="#4f46e5">send() · acks · retries · 幂等</text>
+
+  <!-- broker -->
+  <rect x="40" y="176" width="300" height="62" rx="9" fill="#ecfdf5" stroke="#6ee7b7"/>
+  <text x="58" y="201" font-size="14" font-weight="700" fill="#065f46">Broker · Partition</text>
+  <text x="58" y="222" font-size="11.5" fill="#047857">leader + ISR · min.insync.replicas</text>
+
+  <!-- consumer -->
+  <rect x="40" y="268" width="300" height="62" rx="9" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="58" y="293" font-size="14" font-weight="700" fill="#1e40af">Consumer</text>
+  <text x="58" y="314" font-size="11.5" fill="#1d4ed8">poll -&gt; handle -&gt; commit</text>
+
+  <!-- downstream -->
+  <rect x="40" y="388" width="145" height="62" rx="9" fill="#f5f3ff" stroke="#c4b5fd"/>
+  <text x="58" y="413" font-size="13" font-weight="700" fill="#5b21b6">下游系统</text>
+  <text x="58" y="434" font-size="11.5" fill="#6d28d9">DB / HTTP / topic</text>
+
+  <!-- offsets -->
+  <rect x="195" y="388" width="145" height="62" rx="9" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="213" y="413" font-size="13" font-weight="700" fill="#334155">__consumer_offsets</text>
+  <text x="213" y="434" font-size="11.5" fill="#64748b">位点提交</text>
+
+  <!-- arrows -->
+  <line x1="190" y1="146" x2="190" y2="172" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ab)"/>
+  <line x1="190" y1="238" x2="190" y2="264" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ab)"/>
+  <path d="M190,330 V360 H112 V384" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ab)"/>
+  <path d="M190,330 V360 H268 V384" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ab)"/>
+
+  <!-- decision 1 -->
+  <text x="370" y="102" font-size="12.5" font-weight="700" fill="#4338ca">决策 1 · 生产确认</text>
+  <text x="370" y="124" font-size="11.5" fill="#64748b">acks=0 / 1：可能丢</text>
+  <text x="370" y="142" font-size="11.5" fill="#64748b">acks=all + 重试：可能重</text>
+  <text x="370" y="160" font-size="11.5" fill="#64748b">再加幂等：重试不会重</text>
+
+  <!-- decision 2 -->
+  <text x="370" y="194" font-size="12.5" font-weight="700" fill="#047857">决策 2 · 副本与选举</text>
+  <text x="370" y="216" font-size="11.5" fill="#64748b">min.insync.replicas=2</text>
+  <text x="370" y="234" font-size="11.5" fill="#64748b">才接受写入</text>
+
+  <!-- decision 3 -->
+  <text x="370" y="286" font-size="12.5" font-weight="700" fill="#1d4ed8">决策 3 · 提交时机</text>
+  <text x="370" y="308" font-size="11.5" fill="#64748b">先提交后处理：可能丢</text>
+  <text x="370" y="326" font-size="11.5" fill="#64748b">先处理后提交：可能重</text>
+  <text x="370" y="344" font-size="11.5" fill="#64748b">同事务提交：Kafka 内精确</text>
+
+  <!-- decision 4 -->
+  <text x="370" y="406" font-size="12.5" font-weight="700" fill="#7c3aed">决策 4 · 事务边界</text>
+  <text x="370" y="428" font-size="11.5" fill="#64748b">事务只覆盖 Kafka 的写入</text>
+  <text x="370" y="446" font-size="11.5" fill="#64748b">外部系统：outbox 或幂等</text>
+
+  <line x1="40" y1="492" x2="660" y2="492" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="350" y="524" text-anchor="middle" font-size="11.5" fill="#475569">端到端语义取最弱的一环；幂等消费可以把 at-least-once 的“重”吸收掉</text>
+</svg>
