@@ -11,6 +11,13 @@ summaryLength: 70
 pagination:
   pagerSize: 10
 
+# 显式声明 taxonomies 会覆盖 Hugo 的默认值（tag / category），
+# 所以这两个必须一起重新写，否则 /tags/ 会消失。
+taxonomies:
+  tag: tags
+  category: categories
+  series: series
+
 outputs:
   home: [HTML, RSS, JSON]
 
@@ -90,6 +97,10 @@ menu:
       name: 分类
       url: /categories/
       weight: 20
+    - identifier: series
+      name: 系列
+      url: /series/
+      weight: 25
     - identifier: tags
       name: 标签
       url: /tags/

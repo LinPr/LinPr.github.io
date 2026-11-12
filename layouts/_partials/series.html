@@ -1,0 +1,32 @@
+{{- /* 系列导航：文章带有 series 时，在正文后显示系列信息与全部篇目。
+       顺序按 front matter 的 weight，未写 weight 时按日期。
+       覆盖主题的 extend_post_content.html 钩子调用本模板。 */ -}}
+{{- with .GetTerms "series" }}
+  {{- $term := index . 0 }}
+  {{- $pages := $term.Pages.ByWeight }}
+  {{- $current := $.RelPermalink }}
+  {{- $pos := 0 }}
+  {{- range $i, $p := $pages }}
+    {{- if eq $p.RelPermalink $current }}{{ $pos = add $i 1 }}{{ end }}
+  {{- end }}
+  {{- if gt (len $pages) 1 }}
+  <aside class="series-box" aria-label="系列文章">
+    <div class="series-head">
+      <span class="series-label">系列</span>
+      <a class="series-name" href="{{ $term.RelPermalink }}">{{ $term.LinkTitle }}</a>
+      {{- if gt $pos 0 }}
+      <span class="series-count">第 {{ $pos }} 篇 / 共 {{ len $pages }} 篇</span>
+      {{- else }}
+      <span class="series-count">共 {{ len $pages }} 篇</span>
+      {{- end }}
+    </div>
+    <ol class="series-list">
+      {{- range $p := $pages }}
+      <li{{ if eq $p.RelPermalink $current }} class="is-current"{{ end }}>
+        <a href="{{ $p.RelPermalink }}"{{ if eq $p.RelPermalink $current }} aria-current="page"{{ end }}>{{ $p.LinkTitle }}</a>
+      </li>
+      {{- end }}
+    </ol>
+  </aside>
+  {{- end }}
+{{- end }}

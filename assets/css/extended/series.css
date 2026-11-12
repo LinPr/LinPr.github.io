@@ -1,0 +1,145 @@
+/* =========================================================
+   系列导航（series taxonomy）
+   正文末尾的一块玻璃卡片：系列名 + 当前第几篇 + 全部篇目
+   ========================================================= */
+
+.post-content .series-box,
+.post-single .series-box {
+    margin-top: var(--content-gap);
+    padding: 14px 18px 16px;
+    border: 1px solid var(--glass-rim-soft);
+    border-radius: 14px;
+    background-color: var(--glass-bg);
+    background-image: linear-gradient(145deg, var(--glass-sheen), rgba(255, 255, 255, 0) 55%);
+    box-shadow: inset 0 1px 0 var(--glass-rim);
+    backdrop-filter: blur(12px) saturate(160%);
+    -webkit-backdrop-filter: blur(12px) saturate(160%);
+    font-size: 15px;
+}
+
+/* ---------- 头部：系列名 + 位置 ---------- */
+.series-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.series-label {
+    flex: none;
+    padding: 1px 8px 2px;
+    border-radius: 99px;
+    background-color: rgba(99, 102, 241, 0.12);
+    color: rgb(79, 70, 229);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    line-height: 1.6;
+}
+
+.series-name {
+    font-weight: 600;
+    color: var(--primary);
+    text-decoration: none;
+    box-shadow: none;
+}
+
+.series-name:hover {
+    color: rgb(79, 70, 229);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.series-count {
+    margin-left: auto;
+    color: var(--secondary);
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* ---------- 篇目列表 ---------- */
+.series-list {
+    counter-reset: series-item;
+    margin: 10px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.series-list li {
+    counter-increment: series-item;
+    display: flex;
+    gap: 8px;
+    margin: 0;
+    padding: 3px 0;
+    line-height: 1.6;
+}
+
+.series-list li::before {
+    content: counter(series-item) ".";
+    flex: none;
+    width: 1.4em;
+    color: var(--secondary);
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    line-height: 1.85;
+}
+
+.series-list a {
+    color: var(--secondary);
+    text-decoration: none;
+    box-shadow: none;
+}
+
+.series-list a:hover {
+    color: rgb(79, 70, 229);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+/* 当前篇：加粗并换强调色，序号也一起变 */
+.series-list li.is-current a {
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.series-list li.is-current::before {
+    color: rgb(79, 70, 229);
+}
+
+/* ---------- 深色 ---------- */
+:root[data-theme="dark"] .series-box {
+    background-color: rgba(20, 29, 45, 0.55);
+    border-color: rgba(168, 190, 225, 0.20);
+    box-shadow: inset 0 1px 0 rgba(168, 190, 225, 0.16);
+}
+
+:root[data-theme="dark"] .series-label {
+    background-color: rgba(129, 140, 248, 0.18);
+    color: rgb(165, 180, 252);
+}
+
+:root[data-theme="dark"] .series-name:hover,
+:root[data-theme="dark"] .series-list a:hover,
+:root[data-theme="dark"] .series-list li.is-current::before {
+    color: rgb(165, 180, 252);
+}
+
+/* ---------- 窄屏：位置信息换行到下一行 ---------- */
+@media (max-width: 600px) {
+    .series-box {
+        padding: 12px 14px 14px;
+    }
+
+    .series-count {
+        margin-left: 0;
+        flex-basis: 100%;
+    }
+}
+
+/* ---------- 不支持 backdrop-filter 时降级 ---------- */
+@supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
+    .series-box {
+        background-color: var(--entry);
+    }
+}
