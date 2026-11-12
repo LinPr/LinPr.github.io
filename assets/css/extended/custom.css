@@ -27,6 +27,12 @@
     --border: rgba(120, 92, 62, 0.16);
     --code-bg: #f4ecdd;
     --code-block-bg: #f7f1e4;
+
+    /* 版心宽度：主题默认 720px，长文里的表格和代码块显得局促。
+       960px 下中文正文每行约 50 字，仍在舒适阅读范围内；
+       顶栏取相同宽度，让 logo 和菜单与正文卡片左右对齐。 */
+    --main-width: 960px;
+    --nav-width: 960px;
 }
 
 :root[data-theme="dark"] {

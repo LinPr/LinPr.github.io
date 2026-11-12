@@ -319,13 +319,13 @@ details.toc .inner {
 
 /* ---------- 行内代码：小玻璃胶囊 ---------- */
 /* 主题给行内代码用的是 --code-bg 纯色，这里换成半透明白 */
+/* 注意：这里不能加 backdrop-filter。Chrome 对行内元素做 backdrop 采样时
+   会把同一行的文字一起模糊掉，表现为代码和整行文字发灰、看不清。 */
 .post-content :not(pre) > code,
 .post-content code {
     background: rgba(255, 255, 255, 0.55) !important;
     border: 1px solid var(--glass-rim-soft);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(6px) saturate(140%);
-    -webkit-backdrop-filter: blur(6px) saturate(140%);
 }
 
 :root[data-theme="dark"] .post-content :not(pre) > code,
@@ -347,7 +347,21 @@ details.toc .inner {
 }
 
 /* ---------- 表格：玻璃卡片，窄屏可横向滚动 ---------- */
+/* 滚动容器由 layouts/_markup/render-table.html 生成。
+   注意：table 本身保持 display: table，不能改成 block——
+   一旦改成 block，thead 和 tbody 会变成两个独立的表格上下文，
+   列宽各自计算，表头和表体就对不齐了。 */
+.post-content .table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: var(--content-gap);
+    border-radius: 14px;
+}
+
 .post-content table {
+    /* 主题的 reset.css 给 table 设了 display: block，
+       这里显式改回 table，保证表头和表体共用一个表格布局上下文。 */
+    display: table;
     border-collapse: separate;
     border-spacing: 0;
     border: 1px solid var(--glass-rim-soft);
@@ -356,19 +370,17 @@ details.toc .inner {
     backdrop-filter: blur(10px) saturate(150%);
     -webkit-backdrop-filter: blur(10px) saturate(150%);
     box-shadow: inset 0 1px 0 var(--glass-rim);
-    /* 用 block + 滚动，避免圆角把内容裁掉 */
-    display: block;
     width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    margin-bottom: 0;
 }
 
-/* 滚动容器里的表格要撑开 */
-.post-content table > thead,
-.post-content table > tbody {
-    display: table;
-    width: 100%;
-    table-layout: auto;
+/* 窄屏：table 的 width:100% 会把列压到只剩几十像素，
+   长文本列被迫逐字换行，行高被撑得极高，难以阅读。
+   这里给一个最小宽度，超出的部分交给外层容器横向滚动。 */
+@media (max-width: 720px) {
+    .post-content table {
+        min-width: 40rem;
+    }
 }
 
 /* 第一行/最后一行的圆角由容器负责，这里去掉单元格自带的边框干扰 */
@@ -387,10 +399,10 @@ details.toc .inner {
 }
 
 /* 表格滚动条也做细一点 */
-.post-content table::-webkit-scrollbar {
+.post-content .table-scroll::-webkit-scrollbar {
     height: 6px;
 }
-.post-content table::-webkit-scrollbar-thumb {
+.post-content .table-scroll::-webkit-scrollbar-thumb {
     background: var(--glass-rim-soft);
     border-radius: 99px;
 }
