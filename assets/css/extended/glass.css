@@ -11,15 +11,28 @@
    三档共用同一套棱边（--glass-rim / --glass-rim-soft）、高光（--glass-sheen）
    和阴影，改令牌就同时作用于所有玻璃表面，不要在各个组件里重复写字面值。 */
 :root {
-    --glass-bg: rgba(255, 252, 246, 0.70);
-    --glass-bg-strong: rgba(255, 252, 245, 0.84);
-    --glass-blur: 16px;
-    --glass-rim: rgba(255, 255, 255, 0.85);
-    --glass-rim-soft: rgba(255, 255, 255, 0.30);
+    --glass-bg: rgba(255, 253, 250, 0.56);
+    --glass-bg-strong: rgba(255, 252, 246, 0.80);
+    --glass-blur: 20px;
+    --glass-rim: rgba(255, 255, 255, 1);
+    --glass-rim-soft: rgba(255, 255, 255, 0.42);
+    /* 底缘冷色折光：玻璃底边透出天空的颜色，配合顶缘的白色高光形成厚度 */
+    --glass-caustic: rgba(130, 185, 235, 0.42);
     --glass-sheen: rgba(255, 255, 255, 0.42);
-    --glass-shadow: 0 1px 2px rgba(72, 96, 128, 0.05),
-                    0 10px 24px -12px rgba(72, 96, 128, 0.18),
-                    0 30px 60px -28px rgba(72, 96, 128, 0.30);
+    /* 135° 反射：参考 hugo-theme-stack-liquid-glass 的做法，一整块斜向高光，
+       比逐点的径向高光更像一块有厚度的玻璃 */
+    --glass-reflect: linear-gradient(135deg,
+            rgba(255, 255, 255, 0.55) 0%,
+            rgba(255, 255, 255, 0.16) 22%,
+            rgba(255, 255, 255, 0) 48%,
+            rgba(255, 255, 255, 0.05) 74%,
+            rgba(255, 255, 255, 0.20) 100%);
+    /* 内描边：1px 白色描在边框内侧，模拟玻璃切口 */
+    --glass-inner: inset 0 0 0 1px rgba(255, 255, 255, 0.30);
+    --glass-border: rgba(255, 255, 255, 0.86);
+    --glass-shadow: 0 1px 2px rgba(40, 80, 120, 0.06),
+                    0 14px 32px -16px rgba(40, 80, 120, 0.30),
+                    0 34px 64px -30px rgba(40, 80, 120, 0.32);
     --glass-shadow-hover: 0 4px 10px rgba(72, 96, 128, 0.08),
                           0 26px 56px -20px rgba(72, 96, 128, 0.38);
 }
@@ -28,9 +41,18 @@
     --glass-bg: rgba(20, 29, 45, 0.52);
     --glass-bg-strong: rgba(20, 29, 45, 0.74);
     --glass-blur: 14px;
-    --glass-rim: rgba(168, 190, 225, 0.28);
-    --glass-rim-soft: rgba(140, 165, 205, 0.14);
+    --glass-rim: rgba(190, 210, 245, 0.40);
+    --glass-rim-soft: rgba(140, 165, 205, 0.18);
+    --glass-caustic: rgba(99, 130, 210, 0.38);
     --glass-sheen: rgba(150, 180, 230, 0.16);
+    --glass-reflect: linear-gradient(135deg,
+            rgba(170, 200, 250, 0.22) 0%,
+            rgba(170, 200, 250, 0.07) 22%,
+            rgba(255, 255, 255, 0) 48%,
+            rgba(170, 200, 250, 0.03) 74%,
+            rgba(170, 200, 250, 0.10) 100%);
+    --glass-inner: inset 0 0 0 1px rgba(168, 190, 225, 0.16);
+    --glass-border: rgba(168, 190, 225, 0.24);
     --glass-shadow: 0 2px 8px rgba(0, 0, 0, 0.30),
                     0 22px 52px -20px rgba(0, 0, 0, 0.70);
     --glass-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.36),
@@ -51,24 +73,20 @@
     background-image:
         /* 左上角镜面高光 */
         radial-gradient(115% 75% at 6% -16%, rgba(255, 255, 255, 0.92) 0%, rgba(255,255,255,0.35) 26%, transparent 52%),
-        /* 斜向流光 */
-        linear-gradient(125deg,
-            rgba(255, 255, 255, 0.30) 0%,
-            rgba(255, 255, 255, 0.04) 26%,
-            rgba(255, 255, 255, 0) 48%,
-            rgba(255, 255, 255, 0.05) 76%,
-            rgba(255, 255, 255, 0.22) 100%),
+        /* 135° 反射高光 */
+        var(--glass-reflect),
         /* 暖色底 */
         linear-gradient(180deg,
             rgba(255, 247, 234, 0.42) 0%,
             rgba(255, 252, 246, 0.20) 100%);
-    border: 1px solid rgba(255, 255, 255, 0.78);
+    border: 1px solid var(--glass-border);
     box-shadow:
         inset 0 1px 0 var(--glass-rim),
-        inset 0 0 0 1px var(--glass-rim-soft),
+        inset 0 -1.5px 0 var(--glass-caustic),
+        var(--glass-inner),
         var(--glass-shadow);
-    backdrop-filter: blur(var(--glass-blur)) saturate(170%);
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(170%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(185%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(185%);
     will-change: backdrop-filter;
     transition: background-color 0.4s var(--ease), box-shadow 0.45s var(--ease),
         transform 0.45s var(--ease), border-color 0.45s var(--ease);
@@ -81,7 +99,8 @@
     background-color: var(--glass-bg-strong);
     box-shadow:
         inset 0 1px 0 var(--glass-rim),
-        inset 0 0 0 1px var(--glass-rim-soft),
+        inset 0 -1.5px 0 var(--glass-caustic),
+        var(--glass-inner),
         var(--glass-shadow-hover);
     transform: translateY(-3px);
 }
