@@ -711,7 +711,6 @@ body.list,
 
 /* 分享 / 标签 */
 .share-buttons a,
-.post-tags a,
 .terms-tags li a {
     display: inline-flex;
     align-items: center;
@@ -723,7 +722,6 @@ body.list,
         background 0.3s var(--ease), border-color 0.3s var(--ease);
 }
 
-.post-tags a,
 .terms-tags li a {
     padding: 0.28rem 0.8rem;
     margin: 0 0.4rem 0.4rem 0;
@@ -731,7 +729,6 @@ body.list,
 }
 
 .share-buttons a:hover,
-.post-tags a:hover,
 .terms-tags li a:hover {
     transform: translateY(-2px);
     color: #fff;
