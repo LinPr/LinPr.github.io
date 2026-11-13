@@ -161,11 +161,23 @@
 
     /* 本脚本和 runtime（peekling.min.js）都是 async，谁先下载完谁先执行，
        顺序不保证。runtime 还没就绪时，等它的 load 事件再启动。 */
-    const start = () => schedule(boot);
+    let started = false;
+    const start = () => {
+        if (started || !window.Peekling) return;
+        started = true;
+        schedule(boot);
+    };
     if (window.Peekling) {
         start();
     } else {
+        // runtime 可能在注册监听之前就已执行完（命中预加载缓存时很常见），
+        // 所以 load 事件之外再兜底轮询一小段时间，最多 10 秒。
         const runtime = document.getElementById("peekling-runtime");
         if (runtime) runtime.addEventListener("load", start, { once: true });
+        let tries = 0;
+        const poll = setInterval(() => {
+            start();
+            if (started || ++tries > 100) clearInterval(poll);
+        }, 100);
     }
 })();
