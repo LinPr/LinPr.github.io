@@ -1,43 +1,186 @@
 /* =========================================================
    自定义鼠标样式
-   箭头 / 手型 / 文本光标 全部内联 SVG（不额外发请求）
-   设计取向：轻盈的玻璃质感 + 靛紫描边，和站点的液态玻璃同一套语言
+   全部内联 SVG，不额外发请求。
+   主题是「烟花」：默认是待放的烟花筒，可点的地方变成一挂鞭炮，
+   可以被选中的文字变成一根香，等待/忙碌时是正在燃放的礼花。
    ========================================================= */
 
-/* ---------- 默认箭头：烟花筒 ---------- */
-/* 一根长条礼花筒斜指左上：粉色筒身、两道金箍、靛色筒口、尾部一截引线，
-   筒口正喷出火花。配色取自点击烟花（click-firework.js）的调色板，
-   光标就是「还没放出去的那支烟花」，点一下就在筒口绽开。
 
-   热点（hotspot）在筒口火花中心 (12,12)：点击位置 = 火花位置 = 烟花绽放的位置。
-   尺寸：48px 画布，Chrome 原样显示；矢量图在 HiDPI 屏上也清晰。 */
+/* =========================================================
+   1. 默认：烟花筒
+   ---------------------------------------------------------
+   长条礼花筒斜指左上：粉色筒身、两道金箍、靛色筒口、尾部一截引线，
+   筒口正喷出火花。配色取自点击烟花的调色板（click-firework.js）。
+
+   热点（hotspot）在筒口火花中心 (12,12)：点击位置 = 火花位置 =
+   烟花绽放的位置。48px 画布，Chrome 原样显示，矢量图在 HiDPI 屏上清晰。
+   ========================================================= */
 html,
-body {
-    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'><defs><linearGradient id='tb' x1='0' y1='0' x2='1' y2='0'><stop offset='0' stop-color='#be185d'/><stop offset='0.32' stop-color='#f472b6'/><stop offset='0.58' stop-color='#ffffff' stop-opacity='0.92'/><stop offset='0.74' stop-color='#f472b6'/><stop offset='1' stop-color='#be185d'/></linearGradient><radialGradient id='fl' cx='0.5' cy='0.5' r='0.5'><stop offset='0' stop-color='#ffffff'/><stop offset='0.3' stop-color='#fbbf24'/><stop offset='0.68' stop-color='#f59e0b' stop-opacity='0.7'/><stop offset='1' stop-color='#f59e0b' stop-opacity='0'/></radialGradient></defs><g transform='translate(29 29) rotate(-45)'><path d='M0 15.5 C2 18 -1.8 20.2 0.6 23' stroke='#7c6a57' stroke-width='1.4' fill='none' stroke-linecap='round'/><rect x='-5.4' y='-14.5' width='10.8' height='30' rx='2.4' fill='url(%23tb)' stroke='#be185d' stroke-width='1.1'/><rect x='-5.4' y='-6' width='10.8' height='3.6' fill='#fde68a'/><rect x='-5.4' y='4' width='10.8' height='3.6' fill='#fde68a'/><rect x='-6.4' y='-15.6' width='12.8' height='3' rx='1.2' fill='#6366f1'/></g><circle cx='12.5' cy='12.5' r='8.5' fill='url(%23fl)'/><g stroke='#f59e0b' stroke-width='2' stroke-linecap='round'><path d='M12.5 2.6 L12.5 6.4'/><path d='M2.6 12.5 L6.4 12.5'/><path d='M5.4 5.4 L8 8'/><path d='M19.6 4.8 L17.4 7.6'/><path d='M4.8 19.6 L7.6 17.4'/></g><g fill='#fbbf24'><circle cx='12.5' cy='12.5' r='3.2'/><circle cx='21.5' cy='3.8' r='1.2'/><circle cx='3.8' cy='21.5' r='1.1'/></g><circle cx='12.5' cy='12.5' r='1.5' fill='#ffffff'/></svg>") 12 12, auto;
+body,
+#sky,
+#cosmos,
+#daylight,
+.bloom,
+.petal,
+.peekling-character-hit,
+.post-single,
+.home-info,
+.post-entry,
+.entry-content,
+.entry-footer,
+.entry-header,
+.page-header,
+.archive-year,
+.terms-tags,
+.category-card,
+.series-box,
+.paginav,
+.toc,
+details.toc,
+figure,
+figcaption,
+img,
+video,
+#searchbox,
+#searchResults li,
+.footer,
+.share-buttons {
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'><defs><linearGradient id='tb' x1='0' y1='0' x2='1' y2='0'><stop offset='0' stop-color='%23be185d'/><stop offset='0.32' stop-color='%23f472b6'/><stop offset='0.58' stop-color='%23ffffff' stop-opacity='0.92'/><stop offset='0.74' stop-color='%23f472b6'/><stop offset='1' stop-color='%23be185d'/></linearGradient><radialGradient id='fl' cx='0.5' cy='0.5' r='0.5'><stop offset='0' stop-color='%23ffffff'/><stop offset='0.3' stop-color='%23fbbf24'/><stop offset='0.68' stop-color='%23f59e0b' stop-opacity='0.7'/><stop offset='1' stop-color='%23f59e0b' stop-opacity='0'/></radialGradient></defs><g transform='translate(29 29) rotate(-45)'><path d='M0 15.5 C2 18 -1.8 20.2 0.6 23' stroke='%237c6a57' stroke-width='1.4' fill='none' stroke-linecap='round'/><rect x='-5.4' y='-14.5' width='10.8' height='30' rx='2.4' fill='url(%23tb)' stroke='%23be185d' stroke-width='1.1'/><rect x='-5.4' y='-6' width='10.8' height='3.6' fill='%23fde68a'/><rect x='-5.4' y='4' width='10.8' height='3.6' fill='%23fde68a'/><rect x='-6.4' y='-15.6' width='12.8' height='3' rx='1.2' fill='%236366f1'/></g><circle cx='12.5' cy='12.5' r='8.5' fill='url(%23fl)'/><g stroke='%23f59e0b' stroke-width='2' stroke-linecap='round'><path d='M12.5 2.6 L12.5 6.4'/><path d='M2.6 12.5 L6.4 12.5'/><path d='M5.4 5.4 L8 8'/><path d='M19.6 4.8 L17.4 7.6'/><path d='M4.8 19.6 L7.6 17.4'/></g><g fill='%23fbbf24'><circle cx='12.5' cy='12.5' r='3.2'/><circle cx='21.5' cy='3.8' r='1.2'/><circle cx='3.8' cy='21.5' r='1.1'/></g><circle cx='12.5' cy='12.5' r='1.5' fill='%23ffffff'/></svg>") 12 12, auto;
 }
 
 :root[data-theme="dark"] html,
-:root[data-theme="dark"] body {
-    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'><defs><linearGradient id='tb' x1='0' y1='0' x2='1' y2='0'><stop offset='0' stop-color='#db2777'/><stop offset='0.32' stop-color='#f9a8d4'/><stop offset='0.58' stop-color='#ffffff' stop-opacity='0.92'/><stop offset='0.74' stop-color='#f9a8d4'/><stop offset='1' stop-color='#db2777'/></linearGradient><radialGradient id='fl' cx='0.5' cy='0.5' r='0.5'><stop offset='0' stop-color='#ffffff'/><stop offset='0.3' stop-color='#fde68a'/><stop offset='0.68' stop-color='#fcd34d' stop-opacity='0.7'/><stop offset='1' stop-color='#fcd34d' stop-opacity='0'/></radialGradient></defs><g transform='translate(29 29) rotate(-45)'><path d='M0 15.5 C2 18 -1.8 20.2 0.6 23' stroke='#c8b8a4' stroke-width='1.4' fill='none' stroke-linecap='round'/><rect x='-5.4' y='-14.5' width='10.8' height='30' rx='2.4' fill='url(%23tb)' stroke='#db2777' stroke-width='1.1'/><rect x='-5.4' y='-6' width='10.8' height='3.6' fill='#fde68a'/><rect x='-5.4' y='4' width='10.8' height='3.6' fill='#fde68a'/><rect x='-6.4' y='-15.6' width='12.8' height='3' rx='1.2' fill='#a5b4fc'/></g><circle cx='12.5' cy='12.5' r='8.5' fill='url(%23fl)'/><g stroke='#fcd34d' stroke-width='2' stroke-linecap='round'><path d='M12.5 2.6 L12.5 6.4'/><path d='M2.6 12.5 L6.4 12.5'/><path d='M5.4 5.4 L8 8'/><path d='M19.6 4.8 L17.4 7.6'/><path d='M4.8 19.6 L7.6 17.4'/></g><g fill='#fde68a'><circle cx='12.5' cy='12.5' r='3.2'/><circle cx='21.5' cy='3.8' r='1.2'/><circle cx='3.8' cy='21.5' r='1.1'/></g><circle cx='12.5' cy='12.5' r='1.5' fill='#ffffff'/></svg>") 12 12, auto;
+:root[data-theme="dark"] body,
+:root[data-theme="dark"] #sky,
+:root[data-theme="dark"] #cosmos,
+:root[data-theme="dark"] #daylight,
+:root[data-theme="dark"] .bloom,
+:root[data-theme="dark"] .petal,
+:root[data-theme="dark"] .peekling-character-hit,
+:root[data-theme="dark"] .post-single,
+:root[data-theme="dark"] .home-info,
+:root[data-theme="dark"] .post-entry,
+:root[data-theme="dark"] .entry-content,
+:root[data-theme="dark"] .entry-footer,
+:root[data-theme="dark"] .entry-header,
+:root[data-theme="dark"] .page-header,
+:root[data-theme="dark"] .archive-year,
+:root[data-theme="dark"] .terms-tags,
+:root[data-theme="dark"] .category-card,
+:root[data-theme="dark"] .series-box,
+:root[data-theme="dark"] .paginav,
+:root[data-theme="dark"] .toc,
+:root[data-theme="dark"] details.toc,
+:root[data-theme="dark"] figure,
+:root[data-theme="dark"] figcaption,
+:root[data-theme="dark"] img,
+:root[data-theme="dark"] video,
+:root[data-theme="dark"] #searchbox,
+:root[data-theme="dark"] #searchResults li,
+:root[data-theme="dark"] .footer,
+:root[data-theme="dark"] .share-buttons {
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'><defs><linearGradient id='tb' x1='0' y1='0' x2='1' y2='0'><stop offset='0' stop-color='%23db2777'/><stop offset='0.32' stop-color='%23f9a8d4'/><stop offset='0.58' stop-color='%23ffffff' stop-opacity='0.92'/><stop offset='0.74' stop-color='%23f9a8d4'/><stop offset='1' stop-color='%23db2777'/></linearGradient><radialGradient id='fl' cx='0.5' cy='0.5' r='0.5'><stop offset='0' stop-color='%23ffffff'/><stop offset='0.3' stop-color='%23fde68a'/><stop offset='0.68' stop-color='%23fcd34d' stop-opacity='0.7'/><stop offset='1' stop-color='%23fcd34d' stop-opacity='0'/></radialGradient></defs><g transform='translate(29 29) rotate(-45)'><path d='M0 15.5 C2 18 -1.8 20.2 0.6 23' stroke='%23c8b8a4' stroke-width='1.4' fill='none' stroke-linecap='round'/><rect x='-5.4' y='-14.5' width='10.8' height='30' rx='2.4' fill='url(%23tb)' stroke='%23db2777' stroke-width='1.1'/><rect x='-5.4' y='-6' width='10.8' height='3.6' fill='%23fde68a'/><rect x='-5.4' y='4' width='10.8' height='3.6' fill='%23fde68a'/><rect x='-6.4' y='-15.6' width='12.8' height='3' rx='1.2' fill='%23a5b4fc'/></g><circle cx='12.5' cy='12.5' r='8.5' fill='url(%23fl)'/><g stroke='%23fcd34d' stroke-width='2' stroke-linecap='round'><path d='M12.5 2.6 L12.5 6.4'/><path d='M2.6 12.5 L6.4 12.5'/><path d='M5.4 5.4 L8 8'/><path d='M19.6 4.8 L17.4 7.6'/><path d='M4.8 19.6 L7.6 17.4'/></g><g fill='%23fde68a'><circle cx='12.5' cy='12.5' r='3.2'/><circle cx='21.5' cy='3.8' r='1.2'/><circle cx='3.8' cy='21.5' r='1.1'/></g><circle cx='12.5' cy='12.5' r='1.5' fill='%23ffffff'/></svg>") 12 12, auto;
 }
 
-/* ---------- 文本：细长的竖线光标 ---------- */
+
+/* =========================================================
+   2. 可点击：一挂鞭炮
+   ---------------------------------------------------------
+   红色炮身、金色腰线、右侧垂着引线，火花在引线末端。
+   热点放在左侧中部，指向链接文字的开始处。
+   ========================================================= */
+a,
+button,
+summary,
+label,
+select,
+input[type="button"],
+input[type="submit"],
+input[type="checkbox"],
+input[type="radio"],
+input[type="file"],
+.top-link,
+.theme-toggle,
+[role="button"],
+.entry-link,
+.archive-entry,
+.post-tags a,
+.terms-tags li a,
+.category-card a,
+.paginav a,
+.toc a,
+#menu li a,
+.share-buttons a,
+.copy-code-button,
+.post-meta a,
+.edit-post,
+details.toc > summary {
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'><defs><linearGradient id='fb' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='%23ef4444'/><stop offset='0.45' stop-color='%23dc2626'/><stop offset='0.55' stop-color='%23b91c1c'/><stop offset='1' stop-color='%23991b1b'/></linearGradient><radialGradient id='fs' cx='0.5' cy='0.5' r='0.5'><stop offset='0' stop-color='%23ffffff'/><stop offset='0.35' stop-color='%23fbbf24'/><stop offset='0.75' stop-color='%23f59e0b' stop-opacity='0.6'/><stop offset='1' stop-color='%23f59e0b' stop-opacity='0'/></radialGradient></defs><g transform='rotate(-38 24 24)'><rect x='-10' y='9' width='68' height='13' rx='6.5' fill='url(%23fb)' stroke='%2389152b' stroke-width='1.2'/><rect x='-10' y='13.6' width='68' height='3.8' fill='%23fde68a' opacity='0.95'/><rect x='2' y='7.6' width='4.2' height='15.8' rx='1' fill='%23fbbf24'/><rect x='15' y='7.6' width='4.2' height='15.8' rx='1' fill='%23fbbf24'/><rect x='28' y='7.6' width='4.2' height='15.8' rx='1' fill='%23fbbf24'/><rect x='41' y='7.6' width='4.2' height='15.8' rx='1' fill='%23fbbf24'/><path d='M58 15.5 C63 15 65 19 62 21.5' stroke='%23d6c7a1' stroke-width='1.5' fill='none' stroke-linecap='round'/></g><circle cx='37' cy='29' r='6.5' fill='url(%23fs)'/><g stroke='%23fbbf24' stroke-width='1.8' stroke-linecap='round'><path d='M37 22.2 L37 24.4'/><path d='M43.8 29 L41.6 29'/><path d='M41.8 24.2 L40.3 25.7'/></g><circle cx='37' cy='29' r='1.9' fill='%23ffffff'/></svg>") 8 20, pointer;
+}
+
+:root[data-theme="dark"] a,
+:root[data-theme="dark"] button,
+:root[data-theme="dark"] summary,
+:root[data-theme="dark"] label,
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] input[type="button"],
+:root[data-theme="dark"] input[type="submit"],
+:root[data-theme="dark"] input[type="checkbox"],
+:root[data-theme="dark"] input[type="radio"],
+:root[data-theme="dark"] input[type="file"],
+:root[data-theme="dark"] .top-link,
+:root[data-theme="dark"] .theme-toggle,
+:root[data-theme="dark"] [role="button"],
+:root[data-theme="dark"] .entry-link,
+:root[data-theme="dark"] .archive-entry,
+:root[data-theme="dark"] .post-tags a,
+:root[data-theme="dark"] .terms-tags li a,
+:root[data-theme="dark"] .category-card a,
+:root[data-theme="dark"] .paginav a,
+:root[data-theme="dark"] .toc a,
+:root[data-theme="dark"] #menu li a,
+:root[data-theme="dark"] .share-buttons a,
+:root[data-theme="dark"] .copy-code-button,
+:root[data-theme="dark"] .post-meta a,
+:root[data-theme="dark"] .edit-post,
+:root[data-theme="dark"] details.toc > summary {
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'><defs><linearGradient id='fb' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='%23f87171'/><stop offset='0.45' stop-color='%23ef4444'/><stop offset='0.55' stop-color='%23dc2626'/><stop offset='1' stop-color='%23b91c1c'/></linearGradient><radialGradient id='fs' cx='0.5' cy='0.5' r='0.5'><stop offset='0' stop-color='%23ffffff'/><stop offset='0.35' stop-color='%23fde68a'/><stop offset='0.75' stop-color='%23fcd34d' stop-opacity='0.6'/><stop offset='1' stop-color='%23fcd34d' stop-opacity='0'/></radialGradient></defs><g transform='rotate(-38 24 24)'><rect x='-10' y='9' width='68' height='13' rx='6.5' fill='url(%23fb)' stroke='%23b91c1c' stroke-width='1.2'/><rect x='-10' y='13.6' width='68' height='3.8' fill='%23fde68a' opacity='0.95'/><rect x='2' y='7.6' width='4.2' height='15.8' rx='1' fill='%23fcd34d'/><rect x='15' y='7.6' width='4.2' height='15.8' rx='1' fill='%23fcd34d'/><rect x='28' y='7.6' width='4.2' height='15.8' rx='1' fill='%23fcd34d'/><rect x='41' y='7.6' width='4.2' height='15.8' rx='1' fill='%23fcd34d'/><path d='M58 15.5 C63 15 65 19 62 21.5' stroke='%23e2d5b8' stroke-width='1.5' fill='none' stroke-linecap='round'/></g><circle cx='37' cy='29' r='6.5' fill='url(%23fs)'/><g stroke='%23fcd34d' stroke-width='1.8' stroke-linecap='round'><path d='M37 22.2 L37 24.4'/><path d='M43.8 29 L41.6 29'/><path d='M41.8 24.2 L40.3 25.7'/></g><circle cx='37' cy='29' r='1.9' fill='%23ffffff'/></svg>") 8 20, pointer;
+}
+
+
+/* =========================================================
+   3. 文本：一根燃着的香
+   ---------------------------------------------------------
+   香身细长，顶端一点橙红火光、一缕淡烟。
+   热点在香身中部，和默认文本光标的位置习惯一致。
+   ========================================================= */
 p,
 li,
 td,
 th,
 blockquote,
 figcaption,
-.entry-content,
-.post-content,
+pre,
+code,
+kbd,
+samp,
+.entry-content p,
+.entry-summary,
 .post-description,
 .archive-meta,
-.entry-footer,
+.entry-footer span,
+.post-content p,
+.post-content li,
+.post-content td,
+.post-content th,
 input[type="text"],
 input[type="search"],
 input[type="email"],
-textarea {
-    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='26' viewBox='0 0 14 26'><path d='M7 4 v18' stroke='%236366f1' stroke-width='1.9' stroke-linecap='round'/><path d='M4 2.2 h6 M4 23.8 h6' stroke='%236366f1' stroke-width='1.5' stroke-linecap='round' opacity='0.75'/></svg>") 7 12, text;
+input[type="url"],
+input[type="password"],
+input[type="number"],
+textarea,
+[contenteditable="true"] {
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='40' viewBox='0 0 24 40'><defs><radialGradient id='tg' cx='0.5' cy='0.5' r='0.5'><stop offset='0' stop-color='%23fff3c4'/><stop offset='0.4' stop-color='%23f97316'/><stop offset='0.8' stop-color='%23dc2626' stop-opacity='0.55'/><stop offset='1' stop-color='%23dc2626' stop-opacity='0'/></radialGradient></defs><path d='M12 15.5 L12 37' stroke='%23b08968' stroke-width='2.4' stroke-linecap='round'/><path d='M12 15.5 L12 37' stroke='%23e7d3bb' stroke-width='0.9' stroke-linecap='round' opacity='0.8'/><path d='M12 14 C14.4 11.4 10.2 9.8 12.4 6.6 C14 4.2 11.6 2.8 12.6 1.4' stroke='%23cbd5e1' stroke-width='1.1' fill='none' stroke-linecap='round' opacity='0.55'/><circle cx='12' cy='15' r='6' fill='url(%23tg)'/><circle cx='12' cy='15' r='1.9' fill='%23fff7ed'/><circle cx='12' cy='15' r='1' fill='%23ffffff'/></svg>") 12 20, text;
 }
 
 :root[data-theme="dark"] p,
@@ -46,55 +189,89 @@ textarea {
 :root[data-theme="dark"] th,
 :root[data-theme="dark"] blockquote,
 :root[data-theme="dark"] figcaption,
-:root[data-theme="dark"] .entry-content,
-:root[data-theme="dark"] .post-content,
+:root[data-theme="dark"] pre,
+:root[data-theme="dark"] code,
+:root[data-theme="dark"] kbd,
+:root[data-theme="dark"] samp,
+:root[data-theme="dark"] .entry-content p,
+:root[data-theme="dark"] .entry-summary,
 :root[data-theme="dark"] .post-description,
 :root[data-theme="dark"] .archive-meta,
-:root[data-theme="dark"] .entry-footer,
+:root[data-theme="dark"] .entry-footer span,
+:root[data-theme="dark"] .post-content p,
+:root[data-theme="dark"] .post-content li,
+:root[data-theme="dark"] .post-content td,
+:root[data-theme="dark"] .post-content th,
 :root[data-theme="dark"] input[type="text"],
 :root[data-theme="dark"] input[type="search"],
 :root[data-theme="dark"] input[type="email"],
-:root[data-theme="dark"] textarea {
-    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='26' viewBox='0 0 14 26'><path d='M7 4 v18' stroke='%23a5b4fc' stroke-width='1.9' stroke-linecap='round'/><path d='M4 2.2 h6 M4 23.8 h6' stroke='%23a5b4fc' stroke-width='1.5' stroke-linecap='round' opacity='0.75'/></svg>") 7 12, text;
+:root[data-theme="dark"] input[type="url"],
+:root[data-theme="dark"] input[type="password"],
+:root[data-theme="dark"] input[type="number"],
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] [contenteditable="true"] {
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='40' viewBox='0 0 24 40'><defs><radialGradient id='tg' cx='0.5' cy='0.5' r='0.5'><stop offset='0' stop-color='%23fff3c4'/><stop offset='0.4' stop-color='%23fb923c'/><stop offset='0.8' stop-color='%23f87171' stop-opacity='0.55'/><stop offset='1' stop-color='%23f87171' stop-opacity='0'/></radialGradient></defs><path d='M12 15.5 L12 37' stroke='%23d6bda3' stroke-width='2.4' stroke-linecap='round'/><path d='M12 15.5 L12 37' stroke='%23fff1e0' stroke-width='0.9' stroke-linecap='round' opacity='0.7'/><path d='M12 14 C14.4 11.4 10.2 9.8 12.4 6.6 C14 4.2 11.6 2.8 12.6 1.4' stroke='%23e2e8f0' stroke-width='1.1' fill='none' stroke-linecap='round' opacity='0.5'/><circle cx='12' cy='15' r='6' fill='url(%23tg)'/><circle cx='12' cy='15' r='1.9' fill='%23fff7ed'/><circle cx='12' cy='15' r='1' fill='%23ffffff'/></svg>") 12 20, text;
 }
 
-/* ---------- 不可点、不可选的地方保持箭头 ---------- */
-#sky,
-#cosmos,
-#daylight,
-.bloom,
-.petal,
-.peekling-character-hit,
-.theme-toggle svg,
-.top-link svg,
-.post-single,
-.home-info {
-    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><path d='M6.5 3.2 L6.5 24.4 L11.9 19.2 L15.3 26.6 L18.9 24.9 L15.5 17.7 L22.6 17.5 Z' fill='%23ffffff' stroke='%234f46e5' stroke-width='1.7' stroke-linejoin='round'/></svg>") 7 3, auto;
+
+/* =========================================================
+   4. 等待 / 不可用
+   ---------------------------------------------------------
+   正在发送请求时是一支礼花；不可用的控件是一支灭了火的筒。
+   ========================================================= */
+
+/* 礼花：圆形花心 + 向外四散的星芒。
+   html.pending 由 extend_footer.html 在页面加载期间挂上，
+   这时浏览器正在等资源，光标显示为一支正在燃放的礼花。 */
+html.pending,
+html.pending *,
+body.pending,
+.waiting {
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'><defs><radialGradient id='pg' cx='0.5' cy='0.5' r='0.5'><stop offset='0' stop-color='%23ffffff'/><stop offset='0.3' stop-color='%23a5b4fc'/><stop offset='0.7' stop-color='%238b5cf6' stop-opacity='0.65'/><stop offset='1' stop-color='%238b5cf6' stop-opacity='0'/></radialGradient></defs><g stroke='%23a855f7' stroke-width='2.6' stroke-linecap='round'><path d='M24 6 L24 15'/><path d='M24 33 L24 42'/><path d='M6 24 L15 24'/><path d='M33 24 L42 24'/><path d='M11.3 11.3 L17.6 17.6'/><path d='M30.4 30.4 L36.7 36.7'/><path d='M36.7 11.3 L30.4 17.6'/><path d='M17.6 30.4 L11.3 36.7'/></g><g stroke='%23f472b6' stroke-width='1.6' stroke-linecap='round' opacity='0.9'><path d='M17.8 5.6 L19.4 9.6'/><path d='M30.2 5.6 L28.6 9.6'/><path d='M17.8 42.4 L19.4 38.4'/><path d='M30.2 42.4 L28.6 38.4'/></g><circle cx='24' cy='24' r='10' fill='url(%23pg)'/><circle cx='24' cy='24' r='3.2' fill='%23ffffff'/></svg>") 24 24, progress;
 }
 
-:root[data-theme="dark"] #sky,
-:root[data-theme="dark"] #cosmos,
-:root[data-theme="dark"] #daylight,
-:root[data-theme="dark"] .bloom,
-:root[data-theme="dark"] .petal,
-:root[data-theme="dark"] .peekling-character-hit,
-:root[data-theme="dark"] .post-single,
-:root[data-theme="dark"] .home-info {
-    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><path d='M6.5 3.2 L6.5 24.4 L11.9 19.2 L15.3 26.6 L18.9 24.9 L15.5 17.7 L22.6 17.5 Z' fill='%23f8fafc' stroke='%23a5b4fc' stroke-width='1.7' stroke-linejoin='round'/></svg>") 7 3, auto;
+/* 不可用：筒身转灰，火花熄灭 */
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled,
+fieldset:disabled,
+.is-disabled,
+[aria-disabled="true"] {
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'><g transform='translate(29 29) rotate(-45)' opacity='0.6'><path d='M0 15.5 C2 18 -1.8 20.2 0.6 23' stroke='%2394a3b8' stroke-width='1.4' fill='none' stroke-linecap='round'/><rect x='-5.4' y='-14.5' width='10.8' height='30' rx='2.4' fill='%23e2e8f0' stroke='%2394a3b8' stroke-width='1.1'/><rect x='-5.4' y='-6' width='10.8' height='3.6' fill='%23cbd5e1'/><rect x='-5.4' y='4' width='10.8' height='3.6' fill='%23cbd5e1'/><rect x='-6.4' y='-15.6' width='12.8' height='3' rx='1.2' fill='%23cbd5e1'/></g><circle cx='12.5' cy='12.5' r='7' fill='none' stroke='%2394a3b8' stroke-width='1.6' stroke-dasharray='2.6 2.8'/></svg>") 12 12, not-allowed;
 }
 
-/* ---------- 触屏设备不启用自定义光标 ---------- */
+:root[data-theme="dark"] button:disabled,
+:root[data-theme="dark"] input:disabled,
+:root[data-theme="dark"] select:disabled,
+:root[data-theme="dark"] textarea:disabled,
+:root[data-theme="dark"] fieldset:disabled,
+:root[data-theme="dark"] .is-disabled,
+:root[data-theme="dark"] [aria-disabled="true"] {
+    cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 48 48'><g transform='translate(29 29) rotate(-45)' opacity='0.6'><path d='M0 15.5 C2 18 -1.8 20.2 0.6 23' stroke='%2364748b' stroke-width='1.4' fill='none' stroke-linecap='round'/><rect x='-5.4' y='-14.5' width='10.8' height='30' rx='2.4' fill='%23334155' stroke='%2364748b' stroke-width='1.1'/><rect x='-5.4' y='-6' width='10.8' height='3.6' fill='%23475569'/><rect x='-5.4' y='4' width='10.8' height='3.6' fill='%23475569'/><rect x='-6.4' y='-15.6' width='12.8' height='3' rx='1.2' fill='%23475569'/></g><circle cx='12.5' cy='12.5' r='7' fill='none' stroke='%2364748b' stroke-width='1.6' stroke-dasharray='2.6 2.8'/></svg>") 12 12, not-allowed;
+}
+
+
+/* =========================================================
+   6. 触屏设备不启用自定义光标
+   ---------------------------------------------------------
+   没有指针就没有光标，自定义 SVG 只会让某些移动浏览器多解析一次。
+   ========================================================= */
 @media (hover: none) and (pointer: coarse) {
     html,
     body,
     a,
     button,
-    p {
+    p,
+    * {
         cursor: auto !important;
     }
 }
 
-/* ---------- 点击烟花的画布 ---------- */
+
+/* =========================================================
+   7. 点击烟花的画布
+   ========================================================= */
 #click-firework {
     position: fixed;
     inset: 0;
@@ -102,4 +279,5 @@ textarea {
     height: 100%;
     z-index: 95; /* 在内容之上、桌宠之下（桌宠是 2147483646） */
     pointer-events: none;
+    cursor: none;
 }

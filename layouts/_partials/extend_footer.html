@@ -8,6 +8,25 @@
 
         const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+        /* ---------- 加载中的光标 ----------
+           页面还没加载完时给根元素挂 .pending，cursor.css 里对应一支
+           正在燃放的礼花；load 之后移除，回到默认的烟花筒。
+           只在鼠标设备上挂：触屏没有光标，挂了也没用。
+           这里只认 pointer: coarse —— 部分桌面环境（含无头浏览器）会把
+           hover 报成 none，用 hover 判断会误杀桌面端，屏幕上的光标会一直是
+           默认箭头。和 pet-peekling.js 的判断方式保持一致。 */
+        if (!window.matchMedia("(pointer: coarse)").matches) {
+            root.classList.add("pending");
+            const clearPending = () => root.classList.remove("pending");
+            if (doc.readyState === "complete") {
+                clearPending();
+            } else {
+                window.addEventListener("load", clearPending, { once: true });
+                /* 兜底：某个资源一直挂着时，最多 8 秒后回到正常光标 */
+                setTimeout(clearPending, 8000);
+            }
+        }
+
         /* ---------- 顶栏滚动状态 ---------- */
         const header = doc.querySelector(".header");
         const syncHeader = () => {
