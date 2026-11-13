@@ -3,6 +3,7 @@ title: '在终端里翻 S3：lazys3'
 date: 2026-11-06T22:20:00+08:00
 draft: false
 tags: ["go", "tui", "s3", "对象存储"]
+categories: ["开源项目"]
 author: "LinPr"
 description: "用惯了文件管理器的人，第一次面对 aws s3 ls 是会骂人的。"
 ---

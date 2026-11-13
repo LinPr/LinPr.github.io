@@ -1,0 +1,47 @@
+{{- /*
+  分类总览：把 categories 渲染成卡片网格。
+  每张卡片给出分类名、文章数，以及最近三篇的标题。
+  覆盖主题的 taxonomy.html（它只支持无序的标签云）。
+*/ -}}
+
+{{- define "main" }}
+
+{{- $cats := .Data.Terms.ByCount -}}
+
+{{- if .Title }}
+<header class="page-header">
+    <h1>{{ .Title }}</h1>
+    {{- if .Description }}
+    <div class="post-description">{{ .Description }}</div>
+    {{- end }}
+    <div class="taxonomy-summary">
+        共 <strong>{{ len $cats }}</strong> 个分类、<strong>{{ len (where site.RegularPages "Section" "posts") }}</strong> 篇文章
+    </div>
+</header>
+{{- end }}
+
+<div class="category-grid">
+    {{- range $cats }}
+    {{- $term := .Page }}
+    {{- $posts := .Pages.ByDate.Reverse }}
+    <a class="category-card" data-cat="{{ lower $term.LinkTitle }}" href="{{ $term.RelPermalink }}">
+        <div class="category-card-head">
+            <span class="category-name">{{ $term.LinkTitle }}</span>
+            <span class="category-count">{{ .Count }} 篇</span>
+        </div>
+        {{- with $term.Params.description }}
+        <p class="category-desc">{{ . }}</p>
+        {{- end }}
+        <ul class="category-posts">
+            {{- range first 3 $posts }}
+            <li>{{ .LinkTitle }}</li>
+            {{- end }}
+        </ul>
+        {{- if gt (len $posts) 3 }}
+        <span class="category-more">还有 {{ sub (len $posts) 3 }} 篇</span>
+        {{- end }}
+    </a>
+    {{- end }}
+</div>
+
+{{- end }}{{/* end main */}}

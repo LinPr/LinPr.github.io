@@ -3,6 +3,7 @@ title: 'scheduler-plugins 源码拆解：15 个 out-of-tree 插件的实现与�
 date: 2026-11-13T02:20:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "scheduling-framework"]
+categories: ["Kubernetes"]
 series: ["kube-scheduler"]
 weight: 3
 author: "LinPr"

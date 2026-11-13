@@ -3,6 +3,7 @@ title: '常用 Unix 系统调用速查'
 date: 2024-02-09T12:08:15+08:00
 draft: false
 tags: ["linux", "unix", "系统编程"]
+categories: ["系统编程"]
 author: "LinPr"
 description: "常用 Unix 系统调用与 C 库函数速查，按文件、进程、时钟、线程、网络分类。"
 ---

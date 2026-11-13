@@ -3,6 +3,7 @@ title: '让 Grafana 原生查 OpenObserve'
 date: 2026-11-06T23:10:00+08:00
 draft: false
 tags: ["grafana", "openobserve", "可观测性", "go"]
+categories: ["可观测性"]
 author: "LinPr"
 description: "给 OpenObserve 写了个 Grafana 数据源插件，日志、指标、链路都能在 Grafana 里直接查。"
 ---

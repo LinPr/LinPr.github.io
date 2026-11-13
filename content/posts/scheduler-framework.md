@@ -3,6 +3,7 @@ title: '从 OpenResty phase engine 到 scheduler framework：看懂可插拔的�
 date: 2026-11-09T16:00:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "openresty", "nginx", "架构"]
+categories: ["Kubernetes", "架构"]
 series: ["kube-scheduler"]
 weight: 1
 author: "LinPr"

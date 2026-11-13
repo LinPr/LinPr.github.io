@@ -3,6 +3,7 @@ title: 'Kafka 投递语义：至多一次、至少一次与恰好一次是怎么
 date: 2026-11-13T00:20:00+08:00
 draft: false
 tags: ["kafka", "消息队列", "分布式", "exactly-once"]
+categories: ["Kafka"]
 author: "LinPr"
 description: "at-most-once、at-least-once、exactly-once 不是 topic 的开关，而是确认、重试、幂等、位点提交与事务五个机制组合出来的结果。本文结合 franz-go 客户端源码，拆解每个机制到底消除了哪一类丢失或重复，又留下了什么。"
 ---

@@ -3,6 +3,7 @@ title: '把 ~/.ssh/config 变成一个能点的东西：lazyssh'
 date: 2026-11-06T21:40:00+08:00
 draft: false
 tags: ["go", "tui", "ssh", "工具"]
+categories: ["开源项目"]
 author: "LinPr"
 description: "服务器多到自己都记不清的时候，我写了个 TUI 来管 ~/.ssh/config。"
 ---

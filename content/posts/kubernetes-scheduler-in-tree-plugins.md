@@ -3,6 +3,7 @@ title: 'kube-scheduler in-tree 插件源码拆解：24 个插件如何分工'
 date: 2026-11-13T02:10:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "kube-scheduler", "插件"]
+categories: ["Kubernetes"]
 series: ["kube-scheduler"]
 weight: 2
 author: "LinPr"

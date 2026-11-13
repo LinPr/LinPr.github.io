@@ -3,6 +3,7 @@ title: '不换日志库也能接入 OTel：Go 日志桥接模式的原理与实�
 date: 2026-11-11T23:00:00+08:00
 draft: false
 tags: ["go", "opentelemetry", "可观测性", "日志", "slog"]
+categories: ["可观测性", "Go"]
 author: "LinPr"
 description: "Go 的 OpenTelemetry 日志走的是桥接而不是接管：实现日志库自己的扩展点，把记录翻译成 OTel 类型。这一个翻译点，把可扩展性切成了 handler 和 processor 两层。"
 ---

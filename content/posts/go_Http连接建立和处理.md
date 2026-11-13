@@ -3,6 +3,7 @@ title: 'Go HTTP 连接建立与请求处理'
 date: 2024-02-09T12:15:13+08:00
 draft: false
 tags: ["go", "http", "源码阅读"]
+categories: ["Go"]
 author: "LinPr"
 description: "跟着源码走一遍 Go 服务端从 ListenAndServe 到 handler 的完整链路。"
 ---
