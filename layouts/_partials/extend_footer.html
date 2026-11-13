@@ -16,6 +16,25 @@
         syncHeader();
         window.addEventListener("scroll", syncHeader, { passive: true });
 
+        /* ---------- 滚动期间暂停玻璃悬停动效 ----------
+           玻璃表面带 backdrop-filter，滚动时再叠加阴影/位移过渡，
+           合成器要为每张卡片重新采样背景，掉帧很明显。
+           滚动开始打上 .is-scrolling，停下 140ms 后移除；
+           对应的 CSS 用 html:not(.is-scrolling) 关掉悬停效果。 */
+        let scrollTimer = 0;
+        window.addEventListener(
+            "scroll",
+            () => {
+                if (!scrollTimer) root.classList.add("is-scrolling");
+                clearTimeout(scrollTimer);
+                scrollTimer = setTimeout(() => {
+                    root.classList.remove("is-scrolling");
+                    scrollTimer = 0;
+                }, 140);
+            },
+            { passive: true }
+        );
+
         /* ---------- 阅读进度条 ---------- */
         const article = doc.querySelector(".post-single");
         if (article) {

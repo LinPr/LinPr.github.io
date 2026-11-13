@@ -3,7 +3,13 @@
    半透明 + 背景模糊 + 高光边缘 + 内侧反光
    ========================================================= */
 
-/* ---------- 玻璃令牌 ---------- */
+/* ---------- 玻璃令牌 ----------
+   实际用到三档高度，令牌只有两个名字，读代码时按下面的含义对应：
+     --glass-bg        浮起的小控件（标签、按钮、目录），背景透得最多
+     --glass-bg        列表卡片、面板、分类卡
+     --glass-bg-strong 正文卡片 .post-single，长文阅读优先保证对比度
+   三档共用同一套棱边（--glass-rim / --glass-rim-soft）、高光（--glass-sheen）
+   和阴影，改令牌就同时作用于所有玻璃表面，不要在各个组件里重复写字面值。 */
 :root {
     --glass-bg: rgba(255, 252, 246, 0.70);
     --glass-bg-strong: rgba(255, 252, 245, 0.84);
@@ -527,4 +533,29 @@ details.toc .inner {
     #menu .active {
         background-color: var(--tertiary);
     }
+}
+
+/* =========================================================
+   性能：滚动期间暂停玻璃悬停动效
+   ---------------------------------------------------------
+   backdrop-filter 会把元素背后的一块区域重新采样、模糊、再合成。屏幕上有
+   十几张玻璃卡片时，滚动中同时跑悬停阴影过渡和位移过渡，很容易掉帧。
+
+   这里在滚动期间（.is-scrolling 由 extend_footer.html 的滚动监听维护，
+   停下 140ms 后移除）把悬停效果关掉，滚动时不做无谓的重绘。
+
+   另一种常见做法是给列表卡片加 content-visibility: auto + contain-intrinsic-size，
+   让视口外的卡片跳过绘制。实测在本站不合适：每页只有 10 张卡片，省下的绘制
+   有限，而占位高度和真实高度对不齐，滚动到时会带来一百像素左右的文档高度
+   变化，滚动条会跳。收益抵不上这个代价，所以没有采用。
+   ========================================================= */
+html.is-scrolling .post-entry:hover,
+html.is-scrolling .archive-entry:hover,
+html.is-scrolling .terms-tags li a:hover,
+html.is-scrolling #searchResults li:hover {
+    transform: none;
+    box-shadow:
+        inset 0 1px 0 var(--glass-rim),
+        inset 0 0 0 1px var(--glass-rim-soft),
+        var(--glass-shadow);
 }
