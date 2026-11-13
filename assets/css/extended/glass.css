@@ -1,44 +1,16 @@
 /* =========================================================
    液态玻璃（Liquid Glass）
-   ---------------------------------------------------------
-   四层结构，缺一层就会「像半透明色块」而不是玻璃：
-
-     1. 底色      backdrop-filter 模糊背后的内容，加饱和，让颜色透上来
-     2. 主体      tint 染色 + 左上镜面高光 + 斜向流光
-     3. 边缘      1px 高光描边（上缘亮、下缘暗），模拟玻璃棱边的折射
-     4. 折光      底缘偏冷色的内阴影，顶缘偏暖的反光，制造厚度
-
-   关于折射：社区主流做法是 backdrop-filter + SVG feDisplacementMap，
-   效果最接近 iOS 26，但只在 Chromium 生效（Firefox 不支持 SVG 滤镜进
-   backdrop-filter），且 backdrop-filter 本身就是最贵的 CSS 属性之一。
-   本站的背景是全屏动态渐变 + 花瓣/星星层，每个玻璃元素再挂一层位移
-   滤镜会明显掉帧。这里用渐变模拟折射的观感，开销几乎为零，所有浏览器
-   表现一致。
+   半透明 + 背景模糊 + 高光边缘 + 内侧反光
    ========================================================= */
 
-/* ---------- 令牌 ---------- */
+/* ---------- 玻璃令牌 ---------- */
 :root {
-    /* 三层高度：越贴近正文越实在 */
-    --glass-1: rgba(255, 252, 246, 0.54);   /* 浮起的控件：标签、按钮 */
-    --glass-2: rgba(255, 252, 246, 0.70);   /* 卡片、面板 */
-    --glass-3: rgba(255, 252, 245, 0.86);   /* 长文正文，保证对比度 */
-
-    --glass-blur-1: 10px;
-    --glass-blur-2: 16px;
-    --glass-blur-3: 22px;
-
-    /* 棱边：上缘最亮，往下递减 */
-    --glass-rim-hi: rgba(255, 255, 255, 0.95);
-    --glass-rim: rgba(255, 255, 255, 0.80);
+    --glass-bg: rgba(255, 252, 246, 0.70);
+    --glass-bg-strong: rgba(255, 252, 245, 0.84);
+    --glass-blur: 16px;
+    --glass-rim: rgba(255, 255, 255, 0.85);
     --glass-rim-soft: rgba(255, 255, 255, 0.30);
-
-    /* 折光：底缘偏冷，顶缘偏暖，形成「厚度」 */
-    --glass-caustic: rgba(150, 198, 240, 0.22);
-    --glass-warm: rgba(255, 232, 196, 0.35);
-
     --glass-sheen: rgba(255, 255, 255, 0.42);
-    --glass-specular: rgba(255, 255, 255, 0.92);
-
     --glass-shadow: 0 1px 2px rgba(72, 96, 128, 0.05),
                     0 10px 24px -12px rgba(72, 96, 128, 0.18),
                     0 30px 60px -28px rgba(72, 96, 128, 0.30);
@@ -47,179 +19,185 @@
 }
 
 :root[data-theme="dark"] {
-    --glass-1: rgba(22, 32, 50, 0.46);
-    --glass-2: rgba(20, 29, 45, 0.54);
-    --glass-3: rgba(18, 26, 42, 0.76);
-
-    --glass-blur-1: 9px;
-    --glass-blur-2: 14px;
-    --glass-blur-3: 18px;
-
-    --glass-rim-hi: rgba(198, 214, 245, 0.34);
-    --glass-rim: rgba(168, 190, 225, 0.26);
+    --glass-bg: rgba(20, 29, 45, 0.52);
+    --glass-bg-strong: rgba(20, 29, 45, 0.74);
+    --glass-blur: 14px;
+    --glass-rim: rgba(168, 190, 225, 0.28);
     --glass-rim-soft: rgba(140, 165, 205, 0.14);
-
-    --glass-caustic: rgba(99, 130, 210, 0.22);
-    --glass-warm: rgba(150, 180, 230, 0.14);
-
-    --glass-sheen: rgba(150, 180, 230, 0.14);
-    --glass-specular: rgba(190, 214, 255, 0.30);
-
+    --glass-sheen: rgba(150, 180, 230, 0.16);
     --glass-shadow: 0 2px 8px rgba(0, 0, 0, 0.30),
                     0 22px 52px -20px rgba(0, 0, 0, 0.70);
     --glass-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.36),
                           0 30px 66px -22px rgba(0, 0, 0, 0.80);
 }
 
-/* =========================================================
-   表面
-   ========================================================= */
-
-/* 第二层：卡片、面板。绝大多数玻璃元素用这一档。 */
+/* ---------- 通用玻璃表面 ---------- */
+.home-info,
 .post-entry,
 .post-single,
-.home-info,
-.page-header,
-.archive-year,
-.terms-tags,
-#searchbox,
-.post-content.md-content,
-.category-card,
-.series-box,
+.toc,
 .paginav,
-.toc {
-    position: relative;
-    background-color: var(--glass-2);
+.pk-bubble,
+#searchbox input,
+.terms-tags li a,
+.post-tags a {
+    background-color: var(--glass-bg);
     background-image:
-        /* 左上镜面高光：玻璃面向光源 */
-        radial-gradient(120% 80% at 4% -18%,
-            var(--glass-specular) 0%,
-            rgba(255, 255, 255, 0.28) 24%,
-            transparent 50%),
+        /* 左上角镜面高光 */
+        radial-gradient(115% 75% at 6% -16%, rgba(255, 255, 255, 0.92) 0%, rgba(255,255,255,0.35) 26%, transparent 52%),
         /* 斜向流光 */
         linear-gradient(125deg,
-            rgba(255, 255, 255, 0.26) 0%,
-            rgba(255, 255, 255, 0.03) 26%,
+            rgba(255, 255, 255, 0.30) 0%,
+            rgba(255, 255, 255, 0.04) 26%,
             rgba(255, 255, 255, 0) 48%,
-            rgba(255, 255, 255, 0.04) 76%,
-            rgba(255, 255, 255, 0.18) 100%),
+            rgba(255, 255, 255, 0.05) 76%,
+            rgba(255, 255, 255, 0.22) 100%),
         /* 暖色底 */
         linear-gradient(180deg,
-            rgba(255, 247, 234, 0.34) 0%,
-            rgba(255, 252, 246, 0.14) 100%);
-    border: 1px solid var(--glass-rim);
+            rgba(255, 247, 234, 0.42) 0%,
+            rgba(255, 252, 246, 0.20) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.78);
     box-shadow:
-        /* 顶缘内侧反光 */
-        inset 0 1px 0 var(--glass-rim-hi),
-        /* 底缘冷色折光，制造厚度 */
-        inset 0 -1px 0 var(--glass-caustic),
+        inset 0 1px 0 var(--glass-rim),
         inset 0 0 0 1px var(--glass-rim-soft),
         var(--glass-shadow);
-    backdrop-filter: blur(var(--glass-blur-2)) saturate(175%);
-    -webkit-backdrop-filter: blur(var(--glass-blur-2)) saturate(175%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(170%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(170%);
+    will-change: backdrop-filter;
     transition: background-color 0.4s var(--ease), box-shadow 0.45s var(--ease),
         transform 0.45s var(--ease), border-color 0.45s var(--ease);
 }
 
-/* 正文卡片更实一点，长文阅读优先 */
-.post-single {
-    background-color: var(--glass-3);
+/* 卡片悬停：玻璃变亮一点、微微抬起 */
+.post-entry:hover,
+.terms-tags li a:hover,
+.post-tags a:hover {
+    background-color: var(--glass-bg-strong);
+    box-shadow:
+        inset 0 1px 0 var(--glass-rim),
+        inset 0 0 0 1px var(--glass-rim-soft),
+        var(--glass-shadow-hover);
+    transform: translateY(-3px);
 }
 
-/* 深色：叠一层冷色，让玻璃有厚度而不是发灰 */
+/* 正文卡片略不透一点，保证长文阅读对比度 */
+.post-single {
+    background-color: var(--glass-bg-strong);
+}
+
+/* 深色：叠一层深蓝，让玻璃有厚度 */
+:root[data-theme="dark"] .home-info,
 :root[data-theme="dark"] .post-entry,
 :root[data-theme="dark"] .post-single,
-:root[data-theme="dark"] .home-info,
-:root[data-theme="dark"] .page-header,
-:root[data-theme="dark"] .archive-year,
-:root[data-theme="dark"] .terms-tags,
-:root[data-theme="dark"] #searchbox,
-:root[data-theme="dark"] .post-content.md-content,
-:root[data-theme="dark"] .category-card,
-:root[data-theme="dark"] .series-box,
+:root[data-theme="dark"] .toc,
 :root[data-theme="dark"] .paginav,
-:root[data-theme="dark"] .toc {
+:root[data-theme="dark"] .pk-bubble,
+:root[data-theme="dark"] #searchbox input,
+:root[data-theme="dark"] .terms-tags li a,
+:root[data-theme="dark"] .post-tags a {
     background-image:
-        radial-gradient(120% 84% at 6% -12%,
-            rgba(150, 185, 240, 0.20) 0%,
-            transparent 46%),
+        radial-gradient(120% 80% at 8% -10%, rgba(150, 185, 240, 0.22) 0%, transparent 45%),
         linear-gradient(125deg,
-            rgba(160, 195, 245, 0.11) 0%,
+            rgba(160, 195, 245, 0.13) 0%,
             rgba(160, 195, 245, 0.02) 26%,
             rgba(255, 255, 255, 0) 48%,
             rgba(160, 195, 245, 0.03) 76%,
-            rgba(160, 195, 245, 0.09) 100%),
+            rgba(160, 195, 245, 0.10) 100%),
         linear-gradient(180deg,
-            rgba(32, 46, 70, 0.50) 0%,
-            rgba(18, 26, 42, 0.30) 100%);
-    border-color: var(--glass-rim);
-    box-shadow:
-        inset 0 1px 0 var(--glass-rim-hi),
-        inset 0 -1px 0 var(--glass-caustic),
-        inset 0 0 0 1px var(--glass-rim-soft),
-        var(--glass-shadow);
+            rgba(32, 46, 70, 0.55) 0%,
+            rgba(18, 26, 42, 0.35) 100%);
 }
 
-/* ---------- 第一层：小控件 ---------- */
-.logo a,
-#menu a,
-#menu .active,
+/* ---------- 顶栏：更明显的玻璃条 ---------- */
+.header {
+    background: color-mix(in srgb, var(--theme) 55%, transparent);
+    backdrop-filter: blur(18px) saturate(190%);
+    -webkit-backdrop-filter: blur(18px) saturate(190%);
+    box-shadow: inset 0 -1px 0 var(--glass-rim-soft);
+}
+
+.header.is-scrolled {
+    background: color-mix(in srgb, var(--theme) 68%, transparent);
+    border-bottom-color: transparent;
+    box-shadow:
+        inset 0 -1px 0 var(--glass-rim-soft),
+        0 10px 30px -22px rgba(2, 6, 23, 0.55);
+}
+
+/* ---------- 玻璃按钮 ---------- */
 .theme-toggle,
 .top-link,
 .pk-restore,
-.pk-menu,
-#searchbox input,
-#searchResults li,
-.terms-tags li a,
-.post-tags a {
-    background-color: var(--glass-1);
-    background-image: linear-gradient(145deg, var(--glass-sheen), rgba(255, 255, 255, 0) 58%);
+.pk-menu {
+    background-color: var(--glass-bg);
+    background-image: linear-gradient(145deg, var(--glass-sheen), rgba(255, 255, 255, 0) 55%);
     border: 1px solid var(--glass-rim-soft);
-    box-shadow:
-        inset 0 1px 0 var(--glass-rim),
-        inset 0 -1px 0 var(--glass-caustic),
-        0 1px 2px rgba(72, 96, 128, 0.04),
-        0 8px 20px -14px rgba(72, 96, 128, 0.28);
-    backdrop-filter: blur(var(--glass-blur-1)) saturate(180%);
-    -webkit-backdrop-filter: blur(var(--glass-blur-1)) saturate(180%);
-    transition: background-color 0.3s var(--ease), box-shadow 0.3s var(--ease),
-        transform 0.3s var(--ease), border-color 0.3s var(--ease);
+    box-shadow: inset 0 1px 0 var(--glass-rim), var(--glass-shadow);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
 }
 
-/* =========================================================
-   棱边与折光：让表面有「玻璃」而不只是「半透明」
-   ::before 画一圈 1px 的极细渐变边，上亮下暗
-   ========================================================= */
+.top-link {
+    background-color: var(--glass-bg-strong);
+}
+
+/* ---------- 代码块：保留深色，但边缘做玻璃反光 ---------- */
+.post-content .highlight {
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.14),
+        0 12px 32px -18px rgba(2, 6, 23, 0.55);
+}
+
+:root[data-theme="light"] .post-content .highlight {
+    background-color: rgba(250, 244, 232, 0.92);
+    backdrop-filter: blur(10px) saturate(140%);
+    -webkit-backdrop-filter: blur(10px) saturate(140%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.85),
+        0 12px 30px -18px rgba(120, 92, 62, 0.42);
+}
+
+/* ---------- 分隔线/边框换成玻璃感的细高光 ---------- */
+:root[data-theme="light"] .header,
+:root[data-theme="light"] .post-meta {
+    color: var(--secondary);
+}
+
+/* ---------- 不支持 backdrop-filter 时的降级 ---------- */
+@supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
+    .home-info,
+    .post-entry,
+    .post-single,
+    .toc,
+    .paginav,
+    .header {
+        background-color: var(--entry);
+    }
+}
+
+/* ---------- 减少动效 ---------- */
+@media (prefers-reduced-motion: reduce) {
+    .post-entry:hover,
+    .terms-tags li a:hover,
+    .post-tags a:hover {
+        transform: none;
+    }
+}
+
+
+/* ---------- 液态玻璃的"折射边缘" ---------- */
 .post-entry::before,
-.post-single::before,
-.home-info::before,
-.page-header::before,
-.series-box::before,
-.archive-year::before,
-.terms-tags::before,
-#searchbox::before {
+.post-single::before {
     content: "";
     position: absolute;
     inset: 0;
     border-radius: inherit;
     pointer-events: none;
-    padding: 1px;
     background:
-        /* 上缘：暖白高光 */
-        linear-gradient(180deg,
-            rgba(255, 255, 255, 0.85) 0%,
-            rgba(255, 255, 255, 0.10) 12%,
-            transparent 26%),
-        /* 下缘：冷色折光，像光穿过玻璃底边 */
-        linear-gradient(0deg,
-            rgba(150, 198, 240, 0.34) 0%,
-            transparent 14%),
-        /* 左右两侧极淡的棱边 */
-        linear-gradient(90deg,
-            rgba(255, 255, 255, 0.22) 0%,
-            transparent 6%,
-            transparent 94%,
-            rgba(150, 198, 240, 0.16) 100%);
+        /* 上缘内侧反光 */
+        linear-gradient(180deg, rgba(255, 255, 255, 0.55) 0%, transparent 14%),
+        /* 下缘内侧折射 */
+        linear-gradient(0deg, rgba(255, 255, 255, 0.18) 0%, transparent 10%);
     -webkit-mask:
         linear-gradient(#000 0 0) content-box,
         linear-gradient(#000 0 0);
@@ -228,138 +206,101 @@
         linear-gradient(#000 0 0) content-box,
         linear-gradient(#000 0 0);
     mask-composite: exclude;
-    z-index: 0;
+    padding: 1px;
     opacity: 0.9;
-    transition: opacity 0.45s var(--ease);
+    z-index: 0;
 }
 
 :root[data-theme="dark"] .post-entry::before,
-:root[data-theme="dark"] .post-single::before,
-:root[data-theme="dark"] .home-info::before,
-:root[data-theme="dark"] .page-header::before,
-:root[data-theme="dark"] .series-box::before,
-:root[data-theme="dark"] .archive-year::before,
-:root[data-theme="dark"] .terms-tags::before,
-:root[data-theme="dark"] #searchbox::before {
+:root[data-theme="dark"] .post-single::before {
     background:
-        linear-gradient(180deg,
-            rgba(190, 214, 255, 0.42) 0%,
-            rgba(190, 214, 255, 0.06) 12%,
-            transparent 28%),
-        linear-gradient(0deg,
-            rgba(99, 130, 210, 0.32) 0%,
-            transparent 16%),
-        linear-gradient(90deg,
-            rgba(190, 214, 255, 0.14) 0%,
-            transparent 6%,
-            transparent 94%,
-            rgba(99, 130, 210, 0.18) 100%);
+        linear-gradient(180deg, rgba(170, 200, 250, 0.30) 0%, transparent 16%),
+        linear-gradient(0deg, rgba(140, 175, 230, 0.12) 0%, transparent 12%);
 }
 
-/* =========================================================
-   悬停：光在玻璃上移动
-   ========================================================= */
-.post-entry:hover,
-.terms-tags li a:hover,
-.post-tags a:hover,
-.archive-entry:hover,
-.category-card:hover,
-#searchResults li:hover {
-    background-color: var(--glass-2);
-    box-shadow:
-        inset 0 1px 0 var(--glass-rim-hi),
-        inset 0 -1px 0 var(--glass-caustic),
-        inset 0 0 0 1px var(--glass-rim-soft),
-        var(--glass-shadow-hover);
-    transform: translateY(-3px);
+/* 卡片内容压在反光层之上。
+   注意排除 .entry-link —— 它是覆盖整张卡片的绝对定位透明链接，
+   一旦被改成 position: relative 就会塌掉，导致整卡无法点击。 */
+.post-entry > *:not(.entry-link),
+.post-single > *,
+.home-info > * {
+    position: relative;
+    z-index: 1;
 }
 
-/* 悬停时高光从左上扫向右上 */
+/* 链接层仍然盖在最上面 */
+.post-entry > .entry-link {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+}
+
+/* 悬停时玻璃"流动"一下 */
 .post-entry:hover::before {
     opacity: 1;
     background:
-        linear-gradient(160deg,
-            rgba(255, 255, 255, 0.96) 0%,
-            rgba(255, 255, 255, 0.12) 30%,
-            transparent 44%),
-        linear-gradient(0deg, rgba(150, 198, 240, 0.42) 0%, transparent 14%);
+        linear-gradient(160deg, rgba(255, 255, 255, 0.85) 0%, transparent 30%),
+        linear-gradient(0deg, rgba(255, 255, 255, 0.25) 0%, transparent 12%);
+}
+
+:root[data-theme="dark"] .post-entry:hover::before {
+    background:
+        linear-gradient(160deg, rgba(180, 210, 255, 0.42) 0%, transparent 32%),
+        linear-gradient(0deg, rgba(150, 185, 240, 0.16) 0%, transparent 12%);
 }
 
 /* =========================================================
-   顶栏：更薄、更清透的一层
+   全方位液态玻璃：补齐上面没有覆盖到的部分
    ========================================================= */
-.header {
-    background: color-mix(in srgb, var(--theme) 58%, transparent);
-    backdrop-filter: blur(18px) saturate(190%);
-    -webkit-backdrop-filter: blur(18px) saturate(190%);
-    box-shadow: inset 0 -1px 0 var(--glass-rim-soft);
+
+/* ---------- 顶栏内部的 logo 胶囊与菜单项 ---------- */
+.logo a,
+#menu a,
+#menu .active {
+    border-radius: 10px;
+    transition: background-color 0.3s var(--ease), box-shadow 0.3s var(--ease),
+        color 0.3s var(--ease);
 }
 
-.header.is-scrolled {
-    background: color-mix(in srgb, var(--theme) 72%, transparent);
-    border-bottom-color: transparent;
-    box-shadow:
-        inset 0 -1px 0 var(--glass-rim-soft),
-        0 10px 30px -22px rgba(2, 6, 23, 0.55);
-}
-
-/* 顶栏底部一条极细的折光线，向下渐隐 */
-.header::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 1px;
-    pointer-events: none;
-    background: linear-gradient(90deg,
-        transparent,
-        var(--glass-caustic) 22%,
-        var(--glass-rim) 50%,
-        var(--glass-caustic) 78%,
-        transparent);
-    opacity: 0.6;
-}
-
-/* ---------- logo 胶囊 ---------- */
 .logo a {
     padding: 4px 10px 4px 6px;
+    background-color: var(--glass-bg);
+    background-image: linear-gradient(145deg, var(--glass-sheen), rgba(255, 255, 255, 0) 55%);
+    border: 1px solid var(--glass-rim-soft);
+    box-shadow:
+        inset 0 1px 0 var(--glass-rim),
+        0 1px 2px rgba(72, 96, 128, 0.04),
+        0 6px 16px -12px rgba(72, 96, 128, 0.28);
+    backdrop-filter: blur(14px) saturate(180%);
+    -webkit-backdrop-filter: blur(14px) saturate(180%);
 }
 
-/* ---------- 菜单项 ---------- */
+.logo a:hover {
+    background-color: var(--glass-bg-strong);
+}
+
 #menu a {
     padding: 5px 11px;
-    border-color: transparent;
-    box-shadow: none;
-    background-image: none;
-    background-color: transparent;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
 }
 
 #menu a:hover,
 #menu .active {
-    background-color: var(--glass-1);
-    background-image: linear-gradient(145deg, var(--glass-sheen), rgba(255, 255, 255, 0) 58%);
-    box-shadow:
-        inset 0 1px 0 var(--glass-rim),
-        inset 0 -1px 0 var(--glass-caustic);
+    background-color: var(--glass-bg);
+    background-image: linear-gradient(145deg, var(--glass-sheen), rgba(255, 255, 255, 0) 55%);
+    box-shadow: inset 0 1px 0 var(--glass-rim);
 }
 
-/* =========================================================
-   目录：卡片里的嵌层玻璃，比外层更薄
-   ========================================================= */
+/* ---------- 目录（TOC）：卡片里嵌一块更薄的玻璃 ---------- */
+/* 主题用的是 details.toc，选择器要比它更具体才盖得住 */
 .toc,
 details.toc,
 :root[data-theme="dark"] details.toc {
-    background-color: var(--glass-1);
-    background-image: linear-gradient(145deg, var(--glass-sheen), rgba(255, 255, 255, 0) 58%);
+    background-color: var(--glass-bg);
+    background-image: linear-gradient(145deg, var(--glass-sheen), rgba(255, 255, 255, 0) 55%);
     border: 1px solid var(--glass-rim-soft);
-    box-shadow:
-        inset 0 1px 0 var(--glass-rim),
-        inset 0 -1px 0 var(--glass-caustic);
-    backdrop-filter: blur(var(--glass-blur-1)) saturate(150%);
-    -webkit-backdrop-filter: blur(var(--glass-blur-1)) saturate(150%);
+    box-shadow: inset 0 1px 0 var(--glass-rim);
+    backdrop-filter: blur(10px) saturate(150%);
+    -webkit-backdrop-filter: blur(10px) saturate(150%);
 }
 
 .toc .inner,
@@ -376,12 +317,10 @@ details.toc .inner {
     background-color: rgba(99, 102, 241, 0.09);
 }
 
-/* =========================================================
-   代码
-   ========================================================= */
-
-/* 行内代码：小玻璃胶囊。这里不能加 backdrop-filter——
-   Chrome 对行内元素做 backdrop 采样时会把同一行的文字一起模糊掉。 */
+/* ---------- 行内代码：小玻璃胶囊 ---------- */
+/* 主题给行内代码用的是 --code-bg 纯色，这里换成半透明白 */
+/* 注意：这里不能加 backdrop-filter。Chrome 对行内元素做 backdrop 采样时
+   会把同一行的文字一起模糊掉，表现为代码和整行文字发灰、看不清。 */
 .post-content :not(pre) > code,
 .post-content code {
     background: rgba(255, 255, 255, 0.55) !important;
@@ -395,18 +334,11 @@ details.toc .inner {
     box-shadow: inset 0 1px 0 rgba(168, 190, 225, 0.18);
 }
 
-/* 代码块：外框玻璃 */
+/* ---------- 代码块：外框玻璃 ---------- */
 .post-content .highlight,
 .post-content pre {
     border: 1px solid var(--glass-rim-soft);
     border-radius: 14px;
-}
-
-.post-content .highlight {
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.14),
-        inset 0 -1px 0 rgba(150, 198, 240, 0.12),
-        0 12px 32px -18px rgba(2, 6, 23, 0.55);
 }
 
 :root[data-theme="dark"] .post-content .highlight,
@@ -414,23 +346,11 @@ details.toc .inner {
     border-color: rgba(168, 190, 225, 0.18);
 }
 
-:root[data-theme="light"] .post-content .highlight {
-    background-color: rgba(250, 244, 232, 0.92);
-    backdrop-filter: blur(10px) saturate(140%);
-    -webkit-backdrop-filter: blur(10px) saturate(140%);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.85),
-        inset 0 -1px 0 rgba(150, 198, 240, 0.18),
-        0 12px 30px -18px rgba(120, 92, 62, 0.42);
-}
-
-/* =========================================================
-   表格：玻璃卡片，窄屏可横向滚动
-   ---------------------------------------------------------
-   滚动容器由 layouts/_markup/render-table.html 生成。
-   table 本身必须保持 display: table——改成 block 会让 thead/tbody
-   各自计算列宽，表头和表体就对不齐了。
-   ========================================================= */
+/* ---------- 表格：玻璃卡片，窄屏可横向滚动 ---------- */
+/* 滚动容器由 layouts/_markup/render-table.html 生成。
+   注意：table 本身保持 display: table，不能改成 block——
+   一旦改成 block，thead 和 tbody 会变成两个独立的表格上下文，
+   列宽各自计算，表头和表体就对不齐了。 */
 .post-content .table-scroll {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -439,30 +359,31 @@ details.toc .inner {
 }
 
 .post-content table {
+    /* 主题的 reset.css 给 table 设了 display: block，
+       这里显式改回 table，保证表头和表体共用一个表格布局上下文。 */
     display: table;
     border-collapse: separate;
     border-spacing: 0;
     border: 1px solid var(--glass-rim-soft);
     border-radius: 14px;
-    background-color: var(--glass-1);
-    backdrop-filter: blur(var(--glass-blur-1)) saturate(150%);
-    -webkit-backdrop-filter: blur(var(--glass-blur-1)) saturate(150%);
-    box-shadow:
-        inset 0 1px 0 var(--glass-rim),
-        inset 0 -1px 0 var(--glass-caustic);
+    background-color: var(--glass-bg);
+    backdrop-filter: blur(10px) saturate(150%);
+    -webkit-backdrop-filter: blur(10px) saturate(150%);
+    box-shadow: inset 0 1px 0 var(--glass-rim);
     width: 100%;
     margin-bottom: 0;
 }
 
 /* 窄屏：table 的 width:100% 会把列压到只剩几十像素，
-   长文本列被迫逐字换行，行高被撑得极高。给一个最小宽度，
-   超出的部分交给外层容器横向滚动。 */
+   长文本列被迫逐字换行，行高被撑得极高，难以阅读。
+   这里给一个最小宽度，超出的部分交给外层容器横向滚动。 */
 @media (max-width: 720px) {
     .post-content table {
         min-width: 40rem;
     }
 }
 
+/* 第一行/最后一行的圆角由容器负责，这里去掉单元格自带的边框干扰 */
 .post-content th {
     background-color: rgba(255, 255, 255, 0.42);
     box-shadow: inset 0 -1px 0 var(--glass-rim-soft);
@@ -477,6 +398,7 @@ details.toc .inner {
     border-top: 1px solid var(--glass-rim-soft);
 }
 
+/* 表格滚动条也做细一点 */
 .post-content .table-scroll::-webkit-scrollbar {
     height: 6px;
 }
@@ -485,24 +407,20 @@ details.toc .inner {
     border-radius: 99px;
 }
 
-/* ---------- 引用块 ---------- */
+/* ---------- 引用块：左侧高光条 + 玻璃底 ---------- */
 .post-content blockquote {
     border-inline-start: 3px solid rgba(99, 102, 241, 0.45);
-    background-color: rgba(255, 255, 255, 0.42);
+    background-color: rgba(255, 255, 255, 0.45);
     border-radius: 0 14px 14px 0;
     padding: 12px 16px;
-    backdrop-filter: blur(var(--glass-blur-1)) saturate(150%);
-    -webkit-backdrop-filter: blur(var(--glass-blur-1)) saturate(150%);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.8),
-        inset 0 -1px 0 rgba(150, 198, 240, 0.20);
+    backdrop-filter: blur(10px) saturate(150%);
+    -webkit-backdrop-filter: blur(10px) saturate(150%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 :root[data-theme="dark"] .post-content blockquote {
     background-color: rgba(150, 180, 230, 0.08);
-    box-shadow:
-        inset 0 1px 0 rgba(168, 190, 225, 0.14),
-        inset 0 -1px 0 rgba(99, 130, 210, 0.20);
+    box-shadow: inset 0 1px 0 rgba(168, 190, 225, 0.14);
 }
 
 /* ---------- 分割线：一道细高光 ---------- */
@@ -512,7 +430,7 @@ details.toc .inner {
     background: linear-gradient(90deg,
         transparent,
         var(--glass-rim-soft) 18%,
-        var(--glass-rim-hi) 50%,
+        rgba(255, 255, 255, 0.9) 50%,
         var(--glass-rim-soft) 82%,
         transparent);
 }
@@ -529,60 +447,74 @@ details.toc .inner {
 /* ---------- 页脚 ---------- */
 .footer {
     border-top: 1px solid var(--glass-rim-soft);
-    background-color: color-mix(in srgb, var(--theme) 42%, transparent);
-    backdrop-filter: blur(var(--glass-blur-1)) saturate(140%);
-    -webkit-backdrop-filter: blur(var(--glass-blur-1)) saturate(140%);
-    box-shadow: inset 0 1px 0 var(--glass-warm);
+    background-color: color-mix(in srgb, var(--theme) 40%, transparent);
+    backdrop-filter: blur(10px) saturate(140%);
+    -webkit-backdrop-filter: blur(10px) saturate(140%);
 }
 
-/* =========================================================
-   内容压在高光层之上
-   .entry-link 是覆盖整张卡片的透明链接，不能被改成 relative，
-   否则整卡无法点击。
-   ========================================================= */
-.post-entry > *:not(.entry-link),
-.post-single > *,
-.home-info > *,
-.category-card > *,
-.page-header > *,
-.archive-year > * {
-    position: relative;
-    z-index: 1;
+/* ---------- 归档 / 搜索 / 标签页 ---------- */
+.archive-entry,
+.post-tags a,
+.terms-tags li a {
+    background-color: var(--glass-bg);
+    background-image: linear-gradient(145deg, var(--glass-sheen), rgba(255, 255, 255, 0) 55%);
+    border: 1px solid var(--glass-rim-soft);
+    box-shadow:
+        inset 0 1px 0 var(--glass-rim),
+        0 1px 2px rgba(72, 96, 128, 0.04),
+        0 8px 20px -14px rgba(72, 96, 128, 0.28);
+    backdrop-filter: blur(14px) saturate(170%);
+    -webkit-backdrop-filter: blur(14px) saturate(170%);
+    border-radius: 14px;
+    transition: background-color 0.3s var(--ease), box-shadow 0.3s var(--ease),
+        transform 0.3s var(--ease);
 }
 
-.post-entry > .entry-link {
-    position: absolute;
-    inset: 0;
-    z-index: 2;
+.archive-entry:hover,
+.terms-tags li a:hover,
+.post-tags a:hover {
+    background-color: var(--glass-bg-strong);
+    transform: translateY(-1px);
 }
 
-/* 分类卡片用左侧色条代替棱边高光，见 categories.css */
+/* 搜索框 */
+#searchbox input {
+    background-color: var(--glass-bg);
+    border: 1px solid var(--glass-rim-soft);
+    box-shadow: inset 0 1px 0 var(--glass-rim);
+    backdrop-filter: blur(14px) saturate(170%);
+    -webkit-backdrop-filter: blur(14px) saturate(170%);
+    border-radius: 12px;
+}
 
-/* =========================================================
-   降级与偏好
-   ========================================================= */
+#searchResults li {
+    background-color: var(--glass-bg);
+    border: 1px solid var(--glass-rim-soft);
+    border-radius: 12px;
+    box-shadow: inset 0 1px 0 var(--glass-rim);
+    backdrop-filter: blur(14px) saturate(170%);
+    -webkit-backdrop-filter: blur(14px) saturate(170%);
+    margin-bottom: 8px;
+}
 
-/* 不支持 backdrop-filter：退回不透明背景，保住可读性 */
+/* ---------- 分享按钮 / 编辑链接 ---------- */
+.share-buttons a,
+.post-meta a,
+.edit-post {
+    border-radius: 9px;
+    transition: background-color 0.25s var(--ease);
+}
+
+.share-buttons a:hover,
+.post-meta a:hover,
+.edit-post:hover {
+    background-color: rgba(99, 102, 241, 0.10);
+}
+
+/* ---------- 不支持 backdrop-filter 时的降级：补上新增的几处 ---------- */
 @supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
-    .home-info,
-    .post-entry,
-    .post-single,
-    .toc,
-    .paginav,
-    .page-header,
-    .archive-year,
-    .terms-tags,
-    #searchbox,
-    .post-content.md-content,
-    .category-card,
-    .series-box,
-    .header {
-        background-color: var(--entry);
-    }
-
     .logo a,
-    #menu a:hover,
-    #menu .active,
+    .toc,
     .archive-entry,
     .post-content table,
     .post-content blockquote,
@@ -591,38 +523,8 @@ details.toc .inner {
     .footer {
         background-color: var(--entry);
     }
-}
-
-/* 系统开启「降低透明度」时，直接用实色，不猜用户意图 */
-@media (prefers-reduced-transparency: reduce) {
-    .post-entry,
-    .post-single,
-    .home-info,
-    .page-header,
-    .archive-year,
-    .terms-tags,
-    #searchbox,
-    .post-content.md-content,
-    .category-card,
-    .series-box,
-    .toc,
-    .paginav,
-    .header,
-    .footer {
-        backdrop-filter: none;
-        -webkit-backdrop-filter: none;
-        background-color: var(--entry);
-        background-image: none;
-    }
-}
-
-/* 减少动效 */
-@media (prefers-reduced-motion: reduce) {
-    .post-entry:hover,
-    .terms-tags li a:hover,
-    .post-tags a:hover,
-    .archive-entry:hover,
-    .category-card:hover {
-        transform: none;
+    #menu a:hover,
+    #menu .active {
+        background-color: var(--tertiary);
     }
 }

@@ -48,7 +48,7 @@
     padding: 1.35rem 1.5rem;
     border: 1px solid var(--glass-rim-soft);
     border-radius: var(--radius);
-    background-color: var(--glass-2);
+    background-color: var(--glass-bg);
     background-image: linear-gradient(145deg, var(--glass-sheen), rgba(255, 255, 255, 0) 55%);
     box-shadow: inset 0 1px 0 var(--glass-rim), var(--glass-shadow);
     backdrop-filter: blur(14px) saturate(170%);
@@ -73,7 +73,7 @@
 
 .category-card:hover {
     transform: translateY(-3px);
-    background-color: var(--glass-2);
+    background-color: var(--glass-bg-strong);
     border-color: color-mix(in srgb, var(--cat-a) 35%, var(--glass-rim-soft));
     box-shadow: inset 0 1px 0 var(--glass-rim), var(--glass-shadow-hover);
 }
@@ -215,12 +215,12 @@
 
 /* ---------- 深色 ---------- */
 :root[data-theme="dark"] .category-card {
-    background-color: var(--glass-2);
+    background-color: var(--glass-bg);
     border-color: rgba(168, 190, 225, 0.18);
 }
 
 :root[data-theme="dark"] .category-card:hover {
-    background-color: var(--glass-2);
+    background-color: var(--glass-bg-strong);
 }
 
 /* ---------- 窄屏 ---------- */
