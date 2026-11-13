@@ -41,7 +41,7 @@ params:
   ShowRssButtonInSectionTermList: true
   UseHugoToc: true
   showtoc: true
-  tocopen: false
+  tocopen: true
   hidemeta: false
   hideSummary: false
   disableSpecial1stPost: false
