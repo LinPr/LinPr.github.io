@@ -148,10 +148,24 @@
         );
     }
 
-    // 等首屏渲染完成后再启动，避免和正文抢带宽
-    if (document.readyState === "complete") {
-        setTimeout(boot, 600);
+    /* 启动时机：DOM 解析完就启动，不再等 window.load。
+       以前等 load + 600ms 是为了「不和正文抢带宽」，但 load 要等全部图片、
+       花瓣 SVG、文章插图都下载完，长文章上这一等就是好几秒。
+       现在资源已经在 <head> 里预加载（见 extend_head.html），带宽竞争在
+       解析阶段就发生了，再等 load 只会白白推迟首帧。
+       用 requestIdleCallback 让出主线程，先完成首屏渲染；timeout 保证繁忙时
+       最多推迟 300ms。脚本放在 body 末尾，执行时宠物要挂载的 body 已经存在。 */
+    const schedule = window.requestIdleCallback
+        ? (fn) => window.requestIdleCallback(fn, { timeout: 300 })
+        : (fn) => setTimeout(fn, 0);
+
+    /* 本脚本和 runtime（peekling.min.js）都是 async，谁先下载完谁先执行，
+       顺序不保证。runtime 还没就绪时，等它的 load 事件再启动。 */
+    const start = () => schedule(boot);
+    if (window.Peekling) {
+        start();
     } else {
-        window.addEventListener("load", () => setTimeout(boot, 600), { once: true });
+        const runtime = document.getElementById("peekling-runtime");
+        if (runtime) runtime.addEventListener("load", start, { once: true });
     }
 })();

@@ -137,7 +137,10 @@
 {{- end }}
 
 {{- /* 桌宠：Peekling（Apache-2.0，https://peekling.com/），自托管运行时 + 角色包 */ -}}
-<script defer src="/vendor/peekling/peekling.min.js"></script>
+{{- /* 桌宠两份脚本都用 async：defer 脚本要排在流星、花瓣、烟花之后、
+       等 DOMContentLoaded 才执行，长文章上要多等好几秒；async 下载完就跑。
+       两者的先后由 pet-peekling.js 自己等待 runtime 的 load 事件保证。 */ -}}
+<script async id="peekling-runtime" src="/vendor/peekling/peekling.min.js"></script>
 {{- /* 点击烟花：全屏 canvas 粒子，仅鼠标设备启用 */ -}}
 {{- with resources.Get "js/click-firework.js" }}
     {{- $fw := . | minify | fingerprint "sha256" }}
@@ -146,5 +149,5 @@
 
 {{- with resources.Get "js/pet-peekling.js" }}
     {{- $js := . | minify | fingerprint "sha256" }}
-<script defer src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}" crossorigin="anonymous"></script>
+<script async src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}" crossorigin="anonymous"></script>
 {{- end }}

@@ -1,0 +1,20 @@
+{{- /*
+  桌宠资源预加载。
+
+  不预加载时，桌宠资源要等页尾脚本执行、再串行请求 character.json → 图集，
+  高清屏的 atlas-2x.png 有 1MB，是首帧最慢的一段。在 <head> 里提前发出请求，
+  下载就和正文、背景图并行进行，脚本启动时数据基本已经在缓存里。
+
+  几个细节：
+  - 运行时用不带参数的 fetch() 取资源（mode=cors，credentials=same-origin），
+    preload 必须写 as="fetch" + crossorigin 才能被复用，否则会下载两遍；
+  - 运行时按 min(devicePixelRatio, 2) 选图集，这里用 media 只预加载会被选中的那张；
+  - 触屏设备不启动桌宠（pet-peekling.js 判断 pointer: coarse），media 里一并排除；
+  - 图集和运行时脚本标 fetchpriority="low"：1MB 的图集如果和 HTML、样式表同级，
+    会把正文首屏拖慢；降级后浏览器先把关键资源下完，再用剩余带宽取图集；
+  - 局域网 IP + http 预览时运行时起不来，预加载只是白下，不影响页面。
+*/ -}}
+<link rel="preload" href="/vendor/peekling/peekling.min.js" as="script" fetchpriority="low" media="(not (pointer: coarse))">
+<link rel="preload" href="/vendor/peekling/packs/pip/character.json" as="fetch" crossorigin media="(not (pointer: coarse))">
+<link rel="preload" href="/vendor/peekling/packs/pip/atlas-1x.png" as="fetch" crossorigin fetchpriority="low" media="(not (pointer: coarse)) and (max-resolution: 1dppx)">
+<link rel="preload" href="/vendor/peekling/packs/pip/atlas-2x.png" as="fetch" crossorigin fetchpriority="low" media="(not (pointer: coarse)) and (min-resolution: 1.01dppx)">
