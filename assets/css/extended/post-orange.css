@@ -1,0 +1,127 @@
+/* =========================================================
+   文章页的橙色边框
+   列表卡片悬停时是橙色渐变环（custom.css 的 .post-entry::after），
+   点进文章后沿用同一套橙色：正文卡片外圈、目录、代码块、表格、
+   引用块、系列卡片和小标题装饰线都换成橙色。
+
+   选择器统一以 html:root .post-single 开头，是为了压过
+   glass.css / series.css 里带 [data-theme="dark"] 的同名规则——
+   extended/*.css 按文件名字母序拼接，series.css 排在本文件之后。
+   ========================================================= */
+
+:root {
+    --orange-1: #ff8a3d;
+    --orange-2: #ffb020;
+    --orange-3: #ff6b4a;
+    --orange-ring: linear-gradient(120deg, var(--orange-1), var(--orange-2) 45%, var(--orange-3));
+    --orange-line: rgba(255, 138, 61, 0.42);
+    --orange-line-soft: rgba(255, 138, 61, 0.24);
+    --orange-fill: rgba(255, 138, 61, 0.08);
+}
+
+:root[data-theme="dark"] {
+    --orange-line: rgba(255, 160, 80, 0.45);
+    --orange-line-soft: rgba(255, 160, 80, 0.24);
+    --orange-fill: rgba(255, 150, 70, 0.10);
+}
+
+/* ---------- 正文卡片：常驻的橙色渐变环 ---------- */
+/* 比列表卡片悬停时细一些（1.5px），长时间阅读不刺眼 */
+html:root .post-single {
+    border-color: transparent;
+}
+
+html:root .post-single::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1.5px;
+    background: var(--orange-ring);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 2;
+}
+
+/* ---------- 目录 ---------- */
+html:root .post-single .toc {
+    border-color: var(--orange-line);
+}
+
+html:root .post-single .toc .inner {
+    border-inline-start-color: var(--orange-line-soft);
+}
+
+/* ---------- 小标题装饰线 ---------- */
+html:root .post-single .post-content h2 {
+    border-bottom-color: var(--orange-line-soft);
+    background-image: linear-gradient(90deg, var(--orange-1), var(--orange-2));
+}
+
+html:root .post-single .post-content h3::before {
+    background: linear-gradient(180deg, var(--orange-1), var(--orange-3));
+}
+
+/* ---------- 代码块 ---------- */
+html:root .post-single .post-content .highlight,
+html:root .post-single .post-content pre {
+    border-color: var(--orange-line);
+}
+
+/* 代码块里的 pre 嵌在 .highlight 中，只保留外层一道边 */
+html:root .post-single .post-content .highlight pre {
+    border-color: transparent;
+}
+
+/* 行内代码：边框淡一些，避免正文里到处是橙框 */
+html:root .post-single .post-content :not(pre) > code {
+    border-color: var(--orange-line-soft);
+}
+
+/* ---------- 表格 ---------- */
+html:root .post-single .post-content table {
+    border-color: var(--orange-line);
+}
+
+html:root .post-single .post-content th {
+    background-color: var(--orange-fill);
+    box-shadow: inset 0 -1px 0 var(--orange-line);
+}
+
+html:root .post-single .post-content td {
+    border-top-color: var(--orange-line-soft);
+}
+
+html:root .post-single .post-content .table-scroll::-webkit-scrollbar-thumb {
+    background: var(--orange-line);
+}
+
+/* ---------- 引用块 ---------- */
+html:root .post-single .post-content blockquote {
+    border-inline-start-color: var(--orange-1);
+    background-color: var(--orange-fill);
+}
+
+/* ---------- 分割线 ---------- */
+html:root .post-single .post-content hr {
+    background: linear-gradient(90deg, transparent, var(--orange-line) 18%,
+        var(--orange-2) 50%, var(--orange-line) 82%, transparent);
+}
+
+/* ---------- 系列卡片 ---------- */
+html:root .post-single .series-box {
+    border-color: var(--orange-line);
+}
+
+/* ---------- 标签与上下篇导航 ---------- */
+html:root .post-single .post-tags a,
+html:root .post-single .paginav {
+    border-color: var(--orange-line-soft);
+}
+
+html:root .post-single .post-tags a:hover {
+    border-color: var(--orange-line);
+}
