@@ -1,11 +1,11 @@
 ---
-title: '不换日志库也能接入 OTel：Go 日志桥接模式的原理与实战'
+title: 'Go 日志接入 OpenTelemetry：桥接、handler 与 processor 的分工'
 date: 2026-11-11T23:00:00+08:00
 draft: false
 tags: ["go", "opentelemetry", "可观测性", "日志", "slog"]
 categories: ["可观测性", "Go"]
 author: "LinPr"
-description: "Go 的 OpenTelemetry 日志走的是桥接而不是接管：实现日志库自己的扩展点，把记录翻译成 OTel 类型。这一个翻译点，把可扩展性切成了 handler 和 processor 两层。"
+description: "Go 的 OpenTelemetry 日志走的是桥接而不是接管：实现日志库自己的扩展点，把记录翻译成 OTel 类型。这一个翻译点，把可扩展性切成了 handler 和 processor 两层，也决定了级别过滤该放在哪一层。"
 ---
 
 给一个已经上线的 Go 服务接 OpenTelemetry，最麻烦的往往不是 trace 和 metric，而是日志。
@@ -374,7 +374,31 @@ func (p *severityProcessor) Enabled(ctx context.Context, param log.EnabledParame
 
 `OnEmit` 里再比一次不是冗余。`Enabled` 只是上层的短路优化，SDK 并不保证调用方一定先问过 `Enabled`。
 
-### 3.4 只写两个方法：内嵌接口的用处
+### 3.4 为什么是「至少一个」，而不是「全部同意」
+
+第一次看到这段循环，很容易觉得写反了：过滤器链不应该是一个不通过，整条链都不处理吗？
+
+关键在于，SDK 里的多个 processor 不是串成的一条过滤链，而是并列挂在 provider 上的几个消费者。`Logger.Enabled` 问的是「这条记录有没有人要」，不是「是不是所有人都同意」。
+
+举个例子。注册两个 processor：一个是 `severityProcessor{floor: WARN}` 包着的 OTLP 批处理，另一个是写本地文件、不做过滤的批处理。来了一条 INFO：
+
+- 第一个返回 false：WARN 以下不发 OTLP，它不要；
+- 第二个返回 true：本地文件收所有级别，它要。
+
+如果按「全部同意」聚合，这条 INFO 在 `Enabled` 阶段就被拦下，本地文件永远收不到，相当于第一个 processor 替所有人做了决定。按「至少一个」聚合，记录照常构造，然后在 `OnEmit` 里各管各的：`severityProcessor` 丢掉，文件 processor 收下。
+
+所以一个 processor 的 `Enabled` 返回 false，含义是「我不处理」，不是「谁都别处理」。`Processor` 接口文档写的就是这条约定：
+
+> The SDK's Logger.Enabled returns false if all the registered processors return false. Otherwise, it returns true.
+
+还有两个细节，网上的资料经常说错：
+
+1. **没有 processor 时返回 false，不是 true。** `len(processors) == 0` 时 SDK 直接返回 false；provider 开始 Shutdown 之后同样返回 false。
+2. **`Enabled` 现在是 `Processor` 接口的必选方法。** 早期 SDK（比如 v0.14）把它放在单独的可选接口 `FilterProcessor` 里，没实现就当作 true。按旧版本写的文章会说「没实现 `Enabled` 默认放行」，这在当前版本里已经不成立：`BatchProcessor` 和 `SimpleProcessor` 都实现了，并且直接 `return true`。
+
+第 2 点有一个实际后果：**想让级别过滤在 `Enabled` 层生效，必须把每个顶层 processor 都包上。** 上面的例子里，文件 processor 没被包，它永远返回 true，`Logger.Enabled` 也就永远是 true。slog 的每条 DEBUG 都会照常构造、照常转换，`severityProcessor` 只能在 `OnEmit` 里把它丢掉。过滤结果仍然正确，但开销一点没省。
+
+### 3.5 只写两个方法：内嵌接口的用处
 
 `severityProcessor` 只写了一个字段和两个方法：
 
@@ -391,7 +415,7 @@ type severityProcessor struct {
 
 同样的手法在 `jsonHandler` 里也出现了，只不过那边内嵌的是 `slog.Handler`。
 
-### 3.5 processor 层能做什么，不能做什么
+### 3.6 processor 层能做什么，不能做什么
 
 能做的：
 
@@ -411,6 +435,8 @@ type severityProcessor struct {
 
 ## 四、两层的分工
 
+### 4.1 判断标准
+
 把上面的结论收成一张表：
 
 | 维度 | handler 包装 | processor 包装 |
@@ -429,6 +455,45 @@ type severityProcessor struct {
 - 还在的（级别、属性、时间），两层都能做，优先选 processor，因为跨库通用。
 - 不在的（struct 的原始类型、`ctx` 里还没被提取的东西），只能在 handler 层做。
 - 翻译之后才出现的（trace_id、span_id、resource），只能在 processor 层做。
+
+### 4.2 一个具体问题：级别控制包 handler 还是包 processor
+
+`otelslog` 没有级别选项。v0.20.1 的 `Option` 只有 `WithVersion`、`WithSchemaURL`、`WithAttributes`、`WithLoggerProvider`、`WithSource` 五个。所以给 slog → OTel 这条链加级别控制，社区里常见两种做法：
+
+1. 在 `otelslog.Handler` 外面再包一层 handler，在它的 `Enabled` 里比较 `slog.Level`；
+2. 在 SDK 里包一层 processor，比如本文的 `severityProcessor`，或者 contrib 里现成的 `go.opentelemetry.io/contrib/processors/minsev`。
+
+先把执行顺序理清楚，这是最容易说乱的地方。把「判断要不要处理」和「真正处理」分开看：
+
+```
+判断：slog.Logger.log
+        -> wrapper.Enabled              做法 1 在这里比较
+           -> otelslog.Handler.Enabled
+              -> sdk logger.Enabled
+                 -> processor.Enabled    做法 2 在这里比较
+处理：Handler.Handle -> convertRecord -> logger.Emit -> processor.OnEmit
+```
+
+handler 在前、processor 在后，这一点没有疑问。但 processor 的 `Enabled` 是被 handler 的 `Enabled` 一路调用下来的，两者属于同一次判断。所以两种做法都能在 `slog.NewRecord` 之前短路，不存在「handler 过滤更早所以更省」或者「processor 过滤更晚所以白构造」的差别。前提是 3.4 讲的条件成立：做法 2 要求所有顶层 processor 都被包上。
+
+真正的差别在作用范围：
+
+| | handler 包装 | processor 包装（`minsev`） |
+|---|---|---|
+| 比较的对象 | `slog.Level` | `log.Severity`（同一个偏移换算，见 1.2） |
+| 作用范围 | 这一个 slog handler 分支 | 这个 processor 下游的全部记录，不论来自哪个桥接 |
+| 对 zap、logrus 桥接 | 不生效 | 生效 |
+| 短路条件 | 自己返回 false 即可 | 所有顶层 processor 都返回 false |
+| 运行时调整级别 | `slog.LevelVar` | `minsev.SeverityVar` |
+| 现成实现 | 要自己写 | `minsev.NewLogProcessor(downstream, minsev.SeverityWarn)` |
+
+可以这样选：
+
+- **要控制的是「OTel 管道收哪些级别」，用 processor。** 它与日志库无关，一份配置覆盖所有桥接。`otelslog` 没提供级别选项、contrib 却单独提供了 `minsev`，说明官方的设计是不让每个桥接各自加级别选项，统一走 `Processor.Enabled`。
+- **要控制的是「slog 某个输出分支收哪些级别」，用 handler。** 比如在 handler 层扇出，控制台要 DEBUG、OTel 只要 WARN，又不想影响其他桥接。
+- **要在 SDK 里按级别分发到不同 exporter，用 processor，每个分支包一个阈值。** 比如 ERROR 走 OTLP、全部级别写本地。这时 `Logger.Enabled` 按最宽松的那个阈值放行，开销也按它算。
+
+`go-bootstrap/otel` 选的是 processor，因为它同时支持 slog 和 zap，而 zap 那边已经用 `zap.IncreaseLevel` 在 Core 层过滤了（见 2.5）。它的 `severityProcessor` 和 `minsev.LogProcessor` 写法几乎一样：都内嵌下游 processor，`Enabled` 和 `OnEmit` 各比一次级别。
 
 ## 五、实战：初始化顺序与几个坑
 
