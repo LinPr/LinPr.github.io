@@ -1,9 +1,8 @@
 /* 列表页前端分页
-   list.html 把全部文章一次性渲染进 .post-list[data-pager]，这里负责：
-   - 按「每页条数」切片显示，页码、上一页/下一页、跳页输入框；
-   - 状态写进 URL（?page=2&size=20），可以分享、可以前进后退；
-   - 每页条数记在 localStorage，换个列表页也沿用；
-   - 液态玻璃风格的指示块在页码之间滑动，翻页时文章依次浮入。
+   list.html 把全部文章一次性渲染进 .post-list[data-pager]，这里按每页 10 篇切片显示：
+   - 一条液态玻璃胶囊：上一页 / 页码 / 下一页 │ 跳至第 N 页；
+   - 当前页写进 URL（?page=2），可以分享、可以前进后退，← / → 也能翻页；
+   - 当前页下面垫着一块会滑动、被拉长再回弹的「液滴」，翻页时文章依次浮入。
    没有 JS 时整个列表原样显示，导航保持 hidden。 */
 (() => {
     "use strict";
@@ -12,31 +11,20 @@
     const nav = doc.querySelector("nav.pager");
     if (!list || !nav) return;
 
+    const SIZE = 10;
     const items = Array.from(list.children).filter((el) => el.tagName === "ARTICLE");
     const total = items.length;
-    const SIZES = [5, 10, 20, 50];
-    const DEFAULT_SIZE = 10;
-    const KEY = "pager-size";
+    const pages = Math.max(1, Math.ceil(total / SIZE));
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    const store = {
-        get() { try { return parseInt(localStorage.getItem(KEY), 10); } catch (_) { return NaN; } },
-        set(v) { try { localStorage.setItem(KEY, String(v)); } catch (_) { /* 隐私模式 */ } },
+    const readPage = () => {
+        const p = parseInt(new URLSearchParams(location.search).get("page"), 10) || 1;
+        return Math.min(Math.max(p, 1), pages);
     };
+    let page = readPage();
 
-    const clampSize = (n) => (SIZES.includes(n) ? n : DEFAULT_SIZE);
-    const readState = () => {
-        const q = new URLSearchParams(location.search);
-        const size = clampSize(parseInt(q.get("size"), 10) || store.get() || DEFAULT_SIZE);
-        const pages = Math.max(1, Math.ceil(total / size));
-        const page = Math.min(Math.max(parseInt(q.get("page"), 10) || 1, 1), pages);
-        return { page, size, pages };
-    };
-
-    let state = readState();
-
-    /* 当前页附近的页码，其余用省略号折叠：1 … 4 5 [6] 7 8 … 20 */
-    const pageWindow = (cur, pages) => {
+    /* 当前页附近的页码，其余用省略号折叠：1 … 4 5 [6] 7 8 … 20；窄屏只留左右各 1 个 */
+    const pageWindow = (cur) => {
         const span = window.innerWidth < 520 ? 1 : 2;
         const out = [];
         let last = 0;
@@ -54,65 +42,47 @@
         '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" ' +
         'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + d + '"/></svg>';
 
-    /* 骨架只建一次，之后只更新内容，这样指示块才能从旧位置滑到新位置 */
+    /* 骨架只建一次，之后只换页码，这样液滴才能从旧位置滑到新位置 */
     nav.innerHTML =
         '<div class="pg-track">' +
-        '  <button class="pg-btn pg-step" type="button" data-go="prev" aria-label="上一页">' + icon("M15 18l-6-6 6-6") + '<span>上一页</span></button>' +
-        '  <div class="pg-nums" role="list"><span class="pg-blob" aria-hidden="true"></span></div>' +
-        '  <button class="pg-btn pg-step" type="button" data-go="next" aria-label="下一页"><span>下一页</span>' + icon("M9 18l6-6-6-6") + '</button>' +
-        '</div>' +
-        '<div class="pg-tools">' +
-        '  <p class="pg-info" aria-live="polite"></p>' +
-        '  <div class="pg-size" role="radiogroup" aria-label="每页条数"><span class="pg-blob" aria-hidden="true"></span></div>' +
-        '  <form class="pg-jump">' +
-        '    <label>跳至<input type="number" inputmode="numeric" min="1" aria-label="跳转到第几页">页</label>' +
-        '    <button class="pg-btn pg-go" type="submit" aria-label="跳转">' + icon("M5 12h14M13 6l6 6-6 6") + '</button>' +
-        '  </form>' +
-        '</div>';
+        '<button class="pg-btn pg-step" type="button" data-go="prev" aria-label="上一页">' + icon("M15 18l-6-6 6-6") + "<span>上一页</span></button>" +
+        '<div class="pg-nums"><span class="pg-blob" aria-hidden="true"></span></div>' +
+        '<button class="pg-btn pg-step" type="button" data-go="next" aria-label="下一页"><span>下一页</span>' + icon("M9 18l6-6-6-6") + "</button>" +
+        '<span class="pg-divider" aria-hidden="true"></span>' +
+        '<form class="pg-jump">' +
+        '<label><span class="pg-jump-text">跳至</span><input type="number" inputmode="numeric" min="1" max="' + pages + '" aria-label="跳转到第几页"><span class="pg-jump-text">页</span></label>' +
+        '<button class="pg-btn pg-go" type="submit" aria-label="跳转">' + icon("M5 12h14M13 6l6 6-6 6") + "</button>" +
+        "</form>" +
+        "</div>";
 
     const nums = nav.querySelector(".pg-nums");
-    const numBlob = nums.querySelector(".pg-blob");
-    const sizeBox = nav.querySelector(".pg-size");
-    const sizeBlob = sizeBox.querySelector(".pg-blob");
-    const info = nav.querySelector(".pg-info");
+    const blob = nums.querySelector(".pg-blob");
     const jumpForm = nav.querySelector(".pg-jump");
     const jumpInput = jumpForm.querySelector("input");
     const prevBtn = nav.querySelector('[data-go="prev"]');
     const nextBtn = nav.querySelector('[data-go="next"]');
 
-    SIZES.forEach((n) => {
-        const b = doc.createElement("button");
-        b.type = "button";
-        b.className = "pg-chip";
-        b.dataset.size = n;
-        b.setAttribute("role", "radio");
-        b.textContent = n + " 篇";
-        sizeBox.appendChild(b);
-    });
-
-    /* 指示块：移动到目标按钮下面，同时做一次「被拉长再回弹」的液体形变 */
-    const moveBlob = (blob, target, animate) => {
+    /* 液滴移动到目标按钮下面，同时做一次「被拉长再回弹」的形变 */
+    const moveBlob = (target, animate) => {
         if (!target) { blob.style.opacity = "0"; return; }
         const x = target.offsetLeft;
-        const w = target.offsetWidth;
-        const prev = parseFloat(blob.dataset.x || "NaN");
+        const prev = parseFloat(blob.dataset.x);
+        const smooth = animate && !reduceMotion && !Number.isNaN(prev);
+        blob.classList.toggle("no-anim", !smooth);
         blob.style.opacity = "1";
-        if (!animate || reduceMotion || Number.isNaN(prev)) blob.classList.add("no-anim");
-        blob.style.width = w + "px";
+        blob.style.width = target.offsetWidth + "px";
         blob.style.transform = "translateX(" + x + "px)";
         blob.dataset.x = x;
-        if (animate && !reduceMotion && !Number.isNaN(prev) && prev !== x) {
+        if (smooth && prev !== x) {
             blob.classList.remove("is-stretch");
             void blob.offsetWidth;
             blob.classList.add("is-stretch");
         }
-        requestAnimationFrame(() => blob.classList.remove("no-anim"));
     };
 
     const render = (animate) => {
-        const { page, size, pages } = state;
-        const start = (page - 1) * size;
-        const end = Math.min(start + size, total);
+        const start = (page - 1) * SIZE;
+        const end = Math.min(start + SIZE, total);
 
         items.forEach((el, i) => {
             const show = i >= start && i < end;
@@ -127,13 +97,9 @@
             }
         });
 
-        /* 只有一页时不需要页码和跳转，但保留每页条数，方便切回去 */
-        nav.hidden = total <= SIZES[0];
-        nav.classList.toggle("is-single", pages <= 1);
-
         nums.querySelectorAll(".pg-num, .pg-gap").forEach((el) => el.remove());
         let activeBtn = null;
-        pageWindow(page, pages).forEach((p) => {
+        pageWindow(page).forEach((p) => {
             if (p === 0) {
                 const gap = doc.createElement("span");
                 gap.className = "pg-gap";
@@ -147,8 +113,7 @@
             b.className = "pg-btn pg-num";
             b.dataset.page = p;
             b.textContent = p;
-            b.setAttribute("role", "listitem");
-            b.setAttribute("aria-label", "第 " + p + " 页");
+            b.setAttribute("aria-label", "第 " + p + " 页，共 " + pages + " 页");
             if (p === page) {
                 b.classList.add("is-active");
                 b.setAttribute("aria-current", "page");
@@ -159,30 +124,13 @@
 
         prevBtn.disabled = page <= 1;
         nextBtn.disabled = page >= pages;
-        info.innerHTML =
-            '第 <b class="pg-cur">' + page + "</b> / " + pages + " 页" +
-            '<span class="pg-sep">·</span>第 ' + (total ? start + 1 : 0) + "–" + end + " 篇" +
-            '<span class="pg-sep">·</span>共 ' + total + " 篇";
-        jumpInput.max = pages;
-        jumpInput.placeholder = String(page);
-
-        let activeChip = null;
-        sizeBox.querySelectorAll(".pg-chip").forEach((c) => {
-            const on = +c.dataset.size === size;
-            c.classList.toggle("is-active", on);
-            c.setAttribute("aria-checked", on ? "true" : "false");
-            if (on) activeChip = c;
-        });
-
-        moveBlob(numBlob, activeBtn, animate);
-        moveBlob(sizeBlob, activeChip, animate);
+        jumpInput.placeholder = page + "/" + pages;
+        moveBlob(activeBtn, animate);
     };
 
     const syncURL = (push) => {
         const url = new URL(location.href);
-        const { page, size } = state;
         if (page > 1) url.searchParams.set("page", page); else url.searchParams.delete("page");
-        if (size !== DEFAULT_SIZE) url.searchParams.set("size", size); else url.searchParams.delete("size");
         if (url.href === location.href) return;
         history[push ? "pushState" : "replaceState"](null, "", url);
     };
@@ -196,24 +144,22 @@
         }
     };
 
-    const go = (page, size) => {
-        const nextSize = clampSize(size || state.size);
-        const pages = Math.max(1, Math.ceil(total / nextSize));
-        const nextPage = Math.min(Math.max(page, 1), pages);
-        if (nextPage === state.page && nextSize === state.size) return;
-        state = { page: nextPage, size: nextSize, pages };
+    const go = (p) => {
+        p = Math.min(Math.max(p, 1), pages);
+        if (p === page) return;
+        page = p;
         syncURL(true);
         render(true);
         scrollToList();
     };
 
-    /* 点击涟漪 + 指针跟随高光：给玻璃按钮一点触感 */
+    /* 点击涟漪 + 指针跟随高光 */
     const ripple = (btn, e) => {
         if (reduceMotion) return;
         const r = btn.getBoundingClientRect();
         const s = doc.createElement("span");
-        s.className = "pg-ripple";
         const d = Math.max(r.width, r.height) * 2.2;
+        s.className = "pg-ripple";
         s.style.width = s.style.height = d + "px";
         s.style.left = (e.clientX ? e.clientX - r.left : r.width / 2) - d / 2 + "px";
         s.style.top = (e.clientY ? e.clientY - r.top : r.height / 2) - d / 2 + "px";
@@ -222,7 +168,7 @@
     };
 
     nav.addEventListener("pointermove", (e) => {
-        const btn = e.target.closest(".pg-btn, .pg-chip");
+        const btn = e.target.closest(".pg-btn");
         if (!btn) return;
         const r = btn.getBoundingClientRect();
         btn.style.setProperty("--mx", ((e.clientX - r.left) / r.width) * 100 + "%");
@@ -232,39 +178,36 @@
     nav.addEventListener("click", (e) => {
         const btn = e.target.closest("button");
         if (!btn || btn.disabled) return;
-        if (btn.matches(".pg-btn, .pg-chip")) ripple(btn, e);
-        if (btn.dataset.go === "prev") go(state.page - 1);
-        else if (btn.dataset.go === "next") go(state.page + 1);
+        ripple(btn, e);
+        if (btn.dataset.go === "prev") go(page - 1);
+        else if (btn.dataset.go === "next") go(page + 1);
         else if (btn.dataset.page) go(+btn.dataset.page);
-        else if (btn.dataset.size) {
-            const size = +btn.dataset.size;
-            store.set(size);
-            /* 换每页条数时尽量停留在原来看到的第一篇所在的页 */
-            const first = (state.page - 1) * state.size;
-            go(Math.floor(first / size) + 1, size);
-        }
     });
 
     jumpForm.addEventListener("submit", (e) => {
         e.preventDefault();
         const p = parseInt(jumpInput.value, 10);
-        if (!p) { jumpForm.classList.remove("is-shake"); void jumpForm.offsetWidth; jumpForm.classList.add("is-shake"); return; }
+        if (!p || p < 1 || p > pages) {
+            jumpForm.classList.remove("is-shake");
+            void jumpForm.offsetWidth;
+            jumpForm.classList.add("is-shake");
+            return;
+        }
         jumpInput.value = "";
         jumpInput.blur();
         go(p);
     });
 
-    /* 不在输入框里时，← / → 翻页 */
     doc.addEventListener("keydown", (e) => {
         if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
         if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
         if (doc.documentElement.classList.contains("sm-open")) return;
-        if (e.key === "ArrowLeft" && state.page > 1) go(state.page - 1);
-        else if (e.key === "ArrowRight" && state.page < state.pages) go(state.page + 1);
+        if (e.key === "ArrowLeft" && page > 1) go(page - 1);
+        else if (e.key === "ArrowRight" && page < pages) go(page + 1);
     });
 
     window.addEventListener("popstate", () => {
-        state = readState();
+        page = readPage();
         render(true);
     });
 
@@ -274,7 +217,7 @@
         resizeTimer = setTimeout(() => render(false), 150);
     });
 
+    nav.hidden = pages <= 1;
     syncURL(false);
     render(false);
-    list.classList.add("is-paged");
 })();

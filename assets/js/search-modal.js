@@ -1,7 +1,7 @@
 /* 全站搜索浮层
    - 点击顶栏「搜索」、按 Ctrl/⌘+K 或 / 打开；Esc、点遮罩关闭；
    - ↑/↓ 选中结果，Enter 打开；
-   - 第一次打开时才加载 index.json；Fuse 只在精确检索无结果时才加载，用来兜底拼写错误；
+   - 第一次打开时才加载 index.json，平时不占带宽；
    - 没有 JS 时顶栏链接仍然跳到 /search/ 独立页，作为兜底。 */
 (() => {
     "use strict";
@@ -12,22 +12,12 @@
     const input = modal.querySelector(".sm-input");
     const list = modal.querySelector(".sm-results");
     const hint = modal.querySelector(".sm-hint");
-    const opts = JSON.parse(modal.dataset.fuse || "{}");
-    const limit = Math.max(opts.limit || 0, 20);
+    const limit = 20;
 
     let docs = null;      // 预处理过的索引
-    let fuse = null;      // 只在精确检索没有结果时才加载，用来兜底拼写错误
     let loading = null;
     let active = -1;
     let lastFocus = null;
-
-    const loadScript = (src) => new Promise((resolve, reject) => {
-        const s = doc.createElement("script");
-        s.src = src;
-        s.onload = resolve;
-        s.onerror = reject;
-        doc.head.appendChild(s);
-    });
 
     /* ---------- 检索 ----------
        Fuse 的 bitap 模糊匹配按字符编辑距离打分，对中文很不友好：
@@ -37,8 +27,8 @@
        2. 每个词做精确子串匹配，按字段加权：标题 > 标签/分类 > 摘要 > 正文，
           正文按出现次数取对数，避免长文靠堆词取胜；
        3. 默认要求所有词都命中（AND），整句出现在标题里再加分；
-       4. 中文词没有精确命中时，退化为二元组（bigram）覆盖率，容忍「服务的发现」这类写法；
-       5. 全部词都命中的文章为空时，降级为部分命中；仍为空再交给 Fuse 做模糊匹配。 */
+       4. 中文词去掉「的、了、和」等虚词后再精确匹配一次，容忍「服务的发现」这类写法；
+       5. 不做模糊兜底：没有文章包含全部关键词，结果就是空的。 */
     const norm = (s) => (s || "").normalize("NFKC").toLowerCase();
     const CJK = /[㐀-鿿豈-﫿]/;
     const isCJK = (s) => CJK.test(s);
@@ -81,8 +71,6 @@
         };
     };
 
-    const bigrams = (s) => { const g = []; for (let i = 0; i < s.length - 1; i++) g.push(s.slice(i, i + 2)); return g; };
-
     const scoreTerm = (d, term, m) => {
         let sc = 0;
         if (m.has(d.t)) {
@@ -105,16 +93,6 @@
             }
         }
 
-        /* 中文近似：词里的二元组有 2/3 以上出现过，就算弱命中 */
-        if (isCJK(term) && term.length >= 3) {
-            const g = bigrams(term);
-            const inT = g.filter((x) => d.t.includes(x));
-            const inC = g.filter((x) => d.c.includes(x));
-            const ft = inT.length / g.length;
-            const fc = inC.length / g.length;
-            if (ft >= 0.66) return { sc: 4 * ft, hl: inT };
-            if (fc >= 0.66) return { sc: 1.5 * fc, hl: inC };
-        }
         return { sc: 0, hl: [] };
     };
 
@@ -124,7 +102,6 @@
         const ms = terms.map(matcher);
         const phrase = norm(q).replace(/\s+/g, " ").trim();
         const all = [];
-        const some = [];
         docs.forEach((d) => {
             let total = 0, hit = 0;
             const hl = [];
@@ -137,14 +114,11 @@
                 if (d.t.includes(phrase)) total += 8;
                 else if (d.c.includes(phrase)) total += 3;
             }
-            const res = { d, score: total, hl };
-            if (hit === terms.length) all.push(res);
-            else { res.score *= (hit / terms.length) ** 2; some.push(res); }
+            if (hit === terms.length) all.push({ d, score: total, hl });
         });
         const byScore = (a, b) => b.score - a.score || (b.d.item.date || "").localeCompare(a.d.item.date || "");
         if (all.length) return { results: all.sort(byScore), mode: "all" };
-        if (some.length) return { results: some.sort(byScore), mode: "some" };
-        return { results: [], mode: "none", terms };
+        return { results: [], mode: "none" };
     };
 
     const ensureIndex = () => {
@@ -163,25 +137,6 @@
                 hint.textContent = "索引加载失败，请稍后重试";
             });
         return loading;
-    };
-
-    const ensureFuse = () => {
-        if (fuse) return Promise.resolve(fuse);
-        return (window.Fuse ? Promise.resolve() : loadScript(modal.dataset.fuseSrc)).then(() => {
-            fuse = new window.Fuse(docs.map((d) => d.item), {
-                keys: [
-                    { name: "title", weight: 4 },
-                    { name: "tags", weight: 2 },
-                    { name: "categories", weight: 2 },
-                    { name: "summary", weight: 1.5 },
-                    { name: "content", weight: 1 },
-                ],
-                threshold: opts.threshold ?? 0.4,
-                ignoreLocation: true,
-                minMatchCharLength: 2,
-            });
-            return fuse;
-        });
     };
 
     const escapeHTML = (s) => s.replace(/[&<>"']/g, (c) => ({
@@ -243,21 +198,8 @@
         if (!q) { hint.textContent = "输入关键词开始搜索，多个词用空格分开"; return; }
 
         const { results, mode, terms } = search(q);
-        if (mode === "none") {
-            hint.textContent = "没有精确匹配，正在尝试模糊匹配…";
-            const asked = q;
-            ensureFuse().then((f) => {
-                if (input.value.trim() !== asked) return;
-                const fr = f.search(asked, { limit });
-                if (!fr.length) { hint.textContent = "没有找到相关文章"; return; }
-                hint.textContent = "没有精确匹配，以下是模糊匹配的结果";
-                draw(fr.map(({ item }) => ({ item, hl: terms || [] })));
-            }).catch(() => { hint.textContent = "没有找到相关文章"; });
-            return;
-        }
-        hint.textContent = mode === "some"
-            ? "没有同时包含所有关键词的文章，以下是部分匹配"
-            : "找到 " + results.length + " 篇" + (results.length > limit ? "，显示前 " + limit + " 篇" : "");
+        if (mode === "none") { hint.textContent = "没有找到相关文章"; return; }
+        hint.textContent = "找到 " + results.length + " 篇" + (results.length > limit ? "，显示前 " + limit + " 篇" : "");
         draw(results.slice(0, limit).map((r) => ({ item: r.d.item, hl: r.hl })));
     };
 

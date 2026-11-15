@@ -1,7 +1,6 @@
 /* =========================================================
    列表分页（脚本见 assets/js/pager.js）
-   一条液态玻璃胶囊：上一页 / 页码 / 下一页；
-   下面一行是页码信息、每页条数、跳页。
+   一条液态玻璃胶囊：上一页 / 页码 / 下一页 │ 跳至第 N 页。
    当前页下面垫着一块会滑动、会被拉长再回弹的「液滴」。
    ========================================================= */
 
@@ -13,9 +12,7 @@
     --pg-drop: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
     --pg-drop-glow: 0 6px 18px -4px rgba(99, 102, 241, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.35) inset;
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 14px;
+    justify-content: center;
     margin: 34px 0 10px;
     user-select: none;
     animation: pg-rise 0.7s var(--ease) both;
@@ -30,9 +27,7 @@
 
 /* ---------- 玻璃底：胶囊轨道、按钮、条数选择共用 ---------- */
 .pg-track,
-.pg-size,
-.pg-jump input,
-.pg-go {
+.pg-jump input {
     position: relative;
     background-color: var(--glass-bg);
     background-image:
@@ -49,9 +44,7 @@
 }
 
 :root[data-theme="dark"] .pg-track,
-:root[data-theme="dark"] .pg-size,
-:root[data-theme="dark"] .pg-jump input,
-:root[data-theme="dark"] .pg-go {
+:root[data-theme="dark"] .pg-jump input {
     background-image:
         radial-gradient(120% 90% at 10% -30%, rgba(170, 200, 250, 0.22) 0%, transparent 55%),
         var(--glass-reflect);
@@ -93,8 +86,7 @@
 }
 
 /* ---------- 按钮 ---------- */
-.pg-btn,
-.pg-chip {
+.pg-btn {
     --mx: 50%;
     --my: 50%;
     position: relative;
@@ -121,8 +113,7 @@
 }
 
 /* 指针跟随的高光：悬停时在按钮里跟着鼠标走的一团光 */
-.pg-btn::before,
-.pg-chip::before {
+.pg-btn::before {
     content: "";
     position: absolute;
     inset: 0;
@@ -133,22 +124,17 @@
     pointer-events: none;
 }
 
-:root[data-theme="dark"] .pg-btn::before,
-:root[data-theme="dark"] .pg-chip::before {
+:root[data-theme="dark"] .pg-btn::before {
     background: radial-gradient(circle at var(--mx) var(--my), rgba(165, 180, 252, 0.35), rgba(165, 180, 252, 0.06) 45%, transparent 70%);
 }
 
-.pg-btn:hover:not(:disabled)::before,
-.pg-chip:hover::before { opacity: 1; }
+.pg-btn:hover:not(:disabled)::before { opacity: 1; }
 
-.pg-btn:hover:not(:disabled),
-.pg-chip:hover { transform: translateY(-1px) scale(1.06); }
+.pg-btn:hover:not(:disabled) { transform: translateY(-1px) scale(1.06); }
 
-.pg-btn:active:not(:disabled),
-.pg-chip:active { transform: scale(0.92); transition-duration: 0.12s; }
+.pg-btn:active:not(:disabled) { transform: scale(0.92); transition-duration: 0.12s; }
 
-.pg-btn:focus-visible,
-.pg-chip:focus-visible {
+.pg-btn:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
 }
@@ -163,14 +149,12 @@
 .pg-step[data-go="prev"]:hover:not(:disabled) svg { transform: translateX(-3px); }
 .pg-step[data-go="next"]:hover:not(:disabled) svg { transform: translateX(3px); }
 
-.pg-num.is-active,
-.pg-chip.is-active {
+.pg-num.is-active {
     color: #fff;
     text-shadow: 0 1px 2px rgba(40, 30, 120, 0.35);
 }
 
-.pg-num.is-active:hover,
-.pg-chip.is-active:hover { transform: none; }
+.pg-num.is-active:hover { transform: none; }
 
 .pg-gap {
     min-width: 22px;
@@ -244,94 +228,67 @@
     to { transform: scale(1); opacity: 0; }
 }
 
-/* ---------- 第二行：信息、条数、跳页 ---------- */
-.pg-tools {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: 10px 14px;
-    font-size: 13px;
-    color: var(--secondary);
+/* ---------- 跳页：和页码在同一条胶囊里，用一道细竖线隔开 ---------- */
+.pg-divider {
+    flex: none;
+    width: 1px;
+    height: 22px;
+    margin: 0 4px;
+    background: linear-gradient(180deg, transparent, var(--glass-rim-soft) 20%, var(--secondary) 50%, var(--glass-rim-soft) 80%, transparent);
+    opacity: 0.45;
 }
-
-.pg-info { margin: 0; font-variant-numeric: tabular-nums; }
-.pg-info b {
-    display: inline-block;
-    color: var(--accent);
-    font-size: 15px;
-    animation: pg-pop 0.5s var(--pg-spring);
-}
-.pg-sep { margin: 0 6px; opacity: 0.6; }
-
-@keyframes pg-pop {
-    from { transform: scale(1.6); opacity: 0; }
-}
-
-.pg-size {
-    --pg-h: 30px;
-    display: flex;
-    gap: 2px;
-    padding: 3px;
-    border-radius: 999px;
-}
-
-.pg-chip {
-    min-width: 0;
-    padding: 0 10px;
-    font-size: 12.5px;
-    font-weight: 500;
-    color: var(--secondary);
-}
-
-.pg-size .pg-blob { box-shadow: 0 4px 12px -4px rgba(99, 102, 241, 0.6); }
 
 .pg-jump {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 2px;
     margin: 0;
+    padding-left: 6px;
 }
 
 .pg-jump label {
     display: flex;
     align-items: center;
     gap: 6px;
+    color: var(--secondary);
+    font-size: 13px;
 }
 
 .pg-jump input {
-    width: 54px;
-    height: 30px;
-    padding: 0 8px;
+    width: 58px;
+    height: 32px;
+    padding: 0 6px;
     border-radius: 999px;
     color: var(--primary);
     font: inherit;
+    font-size: 13px;
     font-weight: 600;
     text-align: center;
     -moz-appearance: textfield;
     appearance: textfield;
+    box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-caustic), var(--glass-inner);
     transition: width 0.4s var(--pg-spring), box-shadow 0.3s var(--ease);
 }
+
+.pg-jump input::placeholder { color: var(--secondary); opacity: 0.7; font-weight: 500; }
 
 .pg-jump input::-webkit-outer-spin-button,
 .pg-jump input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
 .pg-jump input:focus {
-    width: 72px;
+    width: 70px;
     outline: none;
-    box-shadow:
-        inset 0 1px 0 var(--glass-rim),
-        0 0 0 3px var(--accent-soft),
-        var(--glass-shadow);
+    box-shadow: inset 0 1px 0 var(--glass-rim), 0 0 0 3px var(--accent-soft);
 }
 
 .pg-go {
-    --pg-h: 30px;
-    min-width: 30px;
+    min-width: var(--pg-h);
     padding: 0;
-    border-radius: 50%;
     color: var(--accent);
 }
+
+.pg-go svg { transition: transform 0.35s var(--pg-spring); }
+.pg-go:hover svg { transform: translateX(3px); }
 
 .pg-jump.is-shake { animation: pg-shake 0.4s var(--ease); }
 
@@ -339,10 +296,6 @@
     20%, 60% { transform: translateX(-5px); }
     40%, 80% { transform: translateX(5px); }
 }
-
-/* 只有一页：隐藏页码轨道和跳页，只留信息和条数 */
-.pager.is-single .pg-track,
-.pager.is-single .pg-jump { display: none; }
 
 /* ---------- 翻页后文章依次浮入 ---------- */
 .post-list > .pg-enter {
@@ -354,17 +307,20 @@
     to { opacity: 1; transform: none; filter: none; }
 }
 
-/* ---------- 手机 ---------- */
+/* ---------- 手机：上一页/下一页只留箭头，跳页只留输入框 ---------- */
 @media (max-width: 520px) {
-    .pager { --pg-h: 36px; }
-    .pg-track { gap: 2px; padding: 4px; }
-    .pg-nums { gap: 2px; }
-    .pg-btn { padding: 0 8px; font-size: 13.5px; }
-    .pg-step { padding: 0 10px; }
-    .pg-step span { display: none; }
-    .pg-gap { min-width: 14px; }
-    .pg-info { width: 100%; text-align: center; }
-    .pg-chip { padding: 0 8px; }
+    .pager { --pg-h: 34px; }
+    .pg-track { gap: 1px; padding: 4px; }
+    .pg-nums { gap: 1px; }
+    .pg-btn { min-width: 32px; padding: 0 6px; font-size: 13.5px; }
+    .pg-step { padding: 0 8px; }
+    .pg-step span,
+    .pg-jump-text { display: none; }
+    .pg-gap { min-width: 12px; }
+    .pg-divider { margin: 0 2px; }
+    .pg-jump { padding-left: 2px; }
+    .pg-jump input { width: 46px; }
+    .pg-jump input:focus { width: 54px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -372,7 +328,6 @@
     .pg-track::after,
     .pg-nums .pg-blob::after,
     .pg-blob.is-stretch,
-    .pg-info b,
     .post-list > .pg-enter { animation: none; }
     .pg-blob { transition: opacity 0.2s; }
 }
