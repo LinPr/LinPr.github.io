@@ -1,0 +1,87 @@
+/* =========================================================
+   全站统一的橙色悬停环
+   首页文章卡片悬停时亮起 2px 橙色渐变环（custom.css 的 .post-entry::after）。
+   这里把同一个效果铺到其余可点的条目上，让各个子页面的反馈一致：
+     归档页的文章条目、分类 / 系列 / 标签总览卡片、标签胶囊、
+     /search/ 独立页的结果、搜索浮层的结果。
+   环用 mask 只留下边框那一圈，不影响元素本身的玻璃背景。
+   ========================================================= */
+
+.archive-entry,
+.category-card,
+.terms-tags li a,
+#searchResults li,
+.sm-results a {
+    position: relative;
+}
+
+.archive-entry::after,
+.category-card::after,
+.terms-tags li a::after,
+#searchResults li::after,
+.sm-results a::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 2px;
+    background: linear-gradient(120deg, #ff8a3d, #ffb020 45%, #ff6b4a);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 0.35s var(--ease);
+    pointer-events: none;
+    z-index: 2;
+}
+
+/* 小元素用细一点的环，免得喧宾夺主 */
+.terms-tags li a::after,
+.sm-results a::after {
+    padding: 1.5px;
+}
+
+.archive-entry:hover::after,
+.archive-entry:focus-within::after,
+.category-card:hover::after,
+.category-card:focus-visible::after,
+.terms-tags li a:hover::after,
+.terms-tags li a:focus-visible::after,
+#searchResults li:hover::after,
+#searchResults li:focus-within::after,
+.sm-results a:hover::after,
+.sm-results a.is-active::after {
+    opacity: 1;
+}
+
+/* 亮环的同时去掉原来的彩色/白色描边，并加一圈很淡的橙色光晕 */
+.archive-entry:hover,
+.category-card:hover,
+.terms-tags li a:hover,
+#searchResults li:hover {
+    border-color: transparent;
+    box-shadow:
+        inset 0 1px 0 var(--glass-rim),
+        0 10px 28px -14px rgba(255, 138, 61, 0.45),
+        var(--glass-shadow-hover);
+}
+
+:root[data-theme="dark"] .archive-entry:hover,
+:root[data-theme="dark"] .category-card:hover,
+:root[data-theme="dark"] .terms-tags li a:hover,
+:root[data-theme="dark"] #searchResults li:hover {
+    border-color: transparent;
+    box-shadow:
+        inset 0 1px 0 var(--glass-rim),
+        0 10px 30px -14px rgba(255, 150, 70, 0.45),
+        var(--glass-shadow-hover);
+}
+
+/* 滚动期间暂停悬停效果（见 glass.css 的性能说明），环也一起不亮 */
+html.is-scrolling .archive-entry:hover::after,
+html.is-scrolling .category-card:hover::after,
+html.is-scrolling .terms-tags li a:hover::after,
+html.is-scrolling #searchResults li:hover::after {
+    opacity: 0;
+}
