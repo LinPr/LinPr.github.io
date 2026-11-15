@@ -5,7 +5,6 @@ draft: false
 tags: ["kubernetes", "scheduler", "openresty", "nginx", "架构"]
 categories: ["Kubernetes", "架构"]
 series: ["kube-scheduler"]
-weight: 1
 author: "LinPr"
 description: "一个 HTTP 请求和一个 Pod，用的都是「阶段 + 钩子」的结构，却在实现上走了两条路。本文对照 nginx phase engine 与 kube-scheduler scheduling framework，拆解可插拔插件架构的三个核心问题。"
 ---

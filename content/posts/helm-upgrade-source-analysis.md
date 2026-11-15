@@ -478,6 +478,27 @@ helm upgrade myapp ./chart
 
 **4. 失败时的状态要看清。** `Update` 失败会把原 release 记录一次（状态回到可用的旧版本），新版停在 `failed`。此时 `helm history` 里会多一条 failed 记录，`helm rollback` 回滚的是「上一条 deployed」，不是这条 failed。
 
+## 九、总结
+
+一次 `helm upgrade` 可以压缩成三句话：
+
+1. **release 是一份带版本号的快照。** 每次升级都新写一条记录，默认存成 Secret，内容是 JSON → gzip → base64 编码后的 release 对象。`helm history` 读的就是这些记录。
+2. **普通资源靠集合运算决定增删改。** 旧 manifest 是 current，新 manifest 是 target：只在 target 里的创建，两边都有的更新，只在 current 里的删除。比较的键是 gvk + namespace + name，不看内容。
+3. **hook 是游离在集合之外的顺序控制。** hook 资源不进 manifest，不参与差集，Helm 也不负责清理。它们按 kind、再按 weight 排序执行，但只有 Job 和 Pod 会被真正等待，其他 kind 创建完就算完成。
+
+由此也能推出日常使用里的几条经验：
+
+| 现象 | 原因 | 做法 |
+| --- | --- | --- |
+| 删掉的 Deployment 在集群里消失了 | 它只在 current 里，被差集删除 | 需要保留时加 `helm.sh/resource-policy: keep` |
+| hook 资源一直留在集群里 | hook 不归 release 管 | 用 `helm.sh/hook-delete-policy` 指定清理时机 |
+| 改了 kind 或 namespace 后资源被重建 | 比较键变了，等于删一个、建一个 | 把这类改动当作迁移来规划 |
+| `--wait` 卡很久 | 在等 target 里的资源全部就绪 | 先查 Pod 为什么起不来，再调 `--timeout` |
+| Deployment 之间没有先后顺序 | 普通资源一次性提交、一次性等待 | 用 Job hook，或交给 Argo CD / Flux 的 sync wave |
+| 上一次升级中断后再升级直接报错 | 最新 release 停在 pending 状态 | 先 `helm rollback` 或处理掉 pending 记录 |
+
+读源码时抓住 `pkg/action/upgrade.go` 里的 `performUpgrade` 和 `releasingUpgrade`，以及 `pkg/kube/client.go` 里的 `Update`，就能把上面这些现象都对上号。
+
 ---
 
 *本文依据 `helm.sh/helm/v4` 源码（`pkg/action/upgrade.go`、`pkg/action/hooks.go`、`pkg/action/action.go`、`pkg/kube/client.go`、`pkg/kube/statuswait.go`、`pkg/storage/driver/util.go`、`pkg/release/util/manifest_sorter.go`）与 Helm 官方文档中的 Chart Hooks 一节。终端截图来自本机 `helm_demo` 环境。*

@@ -1,9 +1,9 @@
 {{- /* 系列导航：文章带有 series 时，在正文后显示系列信息与全部篇目。
-       顺序按 front matter 的 weight，未写 weight 时按日期。
+       顺序按发布日期从旧到新（不要用 weight：它会改变首页和归档的全站排序）。
        覆盖主题的 extend_post_content.html 钩子调用本模板。 */ -}}
 {{- with .GetTerms "series" }}
   {{- $term := index . 0 }}
-  {{- $pages := $term.Pages.ByWeight }}
+  {{- $pages := $term.Pages.ByDate }}
   {{- $current := $.RelPermalink }}
   {{- $pos := 0 }}
   {{- range $i, $p := $pages }}

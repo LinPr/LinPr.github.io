@@ -5,7 +5,6 @@ draft: false
 tags: ["kubernetes", "scheduler", "kube-scheduler", "插件"]
 categories: ["Kubernetes"]
 series: ["kube-scheduler"]
-weight: 2
 author: "LinPr"
 description: "kube-scheduler 的调度语义全部写在插件里。本文从 NewInTreeRegistry 出发，先讲框架调用插件的四条规则，再逐个拆解 24 个 in-tree 插件：CycleState 里存了什么、Filter 返回哪种失败码、分数怎么算、什么事件会让 Pod 重新入队。"
 ---

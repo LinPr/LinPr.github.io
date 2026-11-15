@@ -5,7 +5,6 @@ draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "scheduling-framework"]
 categories: ["Kubernetes"]
 series: ["kube-scheduler"]
-weight: 3
 author: "LinPr"
 description: "配额、gang、实时负载、NUMA、网络代价、seccomp……sigs.k8s.io/scheduler-plugins 把 in-tree 装不下的调度能力做成了插件。本文从源码出发，拆解每个插件的状态放在哪、公式怎么算、失败返回什么，以及那些只有读代码才看得到的边界情况。"
 ---
