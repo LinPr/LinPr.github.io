@@ -141,7 +141,8 @@
         transform 0.38s var(--nav-ease),
         width 0.38s var(--nav-ease),
         height 0.38s var(--nav-ease),
-        opacity 0.25s var(--ease);
+        opacity 0.25s var(--ease),
+        box-shadow 0.3s var(--ease);
     will-change: transform, width;
 }
 
@@ -156,10 +157,64 @@
 }
 
 .nav-blob.is-on { opacity: 1; }
+
+/* 悬停时亮起橙色渐变环，和列表卡片悬停的橙色环（custom.css / post-orange.css）同一套颜色；
+   液滴停回当前栏目时环淡出，只留玻璃 */
+.nav-blob::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: 1.5px;
+    border-radius: inherit;
+    background: linear-gradient(120deg, var(--orange-1), var(--orange-2), var(--orange-3), var(--orange-2), var(--orange-1));
+    background-size: 220% 100%;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 0.3s var(--ease);
+    animation: nav-ring 3s linear infinite;
+    animation-play-state: paused;
+}
+
+.nav-blob.is-hover::after {
+    opacity: 1;
+    animation-play-state: running;
+}
+
+.nav-blob.is-hover {
+    box-shadow:
+        inset 0 1px 0 #fff,
+        0 0 0 3px rgba(255, 138, 61, 0.12),
+        0 6px 18px -6px rgba(255, 138, 61, 0.55);
+}
+
+:root[data-theme="dark"] .nav-blob.is-hover {
+    box-shadow:
+        inset 0 1px 0 rgba(200, 215, 255, 0.35),
+        0 0 0 3px rgba(255, 160, 80, 0.12),
+        0 6px 20px -6px rgba(255, 150, 70, 0.6);
+}
+
+@keyframes nav-ring {
+    to { background-position: 220% 0; }
+}
+
+/* 没有 JS（没有液滴）时，直接给菜单项本身描一圈橙边 */
+#menu:not(.has-blob) li a {
+    box-shadow: inset 0 0 0 1.5px transparent;
+    transition: box-shadow 0.3s var(--ease), background-color 0.3s var(--ease);
+}
+
+#menu:not(.has-blob) li a:hover {
+    box-shadow: inset 0 0 0 1.5px var(--orange-line);
+}
 .nav-blob.no-anim { transition: none; }
 @media (prefers-reduced-motion: reduce) {
     .header::after { animation: none; }
     .nav-blob { transition: opacity 0.2s; }
+    .nav-blob::after { animation: none; }
 }
 
 @supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {

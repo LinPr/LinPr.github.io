@@ -25,8 +25,9 @@
 
     let at = null;
     let leaveTimer = 0;
-    const place = (link, animate) => {
+    const place = (link, animate, hover) => {
         clearTimeout(leaveTimer);
+        blob.classList.toggle("is-hover", !!(hover && link));
         if (link === at) return;
         if (!link) {
             blob.classList.remove("is-on");
@@ -52,12 +53,13 @@
        或者短暂移出又移回来时，液滴不会来回跳 */
     const back = () => {
         clearTimeout(leaveTimer);
+        blob.classList.remove("is-hover");
         leaveTimer = setTimeout(() => place(current, true), 160);
     };
 
     links.forEach((a) => {
-        a.addEventListener("pointerenter", () => place(a, true));
-        a.addEventListener("focus", () => place(a, true));
+        a.addEventListener("pointerenter", () => place(a, true, true));
+        a.addEventListener("focus", () => place(a, true, true));
     });
     menu.addEventListener("pointerleave", back);
     menu.addEventListener("focusout", (e) => {
