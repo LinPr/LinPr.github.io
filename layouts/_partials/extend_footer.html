@@ -82,7 +82,9 @@
             const io = new IntersectionObserver(
                 (entries) => {
                     entries.forEach((entry) => {
-                        if (!entry.isIntersecting) return;
+                        /* 跳转式滚动（锚点、翻页、回到底部）会直接越过一些元素，
+                           它们从没「进入」过视口，在视口上方的也一并显示 */
+                        if (!entry.isIntersecting && entry.boundingClientRect.top > 0) return;
                         entry.target.classList.add("is-visible");
                         io.unobserve(entry.target);
                     });
@@ -188,6 +190,14 @@
 {{- with resources.Get "js/pet-peekling.js" }}
     {{- $js := . | minify | fingerprint "sha256" }}
 <script async src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}" crossorigin="anonymous"></script>
+{{- end }}
+
+{{- /* 列表页前端分页：同步执行（不加 defer），在首帧绘制前就把多余的文章藏起来，避免闪一下全量列表 */ -}}
+{{- if .IsNode }}
+{{- with resources.Get "js/pager.js" }}
+    {{- $js := . | minify | fingerprint "sha256" }}
+<script src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}" crossorigin="anonymous"></script>
+{{- end }}
 {{- end }}
 
 {{- /* 全站搜索浮层：脚本见 assets/js/search-modal.js。

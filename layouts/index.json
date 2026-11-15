@@ -1,0 +1,17 @@
+{{- /* 搜索索引：在主题版本的基础上加上标签、分类、系列和日期，
+       供 assets/js/search-modal.js 的加权检索使用 */ -}}
+{{- $index := slice -}}
+{{- range site.RegularPages -}}
+    {{- if and (not .Params.searchHidden) (ne .Layout `archives`) (ne .Layout `search`) }}
+    {{- $index = $index | append (dict
+        "title" .Title
+        "content" .Plain
+        "permalink" .Permalink
+        "summary" (.Description | default (.Summary | plainify))
+        "tags" (.Params.tags | default slice)
+        "categories" (.Params.categories | default slice)
+        "series" (.Params.series | default slice)
+        "date" (.Date.Format "2006-01-02")) -}}
+    {{- end }}
+{{- end -}}
+{{- $index | jsonify -}}

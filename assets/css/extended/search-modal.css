@@ -184,6 +184,17 @@ html.sm-open {
     font-size: 15px;
 }
 
+.sm-meta {
+    display: block;
+    margin-top: 2px;
+    color: var(--secondary);
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+.sm-meta:empty { display: none; }
+.sm-dot { margin: 0 5px; opacity: 0.6; }
+
 .sm-snippet {
     display: -webkit-box;
     -webkit-line-clamp: 2;
