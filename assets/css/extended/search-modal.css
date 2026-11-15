@@ -1,0 +1,229 @@
+/* =========================================================
+   顶栏菜单图标 + 全站搜索浮层
+   ========================================================= */
+
+/* ---------- 菜单图标 ---------- */
+#menu a > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#menu .menu-icon {
+    flex: none;
+    opacity: 0.85;
+    transition: transform 0.25s var(--ease, ease), opacity 0.25s;
+}
+
+#menu a:hover .menu-icon,
+#menu .active .menu-icon {
+    opacity: 1;
+    transform: translateY(-1px);
+}
+
+/* 窄屏只留图标，文字藏起来但保留给读屏 */
+@media screen and (max-width: 520px) {
+    #menu a > span {
+        gap: 0;
+        font-size: 0;
+    }
+    #menu .menu-icon {
+        width: 19px;
+        height: 19px;
+    }
+}
+
+/* ---------- 浮层 ---------- */
+html.sm-open {
+    overflow: hidden;
+}
+
+.search-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 12vh 16px 16px;
+    background: rgba(30, 40, 60, 0.28);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    opacity: 0;
+    transition: opacity 0.18s ease;
+}
+
+.search-modal[hidden] {
+    display: none;
+}
+
+.search-modal.is-open {
+    opacity: 1;
+}
+
+:root[data-theme="dark"] .search-modal {
+    background: rgba(2, 6, 18, 0.55);
+}
+
+.sm-panel {
+    width: min(640px, 100%);
+    max-height: 72vh;
+    display: flex;
+    flex-direction: column;
+    border-radius: 18px;
+    border: 1px solid var(--glass-rim, rgba(255, 255, 255, 0.85));
+    background-color: var(--glass-bg-strong, var(--entry));
+    background-image: linear-gradient(145deg, var(--glass-sheen, rgba(255, 255, 255, 0.4)), rgba(255, 255, 255, 0) 55%);
+    box-shadow: inset 0 1px 0 var(--glass-rim, #fff), 0 30px 70px -20px rgba(20, 30, 50, 0.45);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    overflow: hidden;
+    transform: translateY(-8px) scale(0.98);
+    transition: transform 0.2s ease;
+}
+
+.search-modal.is-open .sm-panel {
+    transform: none;
+}
+
+.sm-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--glass-rim-soft, var(--border));
+}
+
+.sm-glass {
+    flex: none;
+    color: var(--secondary);
+}
+
+.sm-input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--primary);
+    font-size: 17px;
+}
+
+.sm-input::-webkit-search-cancel-button {
+    display: none;
+}
+
+.sm-close {
+    flex: none;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    padding: 0;
+}
+
+.search-modal kbd {
+    display: inline-block;
+    min-width: 1.6em;
+    padding: 1px 6px;
+    margin: 0 2px;
+    border: 1px solid var(--glass-rim-soft, var(--border));
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.4);
+    color: var(--secondary);
+    font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+    text-align: center;
+}
+
+:root[data-theme="dark"] .search-modal kbd {
+    background: rgba(150, 180, 230, 0.10);
+}
+
+.sm-hint {
+    margin: 0;
+    padding: 0 18px;
+    color: var(--secondary);
+    font-size: 14px;
+}
+
+.sm-hint:not(:empty) {
+    padding: 18px;
+}
+
+.sm-results {
+    margin: 0;
+    padding: 6px;
+    list-style: none;
+    overflow-y: auto;
+}
+
+.sm-results:empty {
+    display: none;
+}
+
+.sm-results a {
+    display: block;
+    padding: 10px 12px;
+    border-radius: 12px;
+    color: var(--primary);
+    text-decoration: none;
+}
+
+.sm-results a.is-active,
+.sm-results a:hover {
+    background: rgba(99, 102, 241, 0.10);
+}
+
+:root[data-theme="dark"] .sm-results a.is-active,
+:root[data-theme="dark"] .sm-results a:hover {
+    background: rgba(150, 180, 230, 0.14);
+}
+
+.sm-title {
+    display: block;
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.sm-snippet {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-top: 3px;
+    color: var(--secondary);
+    font-size: 13px;
+    line-height: 1.55;
+}
+
+.sm-results mark {
+    padding: 0 1px;
+    border-radius: 3px;
+    background: rgba(250, 190, 60, 0.38);
+    color: inherit;
+}
+
+.sm-foot {
+    display: flex;
+    gap: 16px;
+    padding: 9px 16px;
+    border-top: 1px solid var(--glass-rim-soft, var(--border));
+    color: var(--secondary);
+    font-size: 12px;
+}
+
+/* 触屏上没有键盘快捷键，提示栏收起 */
+@media (pointer: coarse) {
+    .sm-foot {
+        display: none;
+    }
+    .search-modal {
+        padding-top: 8vh;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .search-modal,
+    .sm-panel {
+        transition: none;
+    }
+}

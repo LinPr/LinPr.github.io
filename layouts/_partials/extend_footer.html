@@ -189,3 +189,26 @@
     {{- $js := . | minify | fingerprint "sha256" }}
 <script async src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}" crossorigin="anonymous"></script>
 {{- end }}
+
+{{- /* 全站搜索浮层：脚本见 assets/js/search-modal.js。
+       Fuse 和 index.json 在第一次打开浮层时才加载。 */ -}}
+{{- $fuse := resources.Get "js/fuse.basic.min.js" | fingerprint "sha256" }}
+<div id="search-modal" class="search-modal" role="dialog" aria-modal="true" aria-label="搜索文章" hidden
+     data-index="{{ "index.json" | relLangURL }}"
+     data-fuse-src="{{ $fuse.RelPermalink }}"
+     data-fuse="{{ site.Params.fuseOpts | jsonify }}">
+    <div class="sm-panel">
+        <div class="sm-bar">
+            <svg class="sm-glass" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input class="sm-input" type="search" placeholder="搜索文章：Go、epoll、Kafka…" aria-label="搜索关键词" autocomplete="off" spellcheck="false">
+            <button class="sm-close" type="button" aria-label="关闭搜索"><kbd>Esc</kbd></button>
+        </div>
+        <p class="sm-hint" aria-live="polite"></p>
+        <ul class="sm-results"></ul>
+        <div class="sm-foot"><span><kbd>↑</kbd><kbd>↓</kbd> 选择</span><span><kbd>Enter</kbd> 打开</span><span><kbd>Ctrl</kbd><kbd>K</kbd> 随时唤起</span></div>
+    </div>
+</div>
+{{- with resources.Get "js/search-modal.js" }}
+    {{- $js := . | minify | fingerprint "sha256" }}
+<script defer src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}" crossorigin="anonymous"></script>
+{{- end }}
