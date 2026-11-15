@@ -1,0 +1,52 @@
+{{- /*
+  评论：giscus，评论存为 LinPr/LinPr.github.io 仓库的 GitHub Discussions（Announcements 分类，
+  只有仓库维护者能新建讨论，读者只能在 giscus 创建的讨论里回复）。
+  按 pathname 映射文章；主题跟随 <html data-theme>，PaperMod 切换亮暗时同步给 iframe。
+  覆盖主题的空 comments.html，由 single.html 在 .Param "comments" 为真时调用。
+*/ -}}
+{{- with site.Params.giscus }}
+<section class="comments-box" id="comments" aria-label="评论">
+  <div class="giscus"></div>
+</section>
+<script>
+(function () {
+  var html = document.documentElement;
+  function giscusTheme() {
+    var t = html.dataset.theme;
+    if (t === "auto" || !t) {
+      t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+    return t === "dark" ? "dark_dimmed" : "light";
+  }
+
+  var s = document.createElement("script");
+  s.src = "https://giscus.app/client.js";
+  s.async = true;
+  s.crossOrigin = "anonymous";
+  var attrs = {
+    "data-repo": {{ .repo }},
+    "data-repo-id": {{ .repoID }},
+    "data-category": {{ .category }},
+    "data-category-id": {{ .categoryID }},
+    "data-mapping": "pathname",
+    "data-strict": "1",
+    "data-reactions-enabled": "1",
+    "data-emit-metadata": "0",
+    "data-input-position": "top",
+    "data-lang": {{ .lang | default "zh-CN" }},
+    "data-loading": "lazy",
+    "data-theme": giscusTheme()
+  };
+  for (var k in attrs) s.setAttribute(k, attrs[k]);
+  document.querySelector(".comments-box .giscus").appendChild(s);
+
+  function sync() {
+    var frame = document.querySelector("iframe.giscus-frame");
+    if (!frame) return;
+    frame.contentWindow.postMessage(
+      { giscus: { setConfig: { theme: giscusTheme() } } }, "https://giscus.app");
+  }
+  new MutationObserver(sync).observe(html, { attributes: true, attributeFilter: ["data-theme"] });
+})();
+</script>
+{{- end }}

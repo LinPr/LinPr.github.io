@@ -46,7 +46,14 @@ params:
   hideSummary: false
   disableSpecial1stPost: false
   disableScrollToTop: false
-  comments: false
+  comments: true
+  # giscus：评论存到本仓库的 GitHub Discussions，ID 由 giscus.app 生成
+  giscus:
+    repo: LinPr/LinPr.github.io
+    repoID: R_kgDOLPRJrQ
+    category: Announcements
+    categoryID: DIC_kwDOLPRJrc4DLLkH
+    lang: zh-CN
 
   assets:
     favicon: /favicon.svg
