@@ -24,41 +24,50 @@
     if (current) current.classList.add("is-current");
 
     let at = null;
+    let leaveTimer = 0;
     const place = (link, animate) => {
+        clearTimeout(leaveTimer);
+        if (link === at) return;
         if (!link) {
             blob.classList.remove("is-on");
             at = null;
             return;
         }
-        const smooth = animate && !reduceMotion && at && at !== link;
-        blob.classList.toggle("no-anim", !animate || reduceMotion || !at);
+        /* 从隐藏状态出现时先瞬移就位再淡入，避免从别处飞过来 */
+        const jump = !animate || reduceMotion || !at;
+        blob.classList.toggle("no-anim", jump);
+        /* 菜单链接和顶栏一样高，液滴上下各留一点空，看起来是浮在玻璃里的一颗 */
+        const h = Math.min(link.offsetHeight, 32);
+        const y = link.offsetTop + (link.offsetHeight - h) / 2;
         blob.style.width = link.offsetWidth + "px";
-        blob.style.height = link.offsetHeight + "px";
-        blob.style.transform = "translate(" + link.offsetLeft + "px," + link.offsetTop + "px)";
-        if (!at) void blob.offsetWidth; // 先就位再淡入，避免从左上角飞过来
+        blob.style.height = h + "px";
+        blob.style.transform = "translate3d(" + link.offsetLeft + "px," + y + "px,0)";
+        if (jump) void blob.offsetWidth;
         blob.classList.remove("no-anim");
         blob.classList.add("is-on");
-        if (smooth) {
-            blob.classList.remove("is-stretch");
-            void blob.offsetWidth;
-            blob.classList.add("is-stretch");
-        }
         at = link;
+    };
+
+    /* 离开菜单时稍等一下再回到当前栏目：鼠标擦过菜单项之间的缝隙、
+       或者短暂移出又移回来时，液滴不会来回跳 */
+    const back = () => {
+        clearTimeout(leaveTimer);
+        leaveTimer = setTimeout(() => place(current, true), 160);
     };
 
     links.forEach((a) => {
         a.addEventListener("pointerenter", () => place(a, true));
         a.addEventListener("focus", () => place(a, true));
     });
-    menu.addEventListener("pointerleave", () => place(current, true));
+    menu.addEventListener("pointerleave", back);
     menu.addEventListener("focusout", (e) => {
-        if (!menu.contains(e.relatedTarget)) place(current, true);
+        if (!menu.contains(e.relatedTarget)) back();
     });
 
     let t = 0;
     window.addEventListener("resize", () => {
         clearTimeout(t);
-        t = setTimeout(() => { const keep = at; at = null; place(keep, false); }, 120);
+        t = setTimeout(() => { const keep = at || current; at = null; place(keep, false); }, 120);
     });
 
     /* 字体加载完成后菜单宽度可能变，重新量一次 */
