@@ -303,7 +303,7 @@ nginx 的失败语义分散在各个 `checker` 中，同一个返回值在不同
 | `UnschedulableAndUnresolvable` | **立即终止**，所有节点都视为不可解决 | 该节点不可行，且不参与抢占 |
 | `Error` | 本轮失败，Pod 进入退避 | 本轮失败，Pod 进入退避 |
 
-还有两个只在特定扩展点使用的 code：`Wait` 只能由 Permit 返回，表示「先别绑定，等我的信号」；`Pending` 用于等待外部条件的场景，与 `Unschedulable` 一样被视为拒绝。
+还有两个只在特定扩展点使用的 code：`Wait` 由 Permit 返回，表示「先别绑定，等我的信号」（新增的 PodGroup 扩展点 `PlacementFeasible` 也会用它表示「目前放下的 Pod 还不够，继续评估下一个」）；`Pending` 用于等待外部条件的场景，与 `Unschedulable` 一样被视为拒绝。
 
 关键不在分类数量，而在于**同一个 code 在不同扩展点上有不同处理**。`RunPreFilterPlugins` 是最清楚的例子：
 

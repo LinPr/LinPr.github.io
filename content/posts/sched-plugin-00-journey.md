@@ -70,7 +70,7 @@ func getDefaultPlugins() *v1.Plugins {
 
 ### 1.2 由 feature gate 追加的插件
 
-另外 5 个插件只在对应 feature gate 打开时追加进来：
+另外 5 个插件在对应 feature gate 打开时才追加进来。其中 `NodeDeclaredFeatures` 的 gate 在 1.37 已经 GA 并锁定开启，所以实际的默认 profile 是 20 个插件；其余几个 gate 默认关闭：
 
 ```go
 // pkg/scheduler/apis/config/v1/default_plugins.go

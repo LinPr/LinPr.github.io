@@ -18,7 +18,7 @@
 <text x="25.0" y="863.0" font-size="12" fill="#059669" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">期</text>
 <rect x="46.0" y="84.0" width="176.0" height="44.0" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.3"/>
 <text x="58.0" y="103.0" font-size="13" fill="#0f172a" text-anchor="start" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-weight="700">QueueSort</text>
-<text x="58.0" y="119.0" font-size="10.5" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">只能有一个，三选一</text>
+<text x="58.0" y="119.0" font-size="10.5" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">整个进程只能一个</text>
 <circle cx="210.0" cy="106.0" r="3" fill="#475569"/>
 <line x1="213.0" y1="106.0" x2="252.0" y2="106.0" stroke="#475569" stroke-width="1.4" marker-end="url(#a)"/>
 <rect x="256.0" y="92.0" width="104.2" height="28.0" rx="7" fill="#fff1f2" stroke="#fda4af" stroke-width="1.2"/>
@@ -29,14 +29,14 @@
 <text x="536.1" y="110.5" font-size="11" fill="#94a3b8" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">或</text>
 <rect x="553.1" y="92.0" width="70.0" height="28.0" rx="7" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1.2"/>
 <text x="564.1" y="110.5" font-size="11.5" fill="#065f46" text-anchor="start" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">QOSSort</text>
-<text x="635.0" y="110.5" font-size="10.5" fill="#94a3b8" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">启用任何一个都必须禁用 PrioritySort</text>
+<text x="635.0" y="110.5" font-size="10.5" fill="#94a3b8" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">所有 Profile 须相同，且须禁用 PrioritySort</text>
 <rect x="46.0" y="168.0" width="176.0" height="70.0" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.3"/>
 <text x="58.0" y="200.0" font-size="13" fill="#0f172a" text-anchor="start" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace" font-weight="700">PreFilter</text>
 <text x="58.0" y="216.0" font-size="10.5" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">串行；UAU 立即终止</text>
 <circle cx="210.0" cy="182.0" r="3" fill="#475569"/>
 <line x1="213.0" y1="182.0" x2="252.0" y2="182.0" stroke="#475569" stroke-width="1.4" marker-end="url(#a)"/>
 <rect x="256.0" y="168.0" width="138.7" height="28.0" rx="7" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.2"/>
-<text x="267.0" y="186.5" font-size="11.5" fill="#475569" text-anchor="start" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">in-tree 默认 13 个</text>
+<text x="267.0" y="186.5" font-size="11.5" fill="#475569" text-anchor="start" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">in-tree 默认 11 个</text>
 <line x1="396.7" y1="182.0" x2="420.7" y2="182.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
 <rect x="424.7" y="168.0" width="145.4" height="28.0" rx="7" fill="#fff1f2" stroke="#fda4af" stroke-width="1.2"/>
 <text x="435.7" y="186.5" font-size="11.5" fill="#9f1239" text-anchor="start" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">CapacityScheduling</text>
@@ -58,7 +58,7 @@
 <circle cx="210.0" cy="266.0" r="3" fill="#475569"/>
 <line x1="213.0" y1="266.0" x2="252.0" y2="266.0" stroke="#475569" stroke-width="1.4" marker-end="url(#a)"/>
 <rect x="256.0" y="252.0" width="138.7" height="28.0" rx="7" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.2"/>
-<text x="267.0" y="270.5" font-size="11.5" fill="#475569" text-anchor="start" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">in-tree 默认 13 个</text>
+<text x="267.0" y="270.5" font-size="11.5" fill="#475569" text-anchor="start" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">in-tree 默认 14 个</text>
 <line x1="396.7" y1="266.0" x2="420.7" y2="266.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
 <rect x="424.7" y="252.0" width="193.4" height="28.0" rx="7" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.2"/>
 <text x="435.7" y="270.5" font-size="11.5" fill="#1e40af" text-anchor="start" font-family="ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace">NodeResourceTopologyMatch</text>
@@ -215,6 +215,6 @@
 <text x="595.0" y="960.0" font-size="11" fill="#475569" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">网络感知</text>
 <rect x="661.0" y="946.0" width="26.0" height="18.0" rx="4" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1.2"/>
 <text x="693.0" y="960.0" font-size="11" fill="#475569" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">元数据/安全/状态/队列</text>
-<text x="46.0" y="982.0" font-size="11" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">注 1：图中把能挂上的插件全部画出，实际 Profile 只会启用其中一部分；彼此之间的顺序以配置为准，这里按 main.go 的注册顺序示意。</text>
+<text x="46.0" y="982.0" font-size="11" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">注 1：图中把能挂上的插件全部画出，实际 Profile 只会启用其中一部分；彼此之间的顺序以配置为准，这里按 main.go 的注册顺序示意；in-tree 个数按 scheduler-plugins 依赖的 v1.36.4 默认配置统计。</text>
 <text x="46.0" y="1000.0" font-size="11" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">注 2：Coscheduling 的 Reserve 是空实现，真正起作用的是 Unreserve：任一成员回滚时拒绝整组等待中的 Pod。</text>
 </svg>
