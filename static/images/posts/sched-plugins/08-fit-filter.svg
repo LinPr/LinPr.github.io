@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 600" width="920" height="600" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<rect width="920" height="600" fill="#ffffff"/>
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker></defs>
+<text x="460.0" y="32.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">NodeResourcesFit 的 Filter：比剩余量决定成败，比总量决定能否抢占</text>
+<text x="460.0" y="54.0" font-size="13" fill="#64748b" text-anchor="middle">以 CPU 为例：节点 allocatable 8000m，已被请求 6000m（NodeInfo.Requested，含 assumed Pod）</text>
+<path d="M770.0,86.0 L770.0,358.0" stroke="#dc2626" stroke-width="1.2" fill="none" stroke-dasharray="4 4"/>
+<text x="770.0" y="82.0" font-size="11.5" fill="#dc2626" text-anchor="middle">allocatable 8000m</text>
+<path d="M660.0,130.0 L660.0,358.0" stroke="#94a3b8" stroke-width="1" fill="none" stroke-dasharray="4 4"/>
+<text x="30.0" y="118.0" font-size="13" fill="#1e293b" text-anchor="start" font-weight="700">节点</text>
+<text x="80.0" y="118.0" font-size="12.5" fill="#64748b" text-anchor="start">已请求 6000m，剩余 2000m</text>
+<rect x="330.0" y="96.0" width="330.0" height="34.0" rx="4" fill="#cbd5e1" stroke="#64748b" stroke-width="1"/>
+<text x="495.0" y="118.0" font-size="12.5" fill="#1e293b" text-anchor="middle">已请求 6000m</text>
+<rect x="660.0" y="96.0" width="110.0" height="34.0" rx="4" fill="#ecfdf5" stroke="#059669" stroke-width="1"/>
+<text x="715.0" y="118.0" font-size="12.5" fill="#059669" text-anchor="middle">剩余</text>
+<text x="30.0" y="170.0" font-size="13" fill="#059669" text-anchor="start" font-weight="700">Pod 请求 1500m</text>
+<text x="30.0" y="190.0" font-size="11.5" fill="#059669" text-anchor="start">≤ 剩余，通过</text>
+<rect x="660.0" y="156.0" width="82.5" height="30.0" rx="4" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="30.0" y="236.0" font-size="13" fill="#ea580c" text-anchor="start" font-weight="700">Pod 请求 3000m</text>
+<text x="30.0" y="256.0" font-size="11.5" fill="#ea580c" text-anchor="start">&gt; 剩余但 ≤ allocatable：Unschedulable</text>
+<rect x="660.0" y="222.0" width="165.0" height="30.0" rx="4" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="30.0" y="302.0" font-size="13" fill="#dc2626" text-anchor="start" font-weight="700">Pod 请求 10000m</text>
+<text x="30.0" y="322.0" font-size="11.5" fill="#dc2626" text-anchor="start">&gt; allocatable：UnschedulableAndUnresolvable</text>
+<rect x="330.0" y="288.0" width="550.0" height="30.0" rx="4" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="330.0" y="356.0" font-size="11" fill="#64748b" text-anchor="start">前两行从 6000m 处起画，表示放上去之后的位置；第三行从 0 起画，单看请求本身</text>
+<text x="30.0" y="372.0" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="700">FitsRequest 的检查顺序（plugins/helper/resource_fit.go）</text>
+<rect x="30.0" y="386.0" width="204.0" height="96.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="42.0" y="408.0" font-size="13" fill="#2563eb" text-anchor="start" font-weight="700">① Pod 数</text>
+<text x="42.0" y="430.0" font-size="11.5" fill="#1e293b" text-anchor="start">len(Pods)+1 &gt; allowed</text>
+<text x="42.0" y="450.0" font-size="11.5" fill="#64748b" text-anchor="start">→ Too many pods</text>
+<text x="42.0" y="470.0" font-size="11.5" fill="#64748b" text-anchor="start">Unresolvable 恒为 false</text>
+<path d="M234.0,434.0 L246.0,434.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="248.0" y="386.0" width="204.0" height="96.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="260.0" y="408.0" font-size="13" fill="#2563eb" text-anchor="start" font-weight="700">② 全零请求</text>
+<text x="260.0" y="430.0" font-size="11.5" fill="#1e293b" text-anchor="start">CPU/内存/存储/标量都为 0</text>
+<text x="260.0" y="450.0" font-size="11.5" fill="#64748b" text-anchor="start">→ 直接返回已有结果</text>
+<text x="260.0" y="470.0" font-size="11.5" fill="#64748b" text-anchor="start">只剩 Pod 数这一项</text>
+<path d="M452.0,434.0 L464.0,434.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="466.0" y="386.0" width="204.0" height="96.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="478.0" y="408.0" font-size="13" fill="#2563eb" text-anchor="start" font-weight="700">③ CPU / 内存 / 临时存储</text>
+<text x="478.0" y="430.0" font-size="11.5" fill="#1e293b" text-anchor="start">delta &gt; allocatable − requested</text>
+<text x="478.0" y="450.0" font-size="11.5" fill="#64748b" text-anchor="start">→ Insufficient cpu …</text>
+<text x="478.0" y="470.0" font-size="11.5" fill="#64748b" text-anchor="start">请求 &gt; allocatable 即红色</text>
+<path d="M670.0,434.0 L682.0,434.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="684.0" y="386.0" width="204.0" height="96.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="696.0" y="408.0" font-size="13" fill="#2563eb" text-anchor="start" font-weight="700">④ 标量资源</text>
+<text x="696.0" y="430.0" font-size="11.5" fill="#1e293b" text-anchor="start">ignoredResources 只跳扩展资源</text>
+<text x="696.0" y="450.0" font-size="11.5" fill="#64748b" text-anchor="start">DRA 托管的扩展资源跳过</text>
+<text x="696.0" y="470.0" font-size="11.5" fill="#64748b" text-anchor="start">其余同 ③</text>
+<rect x="30.0" y="500.0" width="860.0" height="72.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="46.0" y="524.0" font-size="12.5" fill="#1e293b" text-anchor="start">所有不足项都会被收集（不是遇到第一个就返回），每一项的 Reason 都进入失败原因列表</text>
+<text x="46.0" y="548.0" font-size="12.5" fill="#1e293b" text-anchor="start">只要有一项 Unresolvable，整个节点的状态码就是</text>
+<rect x="370.0" y="533.0" width="212.0" height="24.0" rx="5" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="476.0" y="550.0" font-size="11" fill="#dc2626" text-anchor="middle" font-weight="700">UnschedulableAndUnresolvable</text>
+<text x="592.0" y="548.0" font-size="12.5" fill="#1e293b" text-anchor="start">，否则是</text>
+<rect x="650.0" y="533.0" width="112.0" height="24.0" rx="5" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="706.0" y="550.0" font-size="11" fill="#ea580c" text-anchor="middle" font-weight="700">Unschedulable</text>
+</svg>

@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" width="1000" height="600" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#94a3b8"/></marker><marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#059669"/></marker><marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#ea580c"/></marker><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#dc2626"/></marker><marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#2563eb"/></marker></defs>
+<rect width="1000" height="600" fill="#ffffff"/>
+<text x="500.0" y="34.0" font-size="19" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">minMember = 3 时 Permit 的三种结局</text>
+<text x="500.0" y="58.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">每条泳道是一个 PodGroup 的三个 Pod；色块左端是进入 Permit 的时刻，长度是 waiting（已 assume、占着资源、未绑定）的时长</text>
+<text x="30.0" y="84.0" font-size="14" fill="#059669" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">① 第 3 个 Pod 及时到达</text>
+<polyline points="140.0,202.0 675.0,202.0" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+<text x="150.0" y="218.0" font-size="11" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">0s</text>
+<text x="250.0" y="218.0" font-size="11" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">20s</text>
+<text x="350.0" y="218.0" font-size="11" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">40s</text>
+<text x="450.0" y="218.0" font-size="11" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">60s</text>
+<text x="550.0" y="218.0" font-size="11" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">80s</text>
+<text x="650.0" y="218.0" font-size="11" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">100s</text>
+<text x="130.0" y="116.0" font-size="13" fill="#1e293b" text-anchor="end" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">p1</text>
+<rect x="150.0" y="102.0" width="150.0" height="22.0" rx="4" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="306.0" y="117.0" font-size="12" fill="#059669" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Allow → 绑定</text>
+<text x="130.0" y="148.0" font-size="13" fill="#1e293b" text-anchor="end" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">p2</text>
+<rect x="210.0" y="134.0" width="90.0" height="22.0" rx="4" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="306.0" y="149.0" font-size="12" fill="#059669" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Allow → 绑定</text>
+<text x="130.0" y="180.0" font-size="13" fill="#1e293b" text-anchor="end" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">p3</text>
+<rect x="300.0" y="166.0" width="2.5" height="22.0" rx="4" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="308.5" y="181.0" font-size="12" fill="#059669" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Success → 绑定</text>
+<rect x="685.0" y="94.0" width="285.0" height="104.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="695.0" y="124.2" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">p3 的 Permit 时 assigned = 3 ≥ 3</text>
+<text x="695.0" y="141.6" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">→ ClearPodGroupScheduleFailure</text>
+<text x="695.0" y="159.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">→ IterateOverWaitingPods 逐个 Allow</text>
+<text x="695.0" y="176.4" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">三个 Pod 几乎同时进入绑定</text>
+<text x="30.0" y="254.0" font-size="14" fill="#ea580c" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">② 第 3 个 Pod Filter 失败，PostFilter 连坐</text>
+<polyline points="140.0,372.0 675.0,372.0" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+<text x="150.0" y="388.0" font-size="11" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">0s</text>
+<text x="250.0" y="388.0" font-size="11" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">20s</text>
+<text x="350.0" y="388.0" font-size="11" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">40s</text>
+<text x="450.0" y="388.0" font-size="11" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">60s</text>
+<text x="550.0" y="388.0" font-size="11" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">80s</text>
+<text x="650.0" y="388.0" font-size="11" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">100s</text>
+<text x="130.0" y="286.0" font-size="13" fill="#1e293b" text-anchor="end" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">p1</text>
+<rect x="150.0" y="272.0" width="125.0" height="22.0" rx="4" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="281.0" y="287.0" font-size="12" fill="#ea580c" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Reject（optimistic rejection）</text>
+<text x="130.0" y="318.0" font-size="13" fill="#1e293b" text-anchor="end" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">p2</text>
+<rect x="210.0" y="304.0" width="65.0" height="22.0" rx="4" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="281.0" y="319.0" font-size="12" fill="#ea580c" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Reject</text>
+<text x="130.0" y="350.0" font-size="13" fill="#1e293b" text-anchor="end" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">p3</text>
+<text x="150.0" y="350.0" font-size="12" fill="#ea580c" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">在 25s 处 Filter 失败 → PostFilter：(3-2)/3 = 33% &gt; 10%</text>
+<rect x="685.0" y="264.0" width="285.0" height="104.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="695.0" y="294.2" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">被拒的 p1、p2 绑定周期失败，各自跑</text>
+<text x="695.0" y="311.6" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Unreserve 并回队；组被记下失败时刻，</text>
+<text x="695.0" y="329.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">排序时排到同优先级其他组之后；</text>
+<text x="695.0" y="346.4" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">若配置了 backoff，PreFilter 会挡住整组</text>
+<text x="30.0" y="424.0" font-size="14" fill="#dc2626" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">③ 第 3 个 Pod 迟迟不来，等待超时</text>
+<polyline points="140.0,542.0 675.0,542.0" fill="none" stroke="#cbd5e1" stroke-width="1"/>
+<text x="150.0" y="558.0" font-size="11" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">0s</text>
+<text x="250.0" y="558.0" font-size="11" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">20s</text>
+<text x="350.0" y="558.0" font-size="11" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">40s</text>
+<text x="450.0" y="558.0" font-size="11" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">60s</text>
+<text x="550.0" y="558.0" font-size="11" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">80s</text>
+<text x="650.0" y="558.0" font-size="11" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">100s</text>
+<text x="130.0" y="456.0" font-size="13" fill="#1e293b" text-anchor="end" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">p1</text>
+<rect x="150.0" y="442.0" width="300.0" height="22.0" rx="4" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="456.0" y="457.0" font-size="12" fill="#dc2626" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">60s 超时 → Reject</text>
+<text x="130.0" y="488.0" font-size="13" fill="#1e293b" text-anchor="end" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">p2</text>
+<rect x="210.0" y="474.0" width="240.0" height="22.0" rx="4" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="456.0" y="489.0" font-size="12" fill="#dc2626" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">被 p1 的 Unreserve 连坐 Reject</text>
+<text x="130.0" y="520.0" font-size="13" fill="#1e293b" text-anchor="end" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">p3</text>
+<text x="150.0" y="520.0" font-size="12" fill="#dc2626" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">触发抢占，在等受害者优雅退出（DefaultPreemption 成功，不连坐）</text>
+<rect x="685.0" y="434.0" width="285.0" height="104.0" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="695.0" y="464.2" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">超时按每个 Pod 自己的 Permit 时刻起算；</text>
+<text x="695.0" y="481.6" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">先到期的 p1 在 Unreserve 里 Reject 掉</text>
+<text x="695.0" y="499.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">p2，两者一起释放资源。超时取</text>
+<text x="695.0" y="516.4" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">scheduleTimeoutSeconds，默认 60s</text>
+</svg>

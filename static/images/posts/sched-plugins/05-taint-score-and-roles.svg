@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" width="1000" height="560" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#94a3b8"/></marker><marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#059669"/></marker><marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#ea580c"/></marker><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#dc2626"/></marker><marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#2563eb"/></marker></defs>
+<rect width="1000" height="560" fill="#ffffff"/>
+<text x="500.0" y="34.0" font-size="19" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">软污点打分算例，以及三种 effect 在各组件之间的分工</text>
+<text x="500.0" y="58.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">左：4 个可行节点上不被容忍的 PreferNoSchedule 个数分别为 0、1、2、4；右：同一个污点 effect 由谁在什么时候检查</text>
+<text x="24.0" y="96.0" font-size="13.5" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">算例（Pod 没有任何 PreferNoSchedule 容忍）</text>
+<rect x="24.0" y="108.0" width="440.0" height="30.0" rx="4" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="32.0" y="128.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">节点</text>
+<text x="102.0" y="128.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">原始分 raw</text>
+<text x="202.0" y="128.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">归一化</text>
+<text x="292.0" y="128.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">× 权重 3</text>
+<rect x="24.0" y="138.0" width="440.0" height="44.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="32.0" y="165.0" font-size="13" fill="#2563eb" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">n1</text>
+<text x="102.0" y="165.0" font-size="13" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">0</text>
+<text x="202.0" y="165.0" font-size="13" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">100</text>
+<rect x="292.0" y="150.0" width="110.0" height="20.0" rx="3" fill="#f0fdfa" stroke="#0d9488" stroke-width="1"/>
+<text x="408.0" y="165.0" font-size="13" fill="#0d9488" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">300</text>
+<rect x="24.0" y="182.0" width="440.0" height="44.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="32.0" y="209.0" font-size="13" fill="#2563eb" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">n2</text>
+<text x="102.0" y="209.0" font-size="13" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">1</text>
+<text x="202.0" y="209.0" font-size="13" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">75</text>
+<rect x="292.0" y="194.0" width="82.5" height="20.0" rx="3" fill="#f0fdfa" stroke="#0d9488" stroke-width="1"/>
+<text x="380.5" y="209.0" font-size="13" fill="#0d9488" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">225</text>
+<rect x="24.0" y="226.0" width="440.0" height="44.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="32.0" y="253.0" font-size="13" fill="#2563eb" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">n3</text>
+<text x="102.0" y="253.0" font-size="13" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">2</text>
+<text x="202.0" y="253.0" font-size="13" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">50</text>
+<rect x="292.0" y="238.0" width="55.0" height="20.0" rx="3" fill="#f0fdfa" stroke="#0d9488" stroke-width="1"/>
+<text x="353.0" y="253.0" font-size="13" fill="#0d9488" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">150</text>
+<rect x="24.0" y="270.0" width="440.0" height="44.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="32.0" y="297.0" font-size="13" fill="#2563eb" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">n4</text>
+<text x="102.0" y="297.0" font-size="13" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">4</text>
+<text x="202.0" y="297.0" font-size="13" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">0</text>
+<text x="298.0" y="297.0" font-size="13" fill="#0d9488" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">0</text>
+<text x="24.0" y="330.0" font-size="12" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">max(raw) = 4：n2 = 100 − 100×1/4 = 75，n3 = 100 − 100×2/4 = 50</text>
+<rect x="24.0" y="346.0" width="440.0" height="92.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="244.0" y="370.6" font-size="13" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">反直觉的边界：DefaultNormalizeScore 不是 min-max</text>
+<text x="244.0" y="388.3" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">若所有节点 raw 都是 1：max=1，每个节点 100−100 = 0 分</text>
+<text x="244.0" y="405.7" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">若所有节点 raw 都是 0：直接全部 100 分</text>
+<text x="244.0" y="423.1" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">两种情况节点之间都没有差别，只是基线不同</text>
+<rect x="24.0" y="452.0" width="440.0" height="92.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="244.0" y="476.4" font-size="12.5" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">整数除法：100×raw/max 向下取整</text>
+<text x="244.0" y="494.0" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">max=3 时 raw=1 → 100−33 = 67；raw=2 → 100−66 = 34</text>
+<text x="244.0" y="511.4" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Score 阶段只对通过 Filter 的节点计算，</text>
+<text x="244.0" y="528.8" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">max 也只在这些节点里取</text>
+<text x="490.0" y="96.0" font-size="13.5" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">三种 effect 的分工</text>
+<rect x="490.0" y="108.0" width="486.0" height="34.0" rx="4" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="552.0" y="130.0" font-size="11.5" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">effect</text>
+<text x="655.0" y="130.0" font-size="11.5" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">调度器 Filter</text>
+<text x="737.0" y="130.0" font-size="11.5" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">调度器 Score</text>
+<text x="824.0" y="130.0" font-size="11.5" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">kubelet 准入</text>
+<text x="923.0" y="130.0" font-size="11.5" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">taint-eviction</text>
+<rect x="490.0" y="142.0" width="486.0" height="46.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="496.0" y="170.0" font-size="11.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">NoSchedule</text>
+<text x="655.0" y="170.0" font-size="12.5" fill="#dc2626" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">淘汰</text>
+<text x="737.0" y="170.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">—</text>
+<text x="824.0" y="170.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">不检查</text>
+<text x="923.0" y="170.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">不驱逐</text>
+<rect x="490.0" y="188.0" width="486.0" height="46.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="496.0" y="216.0" font-size="11.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">PreferNoSchedule</text>
+<text x="655.0" y="216.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">不检查</text>
+<text x="737.0" y="216.0" font-size="12.5" fill="#0d9488" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">扣分</text>
+<text x="824.0" y="216.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">不检查</text>
+<text x="923.0" y="216.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">不驱逐</text>
+<rect x="490.0" y="234.0" width="486.0" height="46.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="496.0" y="262.0" font-size="11.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">NoExecute</text>
+<text x="655.0" y="262.0" font-size="12.5" fill="#dc2626" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">淘汰</text>
+<text x="737.0" y="262.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">—</text>
+<text x="824.0" y="262.0" font-size="12.5" fill="#dc2626" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">拒绝</text>
+<text x="923.0" y="262.0" font-size="12.5" fill="#dc2626" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">驱逐</text>
+<text x="490.0" y="302.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">kubelet 准入</text>
+<text x="504.0" y="324.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">generalFilter 只看 NoExecute，静态 Pod 除外</text>
+<text x="490.0" y="346.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">taint-eviction-controller</text>
+<text x="504.0" y="368.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">不被容忍的 NoExecute → 立即删除；被容忍但设了</text>
+<text x="504.0" y="390.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">tolerationSeconds → 到期删除（取匹配容忍中的最小值）</text>
+<text x="490.0" y="412.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">DefaultTolerationSeconds 准入插件</text>
+<text x="504.0" y="434.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">默认添加 not-ready / unreachable:NoExecute 各 300s 容忍</text>
+<rect x="490.0" y="470.0" width="486.0" height="74.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="733.0" y="493.9" font-size="12" fill="#2563eb" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">调度器 Filter 对 NoExecute 返回 U&amp;U，与 NoSchedule 相同：</text>
+<text x="733.0" y="511.3" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">调度时两者无区别，区别只在 Pod 已经运行之后</text>
+<text x="733.0" y="528.7" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">（NoExecute 会把已运行的 Pod 赶走，NoSchedule 不会）</text>
+</svg>

@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 724" width="900" height="724" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<rect width="900" height="724" fill="#ffffff"/>
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker></defs>
+<text x="450.0" y="32.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">NodeAffinity 的 required 语义：三段 AND，term 之间 OR</text>
+<text x="450.0" y="54.0" font-size="13" fill="#64748b" text-anchor="middle">Filter 只有全部满足才放行；PreFilter 顺便从 metadata.name 条件里推出候选节点集合</text>
+<rect x="24.0" y="84.0" width="256.0" height="104.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="40.0" y="110.0" font-size="14" fill="#7c3aed" text-anchor="start" font-weight="700">addedAffinity.required</text>
+<text x="40.0" y="134.0" font-size="12" fill="#64748b" text-anchor="start">插件参数，作用于本 Profile 全部 Pod</text>
+<text x="40.0" y="156.0" font-size="12" fill="#dc2626" text-anchor="start">不满足：红色码，原因串为</text>
+<text x="40.0" y="176.0" font-size="11" fill="#64748b" text-anchor="start">didn't match scheduler-enforced …</text>
+<text x="302.0" y="141.0" font-size="14" fill="#1e293b" text-anchor="middle" font-weight="700">AND</text>
+<rect x="324.0" y="84.0" width="240.0" height="104.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="340.0" y="110.0" font-size="14" fill="#2563eb" text-anchor="start" font-weight="700">spec.nodeSelector</text>
+<text x="340.0" y="134.0" font-size="12" fill="#64748b" text-anchor="start">map 里每个 key=value 都要匹配</text>
+<text x="340.0" y="156.0" font-size="12" fill="#64748b" text-anchor="start">相当于一组单值 In 条件取 AND</text>
+<text x="340.0" y="176.0" font-size="11" fill="#64748b" text-anchor="start">为空则不参与判断</text>
+<text x="586.0" y="141.0" font-size="14" fill="#1e293b" text-anchor="middle" font-weight="700">AND</text>
+<rect x="608.0" y="84.0" width="268.0" height="104.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+<text x="622.0" y="110.0" font-size="14" fill="#0d9488" text-anchor="start" font-weight="700">nodeAffinity.required</text>
+<text x="622.0" y="134.0" font-size="12" fill="#64748b" text-anchor="start">nodeSelectorTerms 之间是 OR</text>
+<text x="622.0" y="156.0" font-size="12" fill="#64748b" text-anchor="start">任一 term 命中即通过</text>
+<text x="622.0" y="176.0" font-size="11" fill="#64748b" text-anchor="start">后两段不满足：红色码，ErrReasonPod</text>
+<path d="M742.0,188.0 L742.0,222.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="24.0" y="222.0" width="852.0" height="140.0" rx="10" fill="#fbfdff" stroke="#99f6e4" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="40.0" y="244.0" font-size="13" fill="#0d9488" text-anchor="start" font-weight="700">展开一个 NodeSelector</text>
+<rect x="40.0" y="256.0" width="262.0" height="90.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="52.0" y="278.0" font-size="13" fill="#1e293b" text-anchor="start" font-weight="700">term[0]</text>
+<text x="52.0" y="302.0" font-size="12" fill="#64748b" text-anchor="start">matchExpressions：多条之间 AND</text>
+<text x="52.0" y="324.0" font-size="12" fill="#64748b" text-anchor="start">matchFields：多条之间 AND</text>
+<text x="52.0" y="340.0" font-size="11" fill="#64748b" text-anchor="start">两组再取 AND</text>
+<rect x="334.0" y="256.0" width="262.0" height="90.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="346.0" y="278.0" font-size="13" fill="#1e293b" text-anchor="start" font-weight="700">term[1]</text>
+<text x="346.0" y="302.0" font-size="12" fill="#64748b" text-anchor="start">matchExpressions：多条之间 AND</text>
+<text x="346.0" y="324.0" font-size="12" fill="#64748b" text-anchor="start">matchFields：多条之间 AND</text>
+<text x="346.0" y="340.0" font-size="11" fill="#64748b" text-anchor="start">两组再取 AND</text>
+<text x="315.0" y="306.0" font-size="14" fill="#1e293b" text-anchor="middle" font-weight="700">OR</text>
+<text x="620.0" y="306.0" font-size="14" fill="#1e293b" text-anchor="middle" font-weight="700">OR …</text>
+<text x="660.0" y="264.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="700">细节（component-helpers）</text>
+<text x="660.0" y="285.0" font-size="11.5" fill="#64748b" text-anchor="start">· 两个列表都为空的 term 被跳过，</text>
+<text x="660.0" y="302.0" font-size="11.5" fill="#64748b" text-anchor="start">  不会命中任何节点</text>
+<text x="660.0" y="319.0" font-size="11.5" fill="#64748b" text-anchor="start">· matchFields 只认 metadata.name</text>
+<text x="660.0" y="336.0" font-size="11.5" fill="#64748b" text-anchor="start">· In / NotIn 只能带一个值</text>
+<text x="660.0" y="353.0" font-size="11.5" fill="#64748b" text-anchor="start">· Gt / Lt 按整数比较标签值</text>
+<text x="24.0" y="398.0" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="700">PreFilter 推导 PreFilterResult：term 内对 metadata.name In 取交集，term 间取并集</text>
+<rect x="24.0" y="414.0" width="320.0" height="30.0" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="36.0" y="434.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="700">nodeSelectorTerms</text>
+<rect x="354.0" y="414.0" width="270.0" height="30.0" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="366.0" y="434.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="700">推导过程</text>
+<rect x="634.0" y="414.0" width="242.0" height="30.0" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="646.0" y="434.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="700">PreFilter 返回</text>
+<rect x="24.0" y="452.0" width="320.0" height="62.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<rect x="354.0" y="452.0" width="270.0" height="62.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<rect x="634.0" y="452.0" width="242.0" height="62.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="36.0" y="477.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">t0: name In [n1]</text>
+<text x="36.0" y="497.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">t1: name In [n2]</text>
+<text x="366.0" y="477.0" font-size="12.5" fill="#1e293b" text-anchor="start">{n1} ∪ {n2}</text>
+<text x="366.0" y="497.0" font-size="12" fill="#64748b" text-anchor="start">只在这两个节点上跑 Filter</text>
+<rect x="646.0" y="469.0" width="218.0" height="28.0" rx="6" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="755.0" y="488.0" font-size="11" fill="#059669" text-anchor="middle" font-weight="700">PreFilterResult{n1, n2}</text>
+<rect x="24.0" y="522.0" width="320.0" height="62.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<rect x="354.0" y="522.0" width="270.0" height="62.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<rect x="634.0" y="522.0" width="242.0" height="62.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="36.0" y="547.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">t0: name In [n1]</text>
+<text x="36.0" y="567.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">t1: zone In [cn-a]</text>
+<text x="366.0" y="547.0" font-size="12.5" fill="#1e293b" text-anchor="start">t1 没有节点名条件</text>
+<text x="366.0" y="567.0" font-size="12" fill="#64748b" text-anchor="start">任何节点都可能命中 t1</text>
+<rect x="646.0" y="539.0" width="218.0" height="28.0" rx="6" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="755.0" y="558.0" font-size="11" fill="#64748b" text-anchor="middle" font-weight="700">nil（不缩小）</text>
+<rect x="24.0" y="592.0" width="320.0" height="62.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<rect x="354.0" y="592.0" width="270.0" height="62.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<rect x="634.0" y="592.0" width="242.0" height="62.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="36.0" y="617.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">t0: name In [n1] 且</text>
+<text x="36.0" y="637.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">    name In [n2]</text>
+<text x="366.0" y="617.0" font-size="12.5" fill="#1e293b" text-anchor="start">{n1} ∩ {n2} = ∅</text>
+<text x="366.0" y="637.0" font-size="12" fill="#64748b" text-anchor="start">只有 t0 一个 term，并集仍为空集</text>
+<rect x="646.0" y="609.0" width="218.0" height="28.0" rx="6" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="755.0" y="628.0" font-size="11" fill="#dc2626" text-anchor="middle" font-weight="700">UnschedulableAndUnresolvable</text>
+<text x="450.0" y="678.0" font-size="12" fill="#64748b" text-anchor="middle">第三行的原因串是 "pod affinity terms conflict"</text>
+<text x="450.0" y="698.0" font-size="12" fill="#64748b" text-anchor="middle">被 PreFilterResult 排除的节点同样记为 UnschedulableAndUnresolvable，抢占时不会考虑它们</text>
+</svg>

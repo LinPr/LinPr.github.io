@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" width="960" height="600" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker><marker id="arg" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#059669"/></marker><marker id="aro" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#ea580c"/></marker><marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#dc2626"/></marker></defs>
+  <rect width="960" height="600" fill="#ffffff"/>
+  <text x="480.0" y="32.0" font-size="19" fill="#1e293b" font-weight="700" text-anchor="middle">统计口径决定 minMatchNum：minDomains 与 nodeTaintsPolicy</text>
+  <text x="480.0" y="54.0" font-size="12.5" fill="#64748b" text-anchor="middle">两条约束都是 topologyKey=zone，maxSkew=1，DoNotSchedule；新 Pod 匹配 selector（selfMatch=1）</text>
+  <rect x="30.0" y="74.0" width="440.0" height="510.0" rx="12" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="48.0" y="100.0" font-size="14.5" fill="#7c3aed" font-weight="700">A. minDomains=3，但只有 2 个 zone</text>
+  <rect x="60.0" y="118.0" width="130.0" height="74.0" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="125.0" y="138.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">zone-a</text>
+  <rect x="74.0" y="150.0" width="18.0" height="18.0" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1.2"/>
+  <rect x="98.0" y="150.0" width="18.0" height="18.0" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="178.0" y="164.0" font-size="13" fill="#2563eb" font-weight="700" text-anchor="end">2</text>
+  <rect x="210.0" y="118.0" width="130.0" height="74.0" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="275.0" y="138.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">zone-b</text>
+  <rect x="224.0" y="150.0" width="18.0" height="18.0" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1.2"/>
+  <rect x="248.0" y="150.0" width="18.0" height="18.0" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="328.0" y="164.0" font-size="13" fill="#2563eb" font-weight="700" text-anchor="end">2</text>
+  <rect x="360.0" y="118.0" width="90.0" height="74.0" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="4 4"/>
+  <text x="405.0" y="150.0" font-size="12" fill="#64748b" text-anchor="middle">尚无</text>
+  <text x="405.0" y="168.0" font-size="12" fill="#64748b" text-anchor="middle">zone-c</text>
+  <rect x="50.0" y="210.0" width="400.0" height="104.0" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+  <text x="250.0" y="238.4" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">不设 minDomains（视为 1）</text>
+  <text x="250.0" y="257.3" font-size="13" fill="#334155" text-anchor="middle">domainsNum=2 ≥ 1，minMatchNum = 2</text>
+  <text x="250.0" y="276.1" font-size="13" fill="#334155" text-anchor="middle">skew = 2 + 1 − 2 = 1 ≤ 1</text>
+  <text x="250.0" y="295.0" font-size="13" fill="#059669" font-weight="700" text-anchor="middle">两个 zone 都能放，第 5 个副本照样挤进去</text>
+  <rect x="50.0" y="326.0" width="400.0" height="104.0" rx="8" fill="#ffffff" stroke="#fdba74" stroke-width="1.2"/>
+  <text x="250.0" y="354.4" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">minDomains=3</text>
+  <text x="250.0" y="373.3" font-size="13" fill="#334155" text-anchor="middle">domainsNum=2 &lt; 3，minMatchNum 按 0 计</text>
+  <text x="250.0" y="392.1" font-size="13" fill="#334155" text-anchor="middle">skew = 2 + 1 − 0 = 3 &gt; 1</text>
+  <text x="250.0" y="411.0" font-size="13" fill="#ea580c" font-weight="700" text-anchor="middle">所有节点 Unschedulable，Pod Pending</text>
+  <rect x="50.0" y="442.0" width="400.0" height="126.0" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="250.0" y="473.2" font-size="12.5" fill="#7c3aed" font-weight="700" text-anchor="middle">Pending 的意义</text>
+  <text x="250.0" y="491.4" font-size="12.5" fill="#334155" text-anchor="middle">cluster-autoscaler 看到 Pending Pod，在 zone-c 扩节点；</text>
+  <text x="250.0" y="509.5" font-size="12.5" fill="#334155" text-anchor="middle">新节点加入后 domainsNum=3，zone-c 计数为 0，</text>
+  <text x="250.0" y="527.6" font-size="12.5" fill="#334155" text-anchor="middle">minMatchNum = 0，只有 zone-c 的 skew = 0+1−0 = 1，</text>
+  <text x="250.0" y="545.8" font-size="12.5" fill="#334155" text-anchor="middle">副本被引到新 zone，而不是继续堆在已有的两个 zone</text>
+  <rect x="490.0" y="74.0" width="440.0" height="510.0" rx="12" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="508.0" y="100.0" font-size="14.5" fill="#0d9488" font-weight="700">B. zone-c 唯一的节点带不被容忍的污点</text>
+  <rect x="510.0" y="118.0" width="130.0" height="74.0" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="575.0" y="138.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">zone-a</text>
+  <rect x="524.0" y="150.0" width="18.0" height="18.0" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1.2"/>
+  <rect x="548.0" y="150.0" width="18.0" height="18.0" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="628.0" y="164.0" font-size="13" fill="#2563eb" font-weight="700" text-anchor="end">2</text>
+  <rect x="650.0" y="118.0" width="130.0" height="74.0" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="715.0" y="138.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">zone-b</text>
+  <rect x="664.0" y="150.0" width="18.0" height="18.0" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1.2"/>
+  <rect x="688.0" y="150.0" width="18.0" height="18.0" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="768.0" y="164.0" font-size="13" fill="#2563eb" font-weight="700" text-anchor="end">2</text>
+  <rect x="790.0" y="118.0" width="120.0" height="74.0" rx="8" fill="#fff5f5" stroke="#fca5a5" stroke-width="1.2"/>
+  <text x="850.0" y="138.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">zone-c</text>
+  <text x="898.0" y="164.0" font-size="13" fill="#2563eb" font-weight="700" text-anchor="end">0</text>
+  <text x="850.0" y="184.0" font-size="11.5" fill="#64748b" text-anchor="middle">taint NoSchedule</text>
+  <rect x="510.0" y="210.0" width="400.0" height="128.0" rx="8" fill="#ffffff" stroke="#fdba74" stroke-width="1.2"/>
+  <text x="710.0" y="241.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">nodeTaintsPolicy: Ignore（默认）</text>
+  <text x="710.0" y="259.8" font-size="13" fill="#334155" text-anchor="middle">zone-c 照样计数：{a:2, b:2, c:0}，min = 0</text>
+  <text x="710.0" y="278.7" font-size="13" fill="#334155" text-anchor="middle">zone-a/b 节点：skew = 2 + 1 − 0 = 3 &gt; 1</text>
+  <text x="710.0" y="297.5" font-size="13" fill="#334155" text-anchor="middle">zone-c 节点：被 TaintToleration 先拒绝</text>
+  <text x="710.0" y="316.4" font-size="13" fill="#ea580c" font-weight="700" text-anchor="middle">没有任何可行节点，Pod Pending</text>
+  <rect x="510.0" y="350.0" width="400.0" height="104.0" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+  <text x="710.0" y="378.4" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">nodeTaintsPolicy: Honor</text>
+  <text x="710.0" y="397.3" font-size="13" fill="#334155" text-anchor="middle">不容忍污点的节点不参与统计：{a:2, b:2}</text>
+  <text x="710.0" y="416.1" font-size="13" fill="#334155" text-anchor="middle">min = 2，skew = 2 + 1 − 2 = 1 ≤ 1</text>
+  <text x="710.0" y="435.0" font-size="13" fill="#059669" font-weight="700" text-anchor="middle">zone-a/b 都能放</text>
+  <rect x="510.0" y="466.0" width="400.0" height="102.0" rx="8" fill="#f0fdfa" stroke="#5eead4" stroke-width="1.2"/>
+  <text x="710.0" y="494.3" font-size="12.5" fill="#0d9488" font-weight="700" text-anchor="middle">nodeAffinityPolicy 同理（但默认 Honor）</text>
+  <text x="710.0" y="512.4" font-size="12.5" fill="#334155" text-anchor="middle">Pod 的 nodeSelector / required nodeAffinity</text>
+  <text x="710.0" y="530.6" font-size="12.5" fill="#334155" text-anchor="middle">选不中的节点默认不计入域；改成 Ignore 后</text>
+  <text x="710.0" y="548.7" font-size="12.5" fill="#334155" text-anchor="middle">这些节点也会贡献「计数为 0 的域」</text>
+</svg>

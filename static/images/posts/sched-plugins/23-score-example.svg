@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 600" width="980" height="600" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#94a3b8"/></marker><marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#059669"/></marker><marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#ea580c"/></marker><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#dc2626"/></marker><marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#2563eb"/></marker></defs>
+<rect width="980" height="600" fill="#ffffff"/>
+<text x="490.0" y="34.0" font-size="19" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">PlacementScore 算例：3 个可行 rack，选哪一个</text>
+<text x="490.0" y="58.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">gang.minCount = 4，队列里 6 个 Pod，每个请求 8 CPU / 32Gi；每个 rack 4 个节点，合计 128 CPU / 512Gi</text>
+<rect x="30.0" y="92.0" width="900.0" height="36.0" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="42.0" y="115.0" font-size="13" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif"></text>
+<text x="460.0" y="116.0" font-size="14" fill="#2563eb" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">rack-a</text>
+<text x="648.0" y="116.0" font-size="14" fill="#7c3aed" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">rack-b</text>
+<text x="836.0" y="116.0" font-size="14" fill="#0d9488" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">rack-c</text>
+<rect x="30.0" y="128.0" width="900.0" height="32.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="42.0" y="149.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">rack 内已占用（CPU / 内存）</text>
+<text x="460.0" y="149.0" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">72 / 256Gi</text>
+<text x="648.0" y="149.0" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">16 / 64Gi</text>
+<text x="836.0" y="149.0" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">96 / 384Gi</text>
+<rect x="30.0" y="160.0" width="900.0" height="32.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="42.0" y="181.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">本 placement 里放下的 Pod 数</text>
+<text x="460.0" y="181.0" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">6</text>
+<text x="648.0" y="181.0" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">6</text>
+<text x="836.0" y="181.0" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">4（够 minCount）</text>
+<rect x="30.0" y="192.0" width="900.0" height="30.0" rx="0" fill="#f0fdfa" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="42.0" y="212.0" font-size="13" fill="#0d9488" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">PodGroupPodsCount（权重 1）</text>
+<rect x="30.0" y="222.0" width="900.0" height="32.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="42.0" y="243.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">ScorePlacement = 已调度 0 + 提议数</text>
+<text x="460.0" y="243.0" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">6</text>
+<text x="648.0" y="243.0" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">6</text>
+<text x="836.0" y="243.0" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">4</text>
+<rect x="30.0" y="254.0" width="900.0" height="32.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="42.0" y="275.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Normalize：s × 100 / max(6)</text>
+<text x="460.0" y="275.0" font-size="13" fill="#1e293b" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">100</text>
+<text x="648.0" y="275.0" font-size="13" fill="#1e293b" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">100</text>
+<text x="836.0" y="275.0" font-size="13" fill="#1e293b" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">66</text>
+<rect x="30.0" y="286.0" width="900.0" height="30.0" rx="0" fill="#eff6ff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="42.0" y="306.0" font-size="13" fill="#2563eb" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">NodeResourcesFit（MostAllocated）权重 1</text>
+<rect x="30.0" y="316.0" width="900.0" height="32.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="42.0" y="337.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">CPU：(占用+提议) × 100 / 128</text>
+<text x="460.0" y="337.0" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">120 → 93</text>
+<text x="648.0" y="337.0" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">64 → 50</text>
+<text x="836.0" y="337.0" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">128 → 100</text>
+<rect x="30.0" y="348.0" width="900.0" height="32.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="42.0" y="369.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">内存：(占用+提议) × 100 / 512Gi</text>
+<text x="460.0" y="369.0" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">448Gi → 87</text>
+<text x="648.0" y="369.0" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">256Gi → 50</text>
+<text x="836.0" y="369.0" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">512Gi → 100</text>
+<rect x="30.0" y="380.0" width="900.0" height="32.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="42.0" y="401.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">两项平均（cpu、memory 权重均为 1）</text>
+<text x="460.0" y="401.0" font-size="13" fill="#1e293b" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">90</text>
+<text x="648.0" y="401.0" font-size="13" fill="#1e293b" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">50</text>
+<text x="836.0" y="401.0" font-size="13" fill="#1e293b" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">100</text>
+<rect x="30.0" y="412.0" width="900.0" height="40.0" rx="0" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="42.0" y="438.0" font-size="13" fill="#059669" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">TotalScore = Σ 归一化分 × 权重</text>
+<text x="460.0" y="438.0" font-size="15" fill="#059669" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">190</text>
+<text x="648.0" y="438.0" font-size="15" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">150</text>
+<text x="836.0" y="438.0" font-size="15" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">166</text>
+<rect x="372.0" y="96.0" width="176.0" height="358.0" rx="8" fill="none" stroke="#059669" stroke-width="2.2"/>
+<rect x="30.0" y="468.0" width="440.0" height="108.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="40.0" y="500.6" font-size="13" fill="#059669" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">结果：rack-a 胜出（190）</text>
+<text x="40.0" y="518.3" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">6 个 Pod 都放下，又比 rack-b 装得更满。</text>
+<text x="40.0" y="535.7" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">只看 NodeResourcesFit：rack-c 得 100 分会胜出，</text>
+<text x="40.0" y="553.1" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">但它只放得下 4 个，另外 2 个 Pod 要回队等资源。</text>
+<rect x="490.0" y="468.0" width="440.0" height="108.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="500.0" y="500.6" font-size="13" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">NormalizePlacementScore 的取舍</text>
+<text x="500.0" y="518.3" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">分母取「候选中最大的数」而不是 minCount：</text>
+<text x="500.0" y="535.7" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">若按 (s - minCount)/(max - minCount) 归一化，4 个 Pod</text>
+<text x="500.0" y="553.1" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">得 0 分，5 个得 50 分；现在分别是 66 和 83。</text>
+</svg>

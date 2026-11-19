@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 710" width="960" height="710" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker><marker id="arg" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#059669"/></marker><marker id="aro" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#ea580c"/></marker><marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#dc2626"/></marker></defs>
+  <rect width="960" height="710" fill="#ffffff"/>
+  <text x="480.0" y="32.0" font-size="19" fill="#1e293b" font-weight="700" text-anchor="middle">PreScore 的拓扑分数表：双向累加，再做 min-max 归一化</text>
+  <text x="480.0" y="54.0" font-size="12.5" fill="#64748b" text-anchor="middle">新 Pod web（app=web）：preferred 亲和 app=cache / zone / 80；preferred 反亲和 app=web / hostname / 50</text>
+  <rect x="30.0" y="70.0" width="440.0" height="196.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="5 4"/>
+  <text x="42.0" y="90.0" font-size="13" fill="#1e293b" font-weight="700">zone-a</text>
+  <rect x="42.0" y="100.0" width="204.0" height="156.0" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="144.0" y="120.0" font-size="13" fill="#2563eb" font-weight="700" text-anchor="middle">n1</text>
+  <rect x="52.0" y="132.0" width="184.0" height="50.0" rx="6" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="144.0" y="152.0" font-size="12.5" fill="#059669" font-weight="700" text-anchor="middle">cache-1</text>
+  <rect x="254.0" y="100.0" width="204.0" height="156.0" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="356.0" y="120.0" font-size="13" fill="#2563eb" font-weight="700" text-anchor="middle">n2</text>
+  <rect x="264.0" y="132.0" width="184.0" height="50.0" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="356.0" y="152.0" font-size="12.5" fill="#2563eb" font-weight="700" text-anchor="middle">web-1</text>
+  <rect x="490.0" y="70.0" width="440.0" height="196.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="5 4"/>
+  <text x="502.0" y="90.0" font-size="13" fill="#1e293b" font-weight="700">zone-b</text>
+  <rect x="502.0" y="100.0" width="204.0" height="156.0" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="604.0" y="120.0" font-size="13" fill="#2563eb" font-weight="700" text-anchor="middle">n3</text>
+  <rect x="512.0" y="132.0" width="184.0" height="50.0" rx="6" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="604.0" y="152.0" font-size="12.5" fill="#7c3aed" font-weight="700" text-anchor="middle">db-1</text>
+  <text x="604.0" y="171.0" font-size="11" fill="#334155" text-anchor="middle">required 亲和 web / zone</text>
+  <rect x="512.0" y="192.0" width="184.0" height="50.0" rx="6" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+  <text x="604.0" y="212.0" font-size="12.5" fill="#ea580c" font-weight="700" text-anchor="middle">log-1</text>
+  <text x="604.0" y="231.0" font-size="11" fill="#334155" text-anchor="middle">preferred 反亲和 web / host / 30</text>
+  <rect x="714.0" y="100.0" width="204.0" height="156.0" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="816.0" y="120.0" font-size="13" fill="#2563eb" font-weight="700" text-anchor="middle">n4</text>
+  <rect x="724.0" y="132.0" width="184.0" height="50.0" rx="6" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+  <text x="816.0" y="152.0" font-size="12.5" fill="#0d9488" font-weight="700" text-anchor="middle">mon-1</text>
+  <text x="816.0" y="171.0" font-size="11" fill="#334155" text-anchor="middle">preferred 亲和 web / host / 20</text>
+  <text x="30.0" y="286.0" font-size="13.5" fill="#1e293b" font-weight="700">processExistingPod 对每个已有 Pod 累加五类贡献（按「已有 Pod 所在节点」的拓扑值记账）</text>
+  <rect x="30.0" y="300.0" width="900.0" height="27.0" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="48.0" y="318.0" font-size="13" fill="#059669" font-weight="700">①</text>
+  <text x="76.0" y="318.0" font-size="12.5" fill="#334155">新 Pod 的 preferred 亲和匹配 cache-1</text>
+  <text x="700.0" y="318.0" font-size="12.5" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">zone=a</text>
+  <text x="900.0" y="318.0" font-size="13" fill="#059669" font-weight="700" text-anchor="end">+80</text>
+  <rect x="30.0" y="332.0" width="900.0" height="27.0" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="48.0" y="350.0" font-size="13" fill="#ea580c" font-weight="700">②</text>
+  <text x="76.0" y="350.0" font-size="12.5" fill="#334155">新 Pod 的 preferred 反亲和匹配 web-1</text>
+  <text x="700.0" y="350.0" font-size="12.5" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">hostname=n2</text>
+  <text x="900.0" y="350.0" font-size="13" fill="#ea580c" font-weight="700" text-anchor="end">−50</text>
+  <rect x="30.0" y="364.0" width="900.0" height="27.0" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="48.0" y="382.0" font-size="13" fill="#7c3aed" font-weight="700">③</text>
+  <text x="76.0" y="382.0" font-size="12.5" fill="#334155">db-1 的 required 亲和匹配新 Pod（hardPodAffinityWeight）</text>
+  <text x="700.0" y="382.0" font-size="12.5" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">zone=b</text>
+  <text x="900.0" y="382.0" font-size="13" fill="#7c3aed" font-weight="700" text-anchor="end">+1</text>
+  <rect x="30.0" y="396.0" width="900.0" height="27.0" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="48.0" y="414.0" font-size="13" fill="#0d9488" font-weight="700">④</text>
+  <text x="76.0" y="414.0" font-size="12.5" fill="#334155">mon-1 的 preferred 亲和匹配新 Pod</text>
+  <text x="700.0" y="414.0" font-size="12.5" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">hostname=n4</text>
+  <text x="900.0" y="414.0" font-size="13" fill="#0d9488" font-weight="700" text-anchor="end">+20</text>
+  <rect x="30.0" y="428.0" width="900.0" height="27.0" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="48.0" y="446.0" font-size="13" fill="#ea580c" font-weight="700">⑤</text>
+  <text x="76.0" y="446.0" font-size="12.5" fill="#334155">log-1 的 preferred 反亲和匹配新 Pod</text>
+  <text x="700.0" y="446.0" font-size="12.5" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">hostname=n3</text>
+  <text x="900.0" y="446.0" font-size="13" fill="#ea580c" font-weight="700" text-anchor="end">−30</text>
+  <rect x="30.0" y="470.0" width="900.0" height="38.0" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="480.0" y="493.9" font-size="13.5" fill="#1e293b" text-anchor="middle">topologyScore = { zone: {a: 80, b: 1},  hostname: {n2: −50, n3: −30, n4: 20} }</text>
+  <rect x="30.0" y="522.0" width="900.0" height="30.0" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="75.0" y="542.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">节点</text>
+  <text x="285.0" y="542.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">Score：按节点标签求和</text>
+  <text x="500.0" y="542.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">原始分</text>
+  <text x="660.0" y="542.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">min-max → [0,100]</text>
+  <text x="850.0" y="542.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">× 权重 2</text>
+  <rect x="30.0" y="558.0" width="900.0" height="28.0" rx="6" fill="#ecfdf5" stroke="#059669" stroke-width="1"/>
+  <text x="75.0" y="577.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">n1</text>
+  <text x="285.0" y="577.0" font-size="12.5" fill="#1e293b" text-anchor="middle">zone=a 80</text>
+  <text x="500.0" y="577.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">80</text>
+  <text x="660.0" y="577.0" font-size="12.5" fill="#1e293b" text-anchor="middle">100</text>
+  <text x="850.0" y="577.0" font-size="12.5" fill="#059669" font-weight="700" text-anchor="middle">200</text>
+  <rect x="30.0" y="592.0" width="900.0" height="28.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="75.0" y="611.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">n2</text>
+  <text x="285.0" y="611.0" font-size="12.5" fill="#1e293b" text-anchor="middle">zone=a 80 + hostname=n2 (−50)</text>
+  <text x="500.0" y="611.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">30</text>
+  <text x="660.0" y="611.0" font-size="12.5" fill="#1e293b" text-anchor="middle">100×59/109 → 54</text>
+  <text x="850.0" y="611.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">108</text>
+  <rect x="30.0" y="626.0" width="900.0" height="28.0" rx="6" fill="#fff7ed" stroke="#ea580c" stroke-width="1"/>
+  <text x="75.0" y="645.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">n3</text>
+  <text x="285.0" y="645.0" font-size="12.5" fill="#1e293b" text-anchor="middle">zone=b 1 + hostname=n3 (−30)</text>
+  <text x="500.0" y="645.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">−29</text>
+  <text x="660.0" y="645.0" font-size="12.5" fill="#1e293b" text-anchor="middle">0</text>
+  <text x="850.0" y="645.0" font-size="12.5" fill="#ea580c" font-weight="700" text-anchor="middle">0</text>
+  <rect x="30.0" y="660.0" width="900.0" height="28.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="75.0" y="679.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">n4</text>
+  <text x="285.0" y="679.0" font-size="12.5" fill="#1e293b" text-anchor="middle">zone=b 1 + hostname=n4 20</text>
+  <text x="500.0" y="679.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">21</text>
+  <text x="660.0" y="679.0" font-size="12.5" fill="#1e293b" text-anchor="middle">100×50/109 → 45</text>
+  <text x="850.0" y="679.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">90</text>
+</svg>

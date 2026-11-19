@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 640" width="980" height="640" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker>
+    <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#059669"/></marker>
+    <marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#ea580c"/></marker>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#dc2626"/></marker>
+    <marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#2563eb"/></marker>
+    <marker id="ap" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#7c3aed"/></marker>
+  </defs>
+  <rect width="980" height="640" fill="#ffffff"/>
+  <text x="490.0" y="32.0" font-size="19" fill="#1e293b" font-weight="700" text-anchor="middle">SelectVictimsOnNode 算例：先全移除，再按重要性逐个放回</text>
+  <text x="490.0" y="54.0" font-size="12.5" fill="#64748b" text-anchor="middle">节点 8 核；抢占者优先级 500，要 4 核；p-a 受 PDB 保护（disruptionsAllowed=0）；p-b 比 p-a 启动得早</text>
+  <text x="40.0" y="96.0" font-size="13" fill="#1e293b" font-weight="700">初始状态</text>
+  <text x="40.0" y="115.0" font-size="11.5" fill="#64748b">优先级 d=1000 a=100 b=100 c=50</text>
+  <rect x="330" y="82" width="46" height="36" rx="4" fill="#cbd5e1" stroke="#ffffff" stroke-width="2"/>
+  <text x="353.0" y="105.0" font-size="11.5" fill="#475569" font-weight="600" text-anchor="middle">p-d</text>
+  <rect x="376" y="82" width="92" height="36" rx="4" fill="#c4b5fd" stroke="#ffffff" stroke-width="2"/>
+  <text x="422.0" y="105.0" font-size="11.5" fill="#5b21b6" font-weight="600" text-anchor="middle">p-a</text>
+  <rect x="468" y="82" width="92" height="36" rx="4" fill="#93c5fd" stroke="#ffffff" stroke-width="2"/>
+  <text x="514.0" y="105.0" font-size="11.5" fill="#1e40af" font-weight="600" text-anchor="middle">p-b</text>
+  <rect x="560" y="82" width="138" height="36" rx="4" fill="#fdba74" stroke="#ffffff" stroke-width="2"/>
+  <text x="629.0" y="105.0" font-size="11.5" fill="#9a3412" font-weight="600" text-anchor="middle">p-c</text>
+  <text x="716.0" y="105.0" font-size="12" fill="#ea580c" font-weight="600">抢占者放不下（Unschedulable）</text>
+  <text x="40.0" y="160.0" font-size="13" fill="#1e293b" font-weight="700">1. 移除全部潜在受害者</text>
+  <text x="40.0" y="179.0" font-size="11.5" fill="#64748b">priority &lt; 500 的 a/b/c</text>
+  <rect x="330" y="146" width="46" height="36" rx="4" fill="#cbd5e1" stroke="#ffffff" stroke-width="2"/>
+  <text x="353.0" y="169.0" font-size="11.5" fill="#475569" font-weight="600" text-anchor="middle">p-d</text>
+  <rect x="376" y="146" width="322" height="36" rx="4" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <text x="537.0" y="169.0" font-size="11.5" fill="#64748b" text-anchor="middle">空闲 7</text>
+  <text x="716.0" y="169.0" font-size="12" fill="#059669" font-weight="600">空闲 7 ≥ 4，Filter 通过</text>
+  <rect x="40" y="206" width="900" height="74" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="52.0" y="228.6" font-size="13" fill="#7c3aed" font-weight="700">2. 按 MoreImportantVictim 排序，再按 PDB 分组</text>
+  <text x="52.0" y="247.6" font-size="12" fill="#334155">排序：p-b(100, 更早启动) &gt; p-a(100) &gt; p-c(50)；FilterVictimsWithPDBViolation：p-a 让 PDB 余量变成 -1</text>
+  <text x="52.0" y="266.6" font-size="12" fill="#334155">violating = [p-a]，nonViolating = [p-b, p-c]；先放回 violating 组，再放回 nonViolating 组</text>
+  <text x="40.0" y="316.0" font-size="13" fill="#1e293b" font-weight="700">3. 放回 p-a（violating）</text>
+  <text x="40.0" y="335.0" font-size="11.5" fill="#64748b">RunFilterPluginsWithNominatedPods</text>
+  <rect x="330" y="302" width="46" height="36" rx="4" fill="#cbd5e1" stroke="#ffffff" stroke-width="2"/>
+  <text x="353.0" y="325.0" font-size="11.5" fill="#475569" font-weight="600" text-anchor="middle">p-d</text>
+  <rect x="376" y="302" width="92" height="36" rx="4" fill="#c4b5fd" stroke="#ffffff" stroke-width="2"/>
+  <text x="422.0" y="325.0" font-size="11.5" fill="#5b21b6" font-weight="600" text-anchor="middle">p-a</text>
+  <rect x="468" y="302" width="230" height="36" rx="4" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <text x="583.0" y="325.0" font-size="11.5" fill="#64748b" text-anchor="middle">空闲 5</text>
+  <text x="716.0" y="325.0" font-size="12" fill="#059669" font-weight="600">空闲 5 ≥ 4 → 赦免</text>
+  <text x="40.0" y="380.0" font-size="13" fill="#1e293b" font-weight="700">4. 放回 p-b</text>
+  <text x="40.0" y="399.0" font-size="11.5" fill="#64748b">重要性高，但排在 violating 之后</text>
+  <rect x="330" y="366" width="46" height="36" rx="4" fill="#cbd5e1" stroke="#ffffff" stroke-width="2"/>
+  <text x="353.0" y="389.0" font-size="11.5" fill="#475569" font-weight="600" text-anchor="middle">p-d</text>
+  <rect x="376" y="366" width="92" height="36" rx="4" fill="#c4b5fd" stroke="#ffffff" stroke-width="2"/>
+  <text x="422.0" y="389.0" font-size="11.5" fill="#5b21b6" font-weight="600" text-anchor="middle">p-a</text>
+  <rect x="468" y="366" width="92" height="36" rx="4" fill="#93c5fd" stroke="#ffffff" stroke-width="2"/>
+  <text x="514.0" y="389.0" font-size="11.5" fill="#1e40af" font-weight="600" text-anchor="middle">p-b</text>
+  <rect x="560" y="366" width="138" height="36" rx="4" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <text x="629.0" y="389.0" font-size="11.5" fill="#64748b" text-anchor="middle">空闲 3</text>
+  <text x="716.0" y="389.0" font-size="12" fill="#ea580c" font-weight="600">空闲 3 &lt; 4 → 移除，记为受害者</text>
+  <text x="40.0" y="444.0" font-size="13" fill="#1e293b" font-weight="700">5. 放回 p-c</text>
+  <text x="40.0" y="463.0" font-size="11.5" fill="#64748b"></text>
+  <rect x="330" y="430" width="46" height="36" rx="4" fill="#cbd5e1" stroke="#ffffff" stroke-width="2"/>
+  <text x="353.0" y="453.0" font-size="11.5" fill="#475569" font-weight="600" text-anchor="middle">p-d</text>
+  <rect x="376" y="430" width="92" height="36" rx="4" fill="#c4b5fd" stroke="#ffffff" stroke-width="2"/>
+  <text x="422.0" y="453.0" font-size="11.5" fill="#5b21b6" font-weight="600" text-anchor="middle">p-a</text>
+  <rect x="468" y="430" width="138" height="36" rx="4" fill="#fdba74" stroke="#ffffff" stroke-width="2"/>
+  <text x="537.0" y="453.0" font-size="11.5" fill="#9a3412" font-weight="600" text-anchor="middle">p-c</text>
+  <rect x="606" y="430" width="92" height="36" rx="4" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <text x="652.0" y="453.0" font-size="11.5" fill="#64748b" text-anchor="middle">空闲 2</text>
+  <text x="716.0" y="453.0" font-size="12" fill="#ea580c" font-weight="600">空闲 2 &lt; 4 → 移除，记为受害者</text>
+  <text x="40.0" y="508.0" font-size="13" fill="#1e293b" font-weight="700">结果</text>
+  <text x="40.0" y="527.0" font-size="11.5" fill="#64748b">受害者 [p-b, p-c]，PDB 违反数 0</text>
+  <rect x="330" y="494" width="46" height="36" rx="4" fill="#cbd5e1" stroke="#ffffff" stroke-width="2"/>
+  <text x="353.0" y="517.0" font-size="11.5" fill="#475569" font-weight="600" text-anchor="middle">p-d</text>
+  <rect x="376" y="494" width="92" height="36" rx="4" fill="#c4b5fd" stroke="#ffffff" stroke-width="2"/>
+  <text x="422.0" y="517.0" font-size="11.5" fill="#5b21b6" font-weight="600" text-anchor="middle">p-a</text>
+  <rect x="468" y="494" width="230" height="36" rx="4" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <text x="583.0" y="517.0" font-size="11.5" fill="#64748b" text-anchor="middle">空闲 5</text>
+  <text x="716.0" y="517.0" font-size="12" fill="#059669" font-weight="600">抢占者占 4 核，剩 1 核</text>
+  <rect x="468" y="494" width="184" height="36" rx="4" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+  <text x="560.0" y="517.0" font-size="11.5" fill="#059669" font-weight="700" text-anchor="middle">抢占者 4 核</text>
+  <text x="490.0" y="580.0" font-size="12" fill="#64748b" text-anchor="middle">违反 PDB 的受害者优先尝试赦免：即使 p-b 更「重要」，被保留下来的却是 p-a。PDB 是软约束，只影响谁先被放回，</text>
+  <text x="490.0" y="600.0" font-size="12" fill="#64748b" text-anchor="middle">真放不下时照样会驱逐违反 PDB 的 Pod，并把违反数计入候选节点的排序（numPDBViolations）。</text>
+</svg>

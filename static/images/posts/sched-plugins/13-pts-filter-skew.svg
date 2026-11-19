@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 640" width="960" height="640" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker><marker id="arg" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#059669"/></marker><marker id="aro" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#ea580c"/></marker><marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#dc2626"/></marker></defs>
+  <rect width="960" height="640" fill="#ffffff"/>
+  <text x="480.0" y="32.0" font-size="19" fill="#1e293b" font-weight="700" text-anchor="middle">PreFilter 计数，Filter 查表：一条 zone 约束的 skew 算例</text>
+  <text x="480.0" y="54.0" font-size="12.5" fill="#64748b" text-anchor="middle">约束：topologyKey=zone，maxSkew=1，DoNotSchedule，selector app=web；新 Pod 自身也带 app=web</text>
+  <rect x="40.0" y="78.0" width="280.0" height="150.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="5 4"/>
+  <text x="54.0" y="100.0" font-size="13" fill="#1e293b" font-weight="700">zone-a</text>
+  <text x="306.0" y="100.0" font-size="12.5" fill="#2563eb" font-weight="700" text-anchor="end">匹配数 3</text>
+  <rect x="56.0" y="114.0" width="116.0" height="98.0" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="114.0" y="134.0" font-size="13" fill="#2563eb" font-weight="700" text-anchor="middle">n1</text>
+  <rect x="68.0" y="154.0" width="20.0" height="20.0" rx="5" fill="#2563eb" stroke="#2563eb" stroke-width="1.2"/>
+  <rect x="94.0" y="154.0" width="20.0" height="20.0" rx="5" fill="#2563eb" stroke="#2563eb" stroke-width="1.2"/>
+  <rect x="120.0" y="154.0" width="20.0" height="20.0" rx="5" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="114.0" y="200.0" font-size="11.5" fill="#64748b" text-anchor="middle">web×2</text>
+  <rect x="186.0" y="114.0" width="116.0" height="98.0" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="244.0" y="134.0" font-size="13" fill="#2563eb" font-weight="700" text-anchor="middle">n2</text>
+  <rect x="198.0" y="154.0" width="20.0" height="20.0" rx="5" fill="#2563eb" stroke="#2563eb" stroke-width="1.2"/>
+  <rect x="224.0" y="154.0" width="20.0" height="20.0" rx="5" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="244.0" y="200.0" font-size="11.5" fill="#64748b" text-anchor="middle">web×1</text>
+  <rect x="340.0" y="78.0" width="280.0" height="150.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="5 4"/>
+  <text x="354.0" y="100.0" font-size="13" fill="#1e293b" font-weight="700">zone-b</text>
+  <text x="606.0" y="100.0" font-size="12.5" fill="#2563eb" font-weight="700" text-anchor="end">匹配数 1</text>
+  <rect x="356.0" y="114.0" width="116.0" height="98.0" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="414.0" y="134.0" font-size="13" fill="#2563eb" font-weight="700" text-anchor="middle">n3</text>
+  <rect x="368.0" y="154.0" width="20.0" height="20.0" rx="5" fill="#2563eb" stroke="#2563eb" stroke-width="1.2"/>
+  <rect x="394.0" y="154.0" width="20.0" height="20.0" rx="5" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="414.0" y="200.0" font-size="11.5" fill="#64748b" text-anchor="middle">web×1</text>
+  <rect x="486.0" y="114.0" width="116.0" height="98.0" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="544.0" y="134.0" font-size="13" fill="#2563eb" font-weight="700" text-anchor="middle">n4</text>
+  <rect x="498.0" y="154.0" width="20.0" height="20.0" rx="5" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="544.0" y="200.0" font-size="11.5" fill="#64748b" text-anchor="middle">web×0</text>
+  <rect x="640.0" y="78.0" width="280.0" height="150.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="5 4"/>
+  <text x="654.0" y="100.0" font-size="13" fill="#1e293b" font-weight="700">zone-c</text>
+  <text x="906.0" y="100.0" font-size="12.5" fill="#2563eb" font-weight="700" text-anchor="end">匹配数 0</text>
+  <rect x="656.0" y="114.0" width="116.0" height="98.0" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="714.0" y="134.0" font-size="13" fill="#2563eb" font-weight="700" text-anchor="middle">n5</text>
+  <rect x="668.0" y="154.0" width="20.0" height="20.0" rx="5" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="714.0" y="200.0" font-size="11.5" fill="#64748b" text-anchor="middle">web×0</text>
+  <rect x="40.0" y="240.0" width="14.0" height="14.0" rx="3" fill="#2563eb" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="60.0" y="252.0" font-size="12" fill="#64748b">匹配 selector 的 Pod（同 namespace、未在删除中）</text>
+  <rect x="380.0" y="240.0" width="14.0" height="14.0" rx="3" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="400.0" y="252.0" font-size="12" fill="#64748b">不匹配的 Pod，不计数</text>
+  <text x="620.0" y="252.0" font-size="12" fill="#64748b">另有 n6：没有 zone 标签，PreFilter 直接跳过</text>
+  <line x1="480.0" y1="262.0" x2="480.0" y2="288.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <rect x="40.0" y="292.0" width="880.0" height="118.0" rx="10" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="58.0" y="316.0" font-size="13.5" fill="#7c3aed" font-weight="700">PreFilter 写入 CycleState 的 preFilterState（下标 0 = 这条约束）</text>
+  <text x="58.0" y="344.0" font-size="13.5" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">TpValueToMatchNum[0]  =  { zone-a: 3,  zone-b: 1,  zone-c: 0 }</text>
+  <text x="58.0" y="370.0" font-size="13.5" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">CriticalPaths[0]      =  [ {zone-c, 0},  {zone-b, 1} ]</text>
+  <text x="58.0" y="394.0" font-size="12" fill="#64748b">zone-c 计数为 0 也会被记录：只要节点带标签、通过包含策略，这个域就存在</text>
+  <text x="902.0" y="370.0" font-size="13.5" fill="#7c3aed" font-weight="700" text-anchor="end">minMatchNum = 0</text>
+  <line x1="480.0" y1="410.0" x2="480.0" y2="436.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <text x="40.0" y="448.0" font-size="13.5" fill="#1e293b" font-weight="700">Filter：skew = TpValueToMatchNum[tpVal] + selfMatch − minMatchNum，与 maxSkew=1 比较</text>
+  <rect x="40.0" y="464.0" width="880.0" height="30.0" rx="6" fill="#fff7ed" stroke="#ea580c" stroke-width="1"/>
+  <text x="56.0" y="484.0" font-size="13" fill="#1e293b" font-weight="700">n1, n2</text>
+  <text x="150.0" y="484.0" font-size="13" fill="#334155">zone-a</text>
+  <text x="250.0" y="484.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">3 + 1 − 0 = 4</text>
+  <text x="450.0" y="484.0" font-size="13" fill="#334155">&gt; 1</text>
+  <text x="530.0" y="484.0" font-size="13" fill="#ea580c" font-weight="700">Unschedulable</text>
+  <rect x="40.0" y="500.0" width="880.0" height="30.0" rx="6" fill="#fff7ed" stroke="#ea580c" stroke-width="1"/>
+  <text x="56.0" y="520.0" font-size="13" fill="#1e293b" font-weight="700">n3, n4</text>
+  <text x="150.0" y="520.0" font-size="13" fill="#334155">zone-b</text>
+  <text x="250.0" y="520.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">1 + 1 − 0 = 2</text>
+  <text x="450.0" y="520.0" font-size="13" fill="#334155">&gt; 1</text>
+  <text x="530.0" y="520.0" font-size="13" fill="#ea580c" font-weight="700">Unschedulable</text>
+  <rect x="40.0" y="536.0" width="880.0" height="30.0" rx="6" fill="#ecfdf5" stroke="#059669" stroke-width="1"/>
+  <text x="56.0" y="556.0" font-size="13" fill="#1e293b" font-weight="700">n5</text>
+  <text x="150.0" y="556.0" font-size="13" fill="#334155">zone-c</text>
+  <text x="250.0" y="556.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">0 + 1 − 0 = 1</text>
+  <text x="450.0" y="556.0" font-size="13" fill="#334155">≤ 1</text>
+  <text x="530.0" y="556.0" font-size="13" fill="#059669" font-weight="700">通过</text>
+  <rect x="40.0" y="572.0" width="880.0" height="30.0" rx="6" fill="#fef2f2" stroke="#dc2626" stroke-width="1"/>
+  <text x="56.0" y="592.0" font-size="13" fill="#1e293b" font-weight="700">n6</text>
+  <text x="150.0" y="592.0" font-size="13" fill="#334155">无标签</text>
+  <text x="250.0" y="592.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">—</text>
+  <text x="450.0" y="592.0" font-size="13" fill="#334155">—</text>
+  <text x="530.0" y="592.0" font-size="13" fill="#dc2626" font-weight="700">UnschedulableAndUnresolvable</text>
+  <text x="480.0" y="626.0" font-size="12" fill="#64748b" text-anchor="middle">缺标签无法靠抢占补上，返回 UnschedulableAndUnresolvable；skew 超限可以靠驱逐降下来，返回 Unschedulable</text>
+</svg>

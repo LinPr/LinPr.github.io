@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" width="960" height="520" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker>
+    <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#059669"/></marker>
+    <marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#ea580c"/></marker>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#dc2626"/></marker>
+    <marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#2563eb"/></marker>
+    <marker id="ap" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#7c3aed"/></marker>
+  </defs>
+  <rect width="960" height="520" fill="#ffffff"/>
+  <text x="480.0" y="32" font-size="19" fill="#1e293b" font-weight="700" text-anchor="middle">TopologicalSort：依赖图 → topologyOrder → Less</text>
+  <text x="480.0" y="54" font-size="12.5" fill="#64748b" text-anchor="middle">controller 把拓扑序写进 AppGroup 的 status；插件在每次堆比较里读出两个 Pod 的 index 来比大小</text>
+  <rect x="24" y="76" width="284" height="420" rx="8" fill="#fbfaff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="38" y="100" font-size="13.5" fill="#6d28d9" font-weight="700">AppGroup shop：spec.workloads</text>
+  <text x="38" y="120" font-size="12" fill="#64748b">箭头 A → B：A 的 dependencies 里有 B</text>
+  <rect x="114" y="140" width="104" height="32" rx="16" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="166.0" y="161" font-size="13" fill="#5b21b6" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">frontend</text>
+  <rect x="48" y="220" width="104" height="32" rx="16" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="100.0" y="241" font-size="13" fill="#5b21b6" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">cart</text>
+  <rect x="180" y="220" width="104" height="32" rx="16" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="232.0" y="241" font-size="13" fill="#5b21b6" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">catalog</text>
+  <rect x="48" y="300" width="104" height="32" rx="16" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="100.0" y="321" font-size="13" fill="#5b21b6" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">redis</text>
+  <line x1="150" y1="172" x2="106" y2="216" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#ap)"/>
+  <line x1="182" y1="172" x2="226" y2="216" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#ap)"/>
+  <line x1="100" y1="252" x2="100" y2="296" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#ap)"/>
+  <text x="166" y="296" font-size="11" fill="#64748b">maxNetworkCost 等字段</text>
+  <text x="166" y="312" font-size="11" fill="#64748b">供 NetworkOverhead 使用</text>
+  <line x1="38" y1="352" x2="294" y2="352" stroke="#ddd6fe" stroke-width="1"/>
+  <text x="38" y="376" font-size="12" fill="#334155" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">topologySortingAlgorithm:</text>
+  <text x="38" y="396" font-size="12" fill="#64748b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">KahnSort / TarjanSort / ReverseKahn</text>
+  <text x="38" y="414" font-size="12" fill="#64748b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">ReverseTarjan / AlternateKahn …</text>
+  <text x="38" y="444" font-size="12.5" fill="#334155">插件不做拓扑排序，算法跑在</text>
+  <text x="38" y="464" font-size="12.5" fill="#334155">diktyo-io 的 AppGroup controller 里</text>
+  <line x1="308" y1="300" x2="326" y2="300" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="330" y="76" width="284" height="420" rx="8" fill="#f7fdfc" stroke="#0d9488" stroke-width="1.2"/>
+  <text x="344" y="100" font-size="13.5" fill="#0f766e" font-weight="700" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">status.topologyOrder</text>
+  <text x="344" y="120" font-size="12" fill="#64748b">KahnSort 的一种结果（示意）</text>
+  <text x="354" y="148" font-size="12" fill="#334155" font-weight="700" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">workload.selector</text>
+  <text x="536" y="148" font-size="12" fill="#334155" font-weight="700" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">index</text>
+  <rect x="344" y="158" width="256" height="30" rx="6" fill="#ffffff" stroke="#0d9488" stroke-width="1.2"/>
+  <text x="356" y="178" font-size="13" fill="#334155" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">cart</text>
+  <text x="552" y="178" font-size="14" fill="#0f766e" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">2</text>
+  <rect x="344" y="196" width="256" height="30" rx="6" fill="#ffffff" stroke="#0d9488" stroke-width="1.2"/>
+  <text x="356" y="216" font-size="13" fill="#334155" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">catalog</text>
+  <text x="552" y="216" font-size="14" fill="#0f766e" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">3</text>
+  <rect x="344" y="234" width="256" height="30" rx="6" fill="#ffffff" stroke="#0d9488" stroke-width="1.2"/>
+  <text x="356" y="254" font-size="13" fill="#334155" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">frontend</text>
+  <text x="552" y="254" font-size="14" fill="#0f766e" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">1</text>
+  <rect x="344" y="272" width="256" height="30" rx="6" fill="#ffffff" stroke="#0d9488" stroke-width="1.2"/>
+  <text x="356" y="292" font-size="13" fill="#334155" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">redis</text>
+  <text x="552" y="292" font-size="14" fill="#0f766e" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">4</text>
+  <text x="344" y="330" font-size="12.5" fill="#334155">数组按 selector 字典序排列，</text>
+  <text x="344" y="350" font-size="12.5" fill="#334155">index 才是调度顺序（小者先出队）</text>
+  <text x="344" y="378" font-size="12.5" fill="#475569">FindPodOrder 在这个数组上二分查找；</text>
+  <text x="344" y="398" font-size="12.5" fill="#475569">数组若没按 selector 排好，二分会</text>
+  <text x="344" y="418" font-size="12.5" fill="#475569">漏查，得到 -1</text>
+  <text x="344" y="448" font-size="12.5" fill="#64748b">例：p1, p10, p11, p2 … 才是</text>
+  <text x="344" y="468" font-size="12.5" fill="#64748b">字符串字典序</text>
+  <line x1="614" y1="300" x2="630" y2="300" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="634" y="76" width="302" height="52" rx="7" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="646" y="98" font-size="13" fill="#334155" font-weight="700">读两个 Pod 的 label</text>
+  <text x="646" y="117" font-size="11.5" fill="#475569" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">appgroup.diktyo.x-k8s.io</text>
+  <line x1="785" y1="128" x2="785" y2="142" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="634" y="146" width="302" height="34" rx="7" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="646" y="168" font-size="13" fill="#1e3a8a" font-weight="700">两者相同且非空？</text>
+  <line x1="936" y1="163" x2="936" y2="163" stroke="#94a3b8" stroke-width="1.6"/>
+  <text x="830" y="168" font-size="12" fill="#64748b">否 → 最下方</text>
+  <line x1="785" y1="180" x2="785" y2="196" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="794" y="193" font-size="12" fill="#64748b">是</text>
+  <rect x="634" y="200" width="302" height="52" rx="7" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="646" y="221" font-size="12.5" fill="#1e3a8a" font-weight="700">按 args.namespaces 顺序 Get AppGroup</text>
+  <text x="646" y="241" font-size="12" fill="#475569">缓存读取，每次比较都深拷贝一份</text>
+  <line x1="785" y1="252" x2="785" y2="268" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="634" y="272" width="302" height="52" rx="7" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="646" y="293" font-size="12.5" fill="#1e3a8a" font-weight="700" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">FindPodOrder × 2</text>
+  <text x="646" y="313" font-size="12" fill="#475569">按 …/workload label 查 index，查不到 = -1</text>
+  <line x1="785" y1="324" x2="785" y2="340" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="634" y="344" width="302" height="34" rx="7" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="646" y="366" font-size="12.5" fill="#065f46" font-weight="700" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">return orderP1 &lt;= orderP2</text>
+  <rect x="634" y="394" width="302" height="46" rx="7" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+  <text x="646" y="414" font-size="12" fill="#991b1b">AppGroup 在所有 namespace 都找不到：</text>
+  <text x="646" y="432" font-size="12" fill="#991b1b">返回 nil，appGroup.Status 解引用 panic</text>
+  <rect x="634" y="450" width="302" height="46" rx="7" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="646" y="470" font-size="12.5" fill="#334155" font-weight="700" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">否：PrioritySort.Less</text>
+  <text x="646" y="488" font-size="12" fill="#475569">优先级降序 → 入队时间升序（不看 QoS）</text>
+</svg>

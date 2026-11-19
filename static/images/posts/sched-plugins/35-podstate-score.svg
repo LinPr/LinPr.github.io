@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 520" width="940" height="520" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<rect width="940" height="520" fill="#ffffff"/>
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker></defs>
+<text x="470.0" y="34" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="bold">PodState：两个数据源，一个差值，一次 min-max</text>
+<text x="470.0" y="58" font-size="13" fill="#64748b" text-anchor="middle">原始分 = 节点上 DeletionTimestamp 非空的 Pod 数 − 被提名到该节点的 Pod 数</text>
+<rect x="30" y="84" width="300" height="120" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+<text x="46" y="110" font-size="14" fill="#059669" text-anchor="start" font-weight="bold">NodeInfo（调度周期 snapshot）</text>
+<text x="46" y="136" font-size="13" fill="#334155" text-anchor="start">遍历 nodeInfo.GetPods()</text>
+<text x="46" y="160" font-size="13" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">DeletionTimestamp != nil → +1</text>
+<text x="46" y="184" font-size="12.5" fill="#64748b" text-anchor="start">已绑定、仍占着资源的 Pod</text>
+<rect x="30" y="220" width="300" height="140" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.5"/>
+<text x="46" y="246" font-size="14" fill="#ea580c" text-anchor="start" font-weight="bold">调度队列的 nominator</text>
+<text x="46" y="272" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">handle.NominatedPodsForNode(node)</text>
+<text x="46" y="296" font-size="13" fill="#334155" text-anchor="start">每个被提名 Pod → −1</text>
+<text x="46" y="320" font-size="12.5" fill="#64748b" text-anchor="start">尚未绑定，不在 NodeInfo 里；</text>
+<text x="46" y="342" font-size="12.5" fill="#64748b" text-anchor="start">不看优先级，也不排除当前 Pod 自己</text>
+<line x1="330" y1="144" x2="380" y2="200" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+<line x1="330" y1="290" x2="380" y2="240" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+<rect x="380" y="84" width="530" height="34" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
+<text x="394" y="106" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">节点</text>
+<text x="490" y="106" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">终止中</text>
+<text x="580" y="106" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">被提名</text>
+<text x="670" y="106" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">原始分</text>
+<text x="770" y="106" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">归一化</text>
+<rect x="380" y="126" width="530" height="36" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="394" y="149" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">node1</text>
+<text x="510" y="149" font-size="13.5" fill="#059669" text-anchor="middle">5</text>
+<text x="600" y="149" font-size="13.5" fill="#ea580c" text-anchor="middle">0</text>
+<text x="690" y="149" font-size="13.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">5</text>
+<rect x="770" y="135" width="90" height="18" rx="4" fill="#eff6ff" stroke="#cbd5e1" stroke-width="1"/>
+<rect x="770" y="135" width="90.0" height="18" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1"/>
+<text x="870" y="149" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="bold">100</text>
+<rect x="380" y="170" width="530" height="36" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="394" y="193" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">node2</text>
+<text x="510" y="193" font-size="13.5" fill="#059669" text-anchor="middle">3</text>
+<text x="600" y="193" font-size="13.5" fill="#ea580c" text-anchor="middle">1</text>
+<text x="690" y="193" font-size="13.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">2</text>
+<rect x="770" y="179" width="90" height="18" rx="4" fill="#eff6ff" stroke="#cbd5e1" stroke-width="1"/>
+<rect x="770" y="179" width="45.0" height="18" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1"/>
+<text x="870" y="193" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="bold">50</text>
+<rect x="380" y="214" width="530" height="36" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="394" y="237" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">node3</text>
+<text x="510" y="237" font-size="13.5" fill="#059669" text-anchor="middle">2</text>
+<text x="600" y="237" font-size="13.5" fill="#ea580c" text-anchor="middle">1</text>
+<text x="690" y="237" font-size="13.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">1</text>
+<rect x="770" y="223" width="90" height="18" rx="4" fill="#eff6ff" stroke="#cbd5e1" stroke-width="1"/>
+<rect x="770" y="223" width="29.7" height="18" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1"/>
+<text x="870" y="237" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="bold">33</text>
+<rect x="380" y="258" width="530" height="36" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="394" y="281" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">node4</text>
+<text x="510" y="281" font-size="13.5" fill="#059669" text-anchor="middle">0</text>
+<text x="600" y="281" font-size="13.5" fill="#ea580c" text-anchor="middle">1</text>
+<text x="690" y="281" font-size="13.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">-1</text>
+<rect x="770" y="267" width="90" height="18" rx="4" fill="#eff6ff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="870" y="281" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="bold">0</text>
+<text x="394" y="318" font-size="12.5" fill="#64748b" text-anchor="start">min=−1，max=5：node2=(2+1)×100/6=50，node3=2×100/6=33</text>
+<rect x="30" y="384" width="880" height="116" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="46" y="410" font-size="14" fill="#7c3aed" text-anchor="start" font-weight="bold">为什么这样计分</text>
+<text x="46" y="436" font-size="13" fill="#334155" text-anchor="start">终止中的 Pod 仍计入 NodeInfo 的已请求量，能通过 Filter 说明不靠它们腾地方也放得下；它们退出后节点会更空。</text>
+<text x="46" y="460" font-size="13" fill="#334155" text-anchor="start">被提名的 Pod 是抢占者，节点上即将腾出的资源已经预定给了它们，再挤上去可能让下一轮抢占白做。</text>
+<text x="46" y="484" font-size="13" fill="#ea580c" text-anchor="start">只数个数、不看资源量和优先级：一个 64 核的终止 Pod 和一个 0.1 核的终止 Pod 贡献相同。</text>
+</svg>

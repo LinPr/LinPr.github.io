@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 640" width="920" height="640" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <rect width="920" height="640" fill="#ffffff"/>
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker>
+    <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#059669"/></marker>
+    <marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#ea580c"/></marker>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#dc2626"/></marker>
+  </defs>
+  <text x="460.0" y="32.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">RWOP 冲突：计数是集群级的，只有 RemovePod 能让它归零</text>
+  <text x="460.0" y="54.0" font-size="12.5" fill="#64748b" text-anchor="middle">新 Pod P（高优先级）引用 RWOP PVC「data」；低优先级的占用者 H 运行在 node-2 上</text>
+  <rect x="40.0" y="76.0" width="840.0" height="64.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="52.0" y="99.0" font-size="13.5" fill="#2563eb" font-weight="700">PreFilter（只算一次，与节点无关）</text>
+  <text x="52.0" y="119.5" font-size="12.5" fill="#334155">readWriteOncePodPVCs = {data}；快照 IsPVCUsedByPods("ns/data") = true  →  conflictingPVCRefCount = 1</text>
+  <line x1="460.0" y1="140.0" x2="460.0" y2="162.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="40.0" y="164.0" width="840.0" height="50.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+  <text x="52.0" y="193.7" font-size="13" fill="#ea580c" font-weight="700">Filter：每个节点读到同一个计数 1 &gt; 0  →  全部返回 Unschedulable，于是所有节点都进入抢占候选</text>
+  <line x1="460.0" y1="214.0" x2="460.0" y2="236.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="460.0" y="256.0" font-size="12.5" fill="#64748b" text-anchor="middle">DefaultPreemption：为每个候选节点 Clone CycleState（计数是值拷贝），RemovePod 低优先级 Pod 后再跑 Filter</text>
+  <rect x="40.0" y="272.0" width="266.0" height="106.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="52.0" y="295.0" font-size="14" fill="#1e293b" font-weight="700">node-1</text>
+  <text x="52.0" y="316.0" font-size="12.5" fill="#334155">已有 Pod：A、B（都不引用 data）</text>
+  <text x="52.0" y="335.5" font-size="12.5" fill="#334155">RemovePod(A)：1 − 0 = 1</text>
+  <text x="52.0" y="355.0" font-size="12.5" fill="#334155">RemovePod(B)：1 − 0 = 1</text>
+  <line x1="173.0" y1="378.0" x2="173.0" y2="410.0" stroke="#ea580c" stroke-width="1.6" marker-end="url(#ao)"/>
+  <rect x="40.0" y="412.0" width="266.0" height="40.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+  <text x="173.0" y="436.7" font-size="13" fill="#ea580c" text-anchor="middle" font-weight="700">Filter 仍失败，不是候选</text>
+  <rect x="327.0" y="272.0" width="266.0" height="106.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="339.0" y="295.0" font-size="14" fill="#1e293b" font-weight="700">node-2</text>
+  <text x="339.0" y="316.0" font-size="12.5" fill="#334155">已有 Pod：H（引用 data）、C</text>
+  <text x="339.0" y="335.5" font-size="12.5" fill="#334155">RemovePod(H)：1 − 1 = 0</text>
+  <text x="339.0" y="355.0" font-size="12.5" fill="#334155">RemovePod(C)：0 − 0 = 0</text>
+  <line x1="460.0" y1="378.0" x2="460.0" y2="410.0" stroke="#059669" stroke-width="1.6" marker-end="url(#ag)"/>
+  <rect x="327.0" y="412.0" width="266.0" height="40.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="460.0" y="436.7" font-size="13" fill="#059669" text-anchor="middle" font-weight="700">Filter 通过，成为候选</text>
+  <rect x="614.0" y="272.0" width="266.0" height="106.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="626.0" y="295.0" font-size="14" fill="#1e293b" font-weight="700">node-3</text>
+  <text x="626.0" y="316.0" font-size="12.5" fill="#334155">已有 Pod：D（不引用 data）</text>
+  <text x="626.0" y="335.5" font-size="12.5" fill="#334155">RemovePod(D)：1 − 0 = 1</text>
+  <line x1="747.0" y1="378.0" x2="747.0" y2="410.0" stroke="#ea580c" stroke-width="1.6" marker-end="url(#ao)"/>
+  <rect x="614.0" y="412.0" width="266.0" height="40.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+  <text x="747.0" y="436.7" font-size="13" fill="#ea580c" text-anchor="middle" font-weight="700">Filter 仍失败，不是候选</text>
+  <line x1="460.0" y1="452.0" x2="460.0" y2="478.0" stroke="#059669" stroke-width="1.6" marker-end="url(#ag)"/>
+  <rect x="40.0" y="480.0" width="840.0" height="86.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="52.0" y="503.0" font-size="13.5" fill="#059669" font-weight="700">赦免（reprieve）：在 node-2 上把受害者按优先级逐个 AddPod 回去，再跑 Filter</text>
+  <text x="52.0" y="523.5" font-size="12.5" fill="#334155">AddPod(H)：0 + 1 = 1  →  Filter 失败  →  撤回（RemovePod 回到 0），H 不能赦免，必须驱逐</text>
+  <text x="52.0" y="543.0" font-size="12.5" fill="#334155">AddPod(C)：C 不引用 data，0 + 0 = 0  →  Filter 通过  →  C 被赦免，继续运行</text>
+  <text x="460.0" y="600.0" font-size="12.5" fill="#64748b" text-anchor="middle">结论：抢占只可能在占用者所在节点成立，且占用者一定在受害者名单里；如果 VolumeRestrictions 不实现 RemovePod，</text>
+  <text x="460.0" y="620.0" font-size="12.5" fill="#64748b" text-anchor="middle">计数永远停在 1，所有节点的模拟都会失败，RWOP 冲突就无法通过抢占解决。</text>
+</svg>

@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1156" width="1000" height="1156" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 z" fill="#94a3b8"/></marker></defs>
+<rect width="1000" height="1156" fill="#ffffff"/>
+<rect x="100.0" y="96.0" width="240.0" height="64.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="116.0" y="124.0" font-size="15" fill="#7c3aed" text-anchor="start" font-weight="700">PreEnqueue</text>
+<text x="116.0" y="144.0" font-size="12.5" fill="#64748b" text-anchor="start">Pod 进入调度队列之前</text>
+<rect x="390.0" y="96.0" width="586.0" height="64.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<rect x="404.0" y="110.0" width="155.0" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="481.5" y="127.5" font-size="12.5" fill="#2563eb" text-anchor="middle">01 SchedulingGates</text>
+<rect x="100.0" y="178.0" width="240.0" height="64.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="116.0" y="206.0" font-size="15" fill="#7c3aed" text-anchor="start" font-weight="700">QueueSort</text>
+<text x="116.0" y="226.0" font-size="12.5" fill="#64748b" text-anchor="start">activeQ 的出队顺序</text>
+<rect x="390.0" y="178.0" width="586.0" height="64.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<rect x="404.0" y="192.0" width="132.5" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="470.2" y="209.5" font-size="12.5" fill="#2563eb" text-anchor="middle">02 PrioritySort</text>
+<rect x="544.5" y="192.0" width="95.0" height="26.0" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="592.0" y="209.5" font-size="12.5" fill="#7c3aed" text-anchor="middle">25 QOSSort</text>
+<rect x="647.5" y="192.0" width="155.0" height="26.0" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="725.0" y="209.5" font-size="12.5" fill="#7c3aed" text-anchor="middle">26 TopologicalSort</text>
+<rect x="810.5" y="192.0" width="132.5" height="26.0" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="876.8" y="209.5" font-size="12.5" fill="#7c3aed" text-anchor="middle">27 Coscheduling</text>
+<rect x="100.0" y="260.0" width="240.0" height="258.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="116.0" y="385.0" font-size="15" fill="#2563eb" text-anchor="start" font-weight="700">PreFilter / Filter</text>
+<text x="116.0" y="405.0" font-size="12.5" fill="#64748b" text-anchor="start">逐个节点判定能不能放</text>
+<rect x="390.0" y="260.0" width="586.0" height="258.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<rect x="404.0" y="274.0" width="102.5" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="455.2" y="291.5" font-size="12.5" fill="#2563eb" text-anchor="middle">03 NodeName</text>
+<rect x="514.5" y="274.0" width="170.0" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="599.5" y="291.5" font-size="12.5" fill="#2563eb" text-anchor="middle">04 NodeUnschedulable</text>
+<rect x="692.5" y="274.0" width="155.0" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="770.0" y="291.5" font-size="12.5" fill="#2563eb" text-anchor="middle">05 TaintToleration</text>
+<rect x="404.0" y="308.0" width="132.5" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="470.2" y="325.5" font-size="12.5" fill="#2563eb" text-anchor="middle">06 NodeAffinity</text>
+<rect x="544.5" y="308.0" width="110.0" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="599.5" y="325.5" font-size="12.5" fill="#2563eb" text-anchor="middle">07 NodePorts</text>
+<rect x="662.5" y="308.0" width="162.5" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="743.8" y="325.5" font-size="12.5" fill="#2563eb" text-anchor="middle">08 NodeResourcesFit</text>
+<rect x="404.0" y="342.0" width="177.5" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="492.8" y="359.5" font-size="12.5" fill="#2563eb" text-anchor="middle">09 VolumeRestrictions</text>
+<rect x="589.5" y="342.0" width="162.5" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="670.8" y="359.5" font-size="12.5" fill="#2563eb" text-anchor="middle">10 NodeVolumeLimits</text>
+<rect x="760.0" y="342.0" width="140.0" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="830.0" y="359.5" font-size="12.5" fill="#2563eb" text-anchor="middle">11 VolumeBinding</text>
+<rect x="404.0" y="376.0" width="117.5" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="462.8" y="393.5" font-size="12.5" fill="#2563eb" text-anchor="middle">12 VolumeZone</text>
+<rect x="529.5" y="376.0" width="170.0" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="614.5" y="393.5" font-size="12.5" fill="#2563eb" text-anchor="middle">13 PodTopologySpread</text>
+<rect x="707.5" y="376.0" width="162.5" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="788.8" y="393.5" font-size="12.5" fill="#2563eb" text-anchor="middle">14 InterPodAffinity</text>
+<rect x="404.0" y="410.0" width="162.5" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="485.2" y="427.5" font-size="12.5" fill="#2563eb" text-anchor="middle">15 DynamicResources</text>
+<rect x="574.5" y="410.0" width="192.5" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="670.8" y="427.5" font-size="12.5" fill="#2563eb" text-anchor="middle">16 NodeDeclaredFeatures</text>
+<rect x="404.0" y="444.0" width="200.0" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="504.0" y="461.5" font-size="12.5" fill="#2563eb" text-anchor="middle">17 DeferredPodScheduling</text>
+<rect x="612.0" y="444.0" width="177.5" height="26.0" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="700.8" y="461.5" font-size="12.5" fill="#7c3aed" text-anchor="middle">28 CapacityScheduling</text>
+<rect x="797.5" y="444.0" width="155.0" height="26.0" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="875.0" y="461.5" font-size="12.5" fill="#7c3aed" text-anchor="middle">29 NetworkOverhead</text>
+<rect x="404.0" y="478.0" width="230.0" height="26.0" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="519.0" y="495.5" font-size="12.5" fill="#7c3aed" text-anchor="middle">30 NodeResourceTopologyMatch</text>
+<rect x="100.0" y="536.0" width="240.0" height="88.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="116.0" y="576.0" font-size="15" fill="#2563eb" text-anchor="start" font-weight="700">PostFilter</text>
+<text x="116.0" y="596.0" font-size="12.5" fill="#64748b" text-anchor="start">没有节点可用时：抢占</text>
+<rect x="390.0" y="536.0" width="586.0" height="88.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<rect x="404.0" y="550.0" width="170.0" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="489.0" y="567.5" font-size="12.5" fill="#2563eb" text-anchor="middle">18 DefaultPreemption</text>
+<rect x="582.0" y="550.0" width="192.5" height="26.0" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="678.2" y="567.5" font-size="12.5" fill="#7c3aed" text-anchor="middle">31 PreemptionToleration</text>
+<rect x="404.0" y="584.0" width="185.0" height="26.0" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="496.5" y="601.5" font-size="12.5" fill="#7c3aed" text-anchor="middle">32 CrossNodePreemption</text>
+<rect x="100.0" y="642.0" width="240.0" height="156.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="116.0" y="716.0" font-size="15" fill="#2563eb" text-anchor="start" font-weight="700">PreScore / Score</text>
+<text x="116.0" y="736.0" font-size="12.5" fill="#64748b" text-anchor="start">给可行节点打分</text>
+<rect x="390.0" y="642.0" width="586.0" height="156.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<rect x="404.0" y="656.0" width="275.0" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="541.5" y="673.5" font-size="12.5" fill="#2563eb" text-anchor="middle">19 NodeResourcesBalancedAllocation</text>
+<rect x="687.0" y="656.0" width="140.0" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="757.0" y="673.5" font-size="12.5" fill="#2563eb" text-anchor="middle">20 ImageLocality</text>
+<rect x="404.0" y="690.0" width="222.5" height="26.0" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="515.2" y="707.5" font-size="12.5" fill="#7c3aed" text-anchor="middle">33 NodeResourcesAllocatable</text>
+<rect x="634.5" y="690.0" width="132.5" height="26.0" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="700.8" y="707.5" font-size="12.5" fill="#7c3aed" text-anchor="middle">34 NodeMetadata</text>
+<rect x="775.0" y="690.0" width="102.5" height="26.0" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="826.2" y="707.5" font-size="12.5" fill="#7c3aed" text-anchor="middle">35 PodState</text>
+<rect x="404.0" y="724.0" width="95.0" height="26.0" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="451.5" y="741.5" font-size="12.5" fill="#7c3aed" text-anchor="middle">36 SySched</text>
+<rect x="507.0" y="724.0" width="170.0" height="26.0" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="592.0" y="741.5" font-size="12.5" fill="#7c3aed" text-anchor="middle">37 TargetLoadPacking</text>
+<rect x="685.0" y="724.0" width="237.5" height="26.0" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="803.8" y="741.5" font-size="12.5" fill="#7c3aed" text-anchor="middle">38 LoadVariationRiskBalancing</text>
+<rect x="404.0" y="758.0" width="200.0" height="26.0" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="504.0" y="775.5" font-size="12.5" fill="#7c3aed" text-anchor="middle">39 LowRiskOverCommitment</text>
+<rect x="612.0" y="758.0" width="80.0" height="26.0" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="652.0" y="775.5" font-size="12.5" fill="#7c3aed" text-anchor="middle">40 Peaks</text>
+<rect x="100.0" y="816.0" width="240.0" height="64.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="116.0" y="844.0" font-size="15" fill="#2563eb" text-anchor="start" font-weight="700">Reserve / Permit</text>
+<text x="116.0" y="864.0" font-size="12.5" fill="#64748b" text-anchor="start">预留资源、等待放行</text>
+<rect x="390.0" y="816.0" width="586.0" height="64.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<rect x="404.0" y="830.0" width="235.0" height="26.0" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="521.5" y="847.5" font-size="12.5" fill="#7c3aed" text-anchor="middle">27 Coscheduling（Permit 等齐）</text>
+<rect x="100.0" y="898.0" width="240.0" height="64.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="116.0" y="926.0" font-size="15" fill="#059669" text-anchor="start" font-weight="700">PreBind / Bind</text>
+<text x="116.0" y="946.0" font-size="12.5" fill="#64748b" text-anchor="start">异步写回 API Server</text>
+<rect x="390.0" y="898.0" width="586.0" height="64.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<rect x="404.0" y="912.0" width="140.0" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="474.0" y="929.5" font-size="12.5" fill="#2563eb" text-anchor="middle">24 DefaultBinder</text>
+<rect x="100.0" y="980.0" width="240.0" height="88.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+<text x="116.0" y="1020.0" font-size="15" fill="#0d9488" text-anchor="start" font-weight="700">PodGroup 调度周期</text>
+<text x="116.0" y="1040.0" font-size="12.5" fill="#64748b" text-anchor="start">整组出队时代替单 Pod 周期</text>
+<rect x="390.0" y="980.0" width="586.0" height="88.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<rect x="404.0" y="994.0" width="147.5" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="477.8" y="1011.5" font-size="12.5" fill="#2563eb" text-anchor="middle">21 GangScheduling</text>
+<rect x="559.5" y="994.0" width="237.5" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="678.2" y="1011.5" font-size="12.5" fill="#2563eb" text-anchor="middle">22 TopologyPlacementGenerator</text>
+<rect x="404.0" y="1028.0" width="170.0" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="489.0" y="1045.5" font-size="12.5" fill="#2563eb" text-anchor="middle">23 PodGroupPodsCount</text>
+<path d="M220.0,160.0 L220.0,175.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<path d="M220.0,242.0 L220.0,257.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<path d="M220.0,798.0 L220.0,813.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<path d="M220.0,880.0 L220.0,895.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<path d="M220.0,518.0 L220.0,533.0" stroke="#ea580c" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<text x="228.0" y="531.0" font-size="11.5" fill="#ea580c" text-anchor="start">无可行节点</text>
+<path d="M340,494 L364,494 L364,666 L343,666" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<text x="378" y="580.0" font-size="11.5" fill="#059669" text-anchor="middle" transform="rotate(90 378 580.0)">有可行节点</text>
+<path d="M100,580.0 L70,580.0 L70,210.0 L97,210.0" stroke="#ea580c" stroke-width="1.6" fill="none" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<text x="38.0" y="319.0" font-size="11.5" fill="#ea580c" text-anchor="middle">失</text>
+<text x="38.0" y="334.0" font-size="11.5" fill="#ea580c" text-anchor="middle">败</text>
+<text x="38.0" y="349.0" font-size="11.5" fill="#ea580c" text-anchor="middle">回</text>
+<text x="38.0" y="364.0" font-size="11.5" fill="#ea580c" text-anchor="middle">队</text>
+<text x="38.0" y="379.0" font-size="11.5" fill="#ea580c" text-anchor="middle">列</text>
+<text x="38.0" y="394.0" font-size="11.5" fill="#ea580c" text-anchor="middle">等</text>
+<text x="38.0" y="409.0" font-size="11.5" fill="#ea580c" text-anchor="middle">待</text>
+<text x="38.0" y="424.0" font-size="11.5" fill="#ea580c" text-anchor="middle">事</text>
+<text x="38.0" y="439.0" font-size="11.5" fill="#ea580c" text-anchor="middle">件</text>
+<rect x="100.0" y="1102.0" width="22.0" height="18.0" rx="9" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="130.0" y="1116.0" font-size="12.5" fill="#475569" text-anchor="start">in-tree 插件（kube-scheduler 自带）</text>
+<rect x="390.0" y="1102.0" width="22.0" height="18.0" rx="9" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="420.0" y="1116.0" font-size="12.5" fill="#475569" text-anchor="start">out-of-tree 插件（scheduler-plugins）</text>
+<text x="720.0" y="1116.0" font-size="12.5" fill="#475569" text-anchor="start">编号 = 本系列文章序号</text>
+<text x="500.0" y="36.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">一个 Pod 的调度旅程：每个扩展点上由哪些插件出场</text>
+<text x="500.0" y="62.0" font-size="12.5" fill="#64748b" text-anchor="middle">左侧是扩展点（按执行顺序自上而下），右侧是本系列在该位置重点讲的插件；一个插件常挂在多个扩展点，这里只标它的主场</text>
+</svg>

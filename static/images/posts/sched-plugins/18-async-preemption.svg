@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" width="1000" height="560" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker>
+    <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#059669"/></marker>
+    <marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#ea580c"/></marker>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#dc2626"/></marker>
+    <marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#2563eb"/></marker>
+    <marker id="ap" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#7c3aed"/></marker>
+  </defs>
+  <rect width="1000" height="560" fill="#ffffff"/>
+  <text x="500.0" y="32.0" font-size="19" fill="#1e293b" font-weight="700" text-anchor="middle">异步抢占：PostFilter 立即返回，PreEnqueue 负责「挡住」抢占者</text>
+  <text x="500.0" y="54.0" font-size="12.5" fill="#64748b" text-anchor="middle">SchedulerAsyncPreemption（1.33 起 Beta，默认开）；preempting 集合和 lastVictimsPendingPreemption 都在 Executor 里</text>
+  <rect x="20" y="90" width="960" height="120" rx="10" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="32.0" y="110.0" font-size="13" fill="#2563eb" font-weight="700">调度主循环</text>
+  <rect x="20" y="230" width="960" height="120" rx="10" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="32.0" y="250.0" font-size="13" fill="#7c3aed" font-weight="700">抢占 goroutine</text>
+  <rect x="20" y="370" width="960" height="120" rx="10" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1.2"/>
+  <text x="32.0" y="390.0" font-size="13" fill="#059669" font-weight="700">API Server / informer</text>
+  <rect x="40" y="130" width="170" height="66" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="125.0" y="152.0" font-size="11.5" fill="#2563eb" font-weight="700" text-anchor="middle">周期 N：PostFilter</text>
+  <text x="125.0" y="167.0" font-size="11" fill="#334155" text-anchor="middle">preempting.Insert(uid)</text>
+  <text x="125.0" y="182.0" font-size="11" fill="#334155" text-anchor="middle">go func() …</text>
+  <rect x="230" y="130" width="170" height="66" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="315.0" y="152.0" font-size="11.5" fill="#1e293b" font-weight="700" text-anchor="middle">返回 NNN=node1</text>
+  <text x="315.0" y="167.0" font-size="11" fill="#334155" text-anchor="middle">写 NNN，Pod 进</text>
+  <text x="315.0" y="182.0" font-size="11" fill="#334155" text-anchor="middle">不可调度池</text>
+  <rect x="420" y="130" width="150" height="66" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="495.0" y="159.5" font-size="11.5" fill="#1e293b" font-weight="700" text-anchor="middle">其他 Pod 的周期</text>
+  <text x="495.0" y="174.5" font-size="11" fill="#334155" text-anchor="middle">照常进行</text>
+  <rect x="590" y="130" width="180" height="66" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="680.0" y="152.0" font-size="11.5" fill="#2563eb" font-weight="700" text-anchor="middle">受害者删除事件</text>
+  <text x="680.0" y="167.0" font-size="11" fill="#334155" text-anchor="middle">→ 其它插件的 hint</text>
+  <text x="680.0" y="182.0" font-size="11" fill="#334155" text-anchor="middle">→ PreEnqueue 检查</text>
+  <rect x="790" y="130" width="170" height="66" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="875.0" y="152.0" font-size="11.5" fill="#059669" font-weight="700" text-anchor="middle">周期 M：先评估</text>
+  <text x="875.0" y="167.0" font-size="11" fill="#334155" text-anchor="middle">NNN 节点</text>
+  <text x="875.0" y="182.0" font-size="11" fill="#334155" text-anchor="middle">通过则直接选它</text>
+  <line x1="210" y1="163" x2="226" y2="163" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="400" y1="163" x2="416" y2="163" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="570" y1="163" x2="586" y2="163" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="770" y1="163" x2="786" y2="163" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="60" y="266" width="190" height="56" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="155.0" y="290.5" font-size="11.5" fill="#1e293b" font-weight="700" text-anchor="middle">清理同节点、</text>
+  <text x="155.0" y="305.5" font-size="11" fill="#334155" text-anchor="middle">低优先级 Pod 的 NNN</text>
+  <rect x="270" y="266" width="210" height="56" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="375.0" y="290.5" font-size="11.5" fill="#1e293b" font-weight="700" text-anchor="middle">并行删除前 n-1 个受害者</text>
+  <text x="375.0" y="305.5" font-size="11" fill="#334155" text-anchor="middle">Parallelizer().Until</text>
+  <rect x="500" y="266" width="220" height="56" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="610.0" y="290.5" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="middle">登记 lastVictimsPending</text>
+  <text x="610.0" y="305.5" font-size="11" fill="#334155" text-anchor="middle">再删除最后一个受害者</text>
+  <rect x="740" y="266" width="200" height="56" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="840.0" y="290.5" font-size="11.5" fill="#1e293b" font-weight="700" text-anchor="middle">preempting.Delete(uid)</text>
+  <text x="840.0" y="305.5" font-size="11" fill="#334155" text-anchor="middle">出错或内存中抢占时 Activate</text>
+  <line x1="250" y1="294" x2="266" y2="294" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#ap)"/>
+  <line x1="480" y1="294" x2="496" y2="294" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#ap)"/>
+  <line x1="720" y1="294" x2="736" y2="294" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#ap)"/>
+  <line x1="185" y1="196" x2="185" y2="262" stroke="#7c3aed" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#ap)"/>
+  <rect x="270" y="404" width="210" height="56" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="375.0" y="428.5" font-size="11.5" fill="#059669" font-weight="700" text-anchor="middle">PATCH DisruptionTarget</text>
+  <text x="375.0" y="443.5" font-size="11" fill="#334155" text-anchor="middle">再 DELETE 受害者 Pod</text>
+  <rect x="500" y="404" width="220" height="56" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="610.0" y="428.5" font-size="11.5" fill="#059669" font-weight="700" text-anchor="middle">受害者进入 Terminating</text>
+  <text x="610.0" y="443.5" font-size="11" fill="#334155" text-anchor="middle">DeletionTimestamp 非空</text>
+  <rect x="740" y="404" width="200" height="56" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="840.0" y="428.5" font-size="11.5" fill="#059669" font-weight="700" text-anchor="middle">AssignedPod Delete 事件</text>
+  <text x="840.0" y="443.5" font-size="11" fill="#334155" text-anchor="middle">（优雅退出后）</text>
+  <line x1="375" y1="322" x2="375" y2="400" stroke="#059669" stroke-width="1.6" marker-end="url(#ag)"/>
+  <line x1="610" y1="322" x2="610" y2="400" stroke="#059669" stroke-width="1.6" marker-end="url(#ag)"/>
+  <path d="M840,404 L840,380 L730,380 L730,200" fill="none" stroke="#059669" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#ag)"/>
+  <text x="500.0" y="516.0" font-size="12" fill="#64748b" text-anchor="middle">isRunningPreemption(uid)：不在 preempting → false；在 preempting 但还没登记最后一个受害者 → true；</text>
+  <text x="500.0" y="536.0" font-size="12" fill="#64748b" text-anchor="middle">已登记：最后一个受害者已不存在或已有 DeletionTimestamp → false，否则 true。返回 true 时 PreEnqueue 给出 UnschedulableAndUnresolvable。</text>
+</svg>

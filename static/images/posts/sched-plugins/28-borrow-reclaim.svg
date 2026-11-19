@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 590" width="980" height="590" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<rect width="980" height="590" fill="#ffffff"/>
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 z" fill="#94a3b8"/></marker></defs>
+<text x="490.0" y="34.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">算例：两个 ElasticQuota 的借用与回收</text>
+<text x="490.0" y="58.0" font-size="13" fill="#64748b" text-anchor="middle">两台 4 CPU 节点，quota A、B 均为 min 4 / max 6（只配 CPU），每个 Pod 请求 2 CPU、优先级相同</text>
+<rect x="20.0" y="80.0" width="225.0" height="466.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="32.0" y="104.0" font-size="14" fill="#1e293b" text-anchor="start" font-weight="700">① A 借走 B 的 min</text>
+<rect x="30.0" y="116.0" width="98.0" height="64.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="79.0" y="132.0" font-size="11.5" fill="#64748b" text-anchor="middle">node1</text>
+<rect x="36.0" y="140.0" width="41.0" height="32.0" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="56.5" y="161.0" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="700">a1</text>
+<rect x="81.0" y="140.0" width="41.0" height="32.0" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="101.5" y="161.0" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="700">a2</text>
+<rect x="136.0" y="116.0" width="98.0" height="64.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="185.0" y="132.0" font-size="11.5" fill="#64748b" text-anchor="middle">node2</text>
+<rect x="142.0" y="140.0" width="41.0" height="32.0" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="162.5" y="161.0" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="700">a3</text>
+<rect x="187.0" y="140.0" width="41.0" height="32.0" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="207.5" y="161.0" font-size="12" fill="#64748b" text-anchor="middle">空</text>
+<rect x="72.0" y="208.0" width="40.0" height="144.0" rx="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<rect x="72.0" y="280.0" width="40.0" height="72.0" rx="3" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<rect x="72.0" y="244.0" width="40.0" height="36.0" rx="3" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="92.0" y="370.0" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="700">A = 6</text>
+<line x1="66.0" y1="280.0" x2="118.0" y2="280.0" stroke="#dc2626" stroke-width="1.1" stroke-dasharray="4 3"/>
+<line x1="66.0" y1="244.0" x2="118.0" y2="244.0" stroke="#7c3aed" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text x="64.0" y="284.0" font-size="11" fill="#dc2626" text-anchor="end">4</text>
+<text x="64.0" y="248.0" font-size="11" fill="#7c3aed" text-anchor="end">6</text>
+<rect x="156.0" y="208.0" width="40.0" height="144.0" rx="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="176.0" y="370.0" font-size="12.5" fill="#059669" text-anchor="middle" font-weight="700">B = 0</text>
+<line x1="150.0" y1="280.0" x2="202.0" y2="280.0" stroke="#dc2626" stroke-width="1.1" stroke-dasharray="4 3"/>
+<line x1="150.0" y1="244.0" x2="202.0" y2="244.0" stroke="#7c3aed" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text x="148.0" y="284.0" font-size="11" fill="#dc2626" text-anchor="end">4</text>
+<text x="148.0" y="248.0" font-size="11" fill="#7c3aed" text-anchor="end">6</text>
+<text x="32.0" y="400.0" font-size="12" fill="#334155" text-anchor="start">a3：A 4+2 ≤ Max 6</text>
+<text x="32.0" y="422.0" font-size="12" fill="#334155" text-anchor="start">Σ 4+2 ≤ ΣMin 8，通过</text>
+<text x="32.0" y="444.0" font-size="12" fill="#334155" text-anchor="start">a4：A 6+2 &gt; Max 6，被拒</text>
+<text x="32.0" y="466.0" font-size="12" fill="#334155" text-anchor="start">A 已超 min，只能抢同 ns 低优先级</text>
+<text x="32.0" y="488.0" font-size="12" fill="#334155" text-anchor="start">→ 没有受害者，a4 Pending</text>
+<rect x="260.0" y="80.0" width="225.0" height="466.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="272.0" y="104.0" font-size="14" fill="#1e293b" text-anchor="start" font-weight="700">② B 用掉剩下的 2</text>
+<rect x="270.0" y="116.0" width="98.0" height="64.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="319.0" y="132.0" font-size="11.5" fill="#64748b" text-anchor="middle">node1</text>
+<rect x="276.0" y="140.0" width="41.0" height="32.0" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="296.5" y="161.0" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="700">a1</text>
+<rect x="321.0" y="140.0" width="41.0" height="32.0" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="341.5" y="161.0" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="700">a2</text>
+<rect x="376.0" y="116.0" width="98.0" height="64.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="425.0" y="132.0" font-size="11.5" fill="#64748b" text-anchor="middle">node2</text>
+<rect x="382.0" y="140.0" width="41.0" height="32.0" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="402.5" y="161.0" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="700">a3</text>
+<rect x="427.0" y="140.0" width="41.0" height="32.0" rx="5" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="447.5" y="161.0" font-size="12.5" fill="#059669" text-anchor="middle" font-weight="700">b1</text>
+<rect x="312.0" y="208.0" width="40.0" height="144.0" rx="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<rect x="312.0" y="280.0" width="40.0" height="72.0" rx="3" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<rect x="312.0" y="244.0" width="40.0" height="36.0" rx="3" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="332.0" y="370.0" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="700">A = 6</text>
+<line x1="306.0" y1="280.0" x2="358.0" y2="280.0" stroke="#dc2626" stroke-width="1.1" stroke-dasharray="4 3"/>
+<line x1="306.0" y1="244.0" x2="358.0" y2="244.0" stroke="#7c3aed" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text x="304.0" y="284.0" font-size="11" fill="#dc2626" text-anchor="end">4</text>
+<text x="304.0" y="248.0" font-size="11" fill="#7c3aed" text-anchor="end">6</text>
+<rect x="396.0" y="208.0" width="40.0" height="144.0" rx="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<rect x="396.0" y="316.0" width="40.0" height="36.0" rx="3" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="416.0" y="370.0" font-size="12.5" fill="#059669" text-anchor="middle" font-weight="700">B = 2</text>
+<line x1="390.0" y1="280.0" x2="442.0" y2="280.0" stroke="#dc2626" stroke-width="1.1" stroke-dasharray="4 3"/>
+<line x1="390.0" y1="244.0" x2="442.0" y2="244.0" stroke="#7c3aed" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text x="388.0" y="284.0" font-size="11" fill="#dc2626" text-anchor="end">4</text>
+<text x="388.0" y="248.0" font-size="11" fill="#7c3aed" text-anchor="end">6</text>
+<text x="272.0" y="400.0" font-size="12" fill="#334155" text-anchor="start">b1：B 2 ≤ Max 6</text>
+<text x="272.0" y="422.0" font-size="12" fill="#334155" text-anchor="start">Σ 6+2 = 8 ≤ ΣMin 8，通过</text>
+<text x="272.0" y="444.0" font-size="12" fill="#334155" text-anchor="start">集群 8 CPU 用满</text>
+<text x="272.0" y="466.0" font-size="12" fill="#334155" text-anchor="start">Σ 已经等于 ΣMin</text>
+<rect x="500.0" y="80.0" width="225.0" height="466.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="512.0" y="104.0" font-size="14" fill="#1e293b" text-anchor="start" font-weight="700">③ b2 触发回收</text>
+<rect x="510.0" y="116.0" width="98.0" height="64.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="559.0" y="132.0" font-size="11.5" fill="#64748b" text-anchor="middle">node1</text>
+<rect x="516.0" y="140.0" width="41.0" height="32.0" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="536.5" y="161.0" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="700">a1</text>
+<rect x="561.0" y="140.0" width="41.0" height="32.0" rx="5" fill="#fef2f2" stroke="#dc2626" stroke-width="1.6" stroke-dasharray="4 3"/>
+<text x="581.5" y="161.0" font-size="12.5" fill="#dc2626" text-anchor="middle" font-weight="700">a2</text>
+<rect x="616.0" y="116.0" width="98.0" height="64.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="665.0" y="132.0" font-size="11.5" fill="#64748b" text-anchor="middle">node2</text>
+<rect x="622.0" y="140.0" width="41.0" height="32.0" rx="5" fill="#fef2f2" stroke="#dc2626" stroke-width="1.6" stroke-dasharray="4 3"/>
+<text x="642.5" y="161.0" font-size="12.5" fill="#dc2626" text-anchor="middle" font-weight="700">a3</text>
+<rect x="667.0" y="140.0" width="41.0" height="32.0" rx="5" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="687.5" y="161.0" font-size="12.5" fill="#059669" text-anchor="middle" font-weight="700">b1</text>
+<rect x="552.0" y="208.0" width="40.0" height="144.0" rx="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<rect x="552.0" y="280.0" width="40.0" height="72.0" rx="3" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<rect x="552.0" y="244.0" width="40.0" height="36.0" rx="3" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="572.0" y="370.0" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="700">A = 6</text>
+<line x1="546.0" y1="280.0" x2="598.0" y2="280.0" stroke="#dc2626" stroke-width="1.1" stroke-dasharray="4 3"/>
+<line x1="546.0" y1="244.0" x2="598.0" y2="244.0" stroke="#7c3aed" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text x="544.0" y="284.0" font-size="11" fill="#dc2626" text-anchor="end">4</text>
+<text x="544.0" y="248.0" font-size="11" fill="#7c3aed" text-anchor="end">6</text>
+<rect x="636.0" y="208.0" width="40.0" height="144.0" rx="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<rect x="636.0" y="316.0" width="40.0" height="36.0" rx="3" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="656.0" y="370.0" font-size="12.5" fill="#059669" text-anchor="middle" font-weight="700">B = 2</text>
+<line x1="630.0" y1="280.0" x2="682.0" y2="280.0" stroke="#dc2626" stroke-width="1.1" stroke-dasharray="4 3"/>
+<line x1="630.0" y1="244.0" x2="682.0" y2="244.0" stroke="#7c3aed" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text x="628.0" y="284.0" font-size="11" fill="#dc2626" text-anchor="end">4</text>
+<text x="628.0" y="248.0" font-size="11" fill="#7c3aed" text-anchor="end">6</text>
+<text x="512.0" y="400.0" font-size="12" fill="#334155" text-anchor="start">b2：Σ 8+2 &gt; ΣMin 8，被拒</text>
+<text x="512.0" y="422.0" font-size="12" fill="#334155" text-anchor="start">B 2+2 ≤ Min 4 → 回收模式</text>
+<text x="512.0" y="444.0" font-size="12" fill="#334155" text-anchor="start">A 6 &gt; 4：A 的 Pod 都是候选</text>
+<text x="512.0" y="466.0" font-size="12" fill="#334155" text-anchor="start">node1：赦免 a1，a2 为受害者</text>
+<text x="512.0" y="488.0" font-size="12" fill="#334155" text-anchor="start">node2：a3 为受害者</text>
+<text x="512.0" y="510.0" font-size="12" fill="#334155" text-anchor="start">两个候选，交给默认规则挑选</text>
+<rect x="740.0" y="80.0" width="225.0" height="466.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="752.0" y="104.0" font-size="14" fill="#1e293b" text-anchor="start" font-weight="700">④ 回到各自的 min</text>
+<rect x="750.0" y="116.0" width="98.0" height="64.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="799.0" y="132.0" font-size="11.5" fill="#64748b" text-anchor="middle">node1</text>
+<rect x="756.0" y="140.0" width="41.0" height="32.0" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="776.5" y="161.0" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="700">a1</text>
+<rect x="801.0" y="140.0" width="41.0" height="32.0" rx="5" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="821.5" y="161.0" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="700">a2</text>
+<rect x="856.0" y="116.0" width="98.0" height="64.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="905.0" y="132.0" font-size="11.5" fill="#64748b" text-anchor="middle">node2</text>
+<rect x="862.0" y="140.0" width="41.0" height="32.0" rx="5" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="882.5" y="161.0" font-size="12.5" fill="#059669" text-anchor="middle" font-weight="700">b1</text>
+<rect x="907.0" y="140.0" width="41.0" height="32.0" rx="5" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="927.5" y="161.0" font-size="12.5" fill="#059669" text-anchor="middle" font-weight="700">b2</text>
+<rect x="792.0" y="208.0" width="40.0" height="144.0" rx="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<rect x="792.0" y="280.0" width="40.0" height="72.0" rx="3" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="812.0" y="370.0" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="700">A = 4</text>
+<line x1="786.0" y1="280.0" x2="838.0" y2="280.0" stroke="#dc2626" stroke-width="1.1" stroke-dasharray="4 3"/>
+<line x1="786.0" y1="244.0" x2="838.0" y2="244.0" stroke="#7c3aed" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text x="784.0" y="284.0" font-size="11" fill="#dc2626" text-anchor="end">4</text>
+<text x="784.0" y="248.0" font-size="11" fill="#7c3aed" text-anchor="end">6</text>
+<rect x="876.0" y="208.0" width="40.0" height="144.0" rx="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<rect x="876.0" y="280.0" width="40.0" height="72.0" rx="3" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="896.0" y="370.0" font-size="12.5" fill="#059669" text-anchor="middle" font-weight="700">B = 4</text>
+<line x1="870.0" y1="280.0" x2="922.0" y2="280.0" stroke="#dc2626" stroke-width="1.1" stroke-dasharray="4 3"/>
+<line x1="870.0" y1="244.0" x2="922.0" y2="244.0" stroke="#7c3aed" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text x="868.0" y="284.0" font-size="11" fill="#dc2626" text-anchor="end">4</text>
+<text x="868.0" y="248.0" font-size="11" fill="#7c3aed" text-anchor="end">6</text>
+<text x="752.0" y="400.0" font-size="12" fill="#334155" text-anchor="start">假设选中 node2，驱逐 a3</text>
+<text x="752.0" y="422.0" font-size="12" fill="#334155" text-anchor="start">A 4 = Min，B 4 = Min</text>
+<text x="752.0" y="444.0" font-size="12" fill="#334155" text-anchor="start">a4、重建的 a3'：Σ 8+2 &gt; 8</text>
+<text x="752.0" y="466.0" font-size="12" fill="#334155" text-anchor="start">A 4+2 &gt; Min 4 → 只抢同 ns</text>
+<text x="752.0" y="488.0" font-size="12" fill="#334155" text-anchor="start">→ 无受害者，继续 Pending</text>
+<rect x="150.0" y="562.0" width="18.0" height="14.0" rx="3" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="174.0" y="574.0" font-size="12.5" fill="#64748b" text-anchor="start">A 在 min 以内</text>
+<rect x="293.1" y="562.0" width="18.0" height="14.0" rx="3" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="317.1" y="574.0" font-size="12.5" fill="#64748b" text-anchor="start">B 在 min 以内</text>
+<rect x="436.2" y="562.0" width="18.0" height="14.0" rx="3" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="460.2" y="574.0" font-size="12.5" fill="#64748b" text-anchor="start">超出 min 的借用部分</text>
+<rect x="617.4" y="562.0" width="18.0" height="14.0" rx="3" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2" stroke-dasharray="4 3"/>
+<text x="641.4" y="574.0" font-size="12.5" fill="#64748b" text-anchor="start">候选受害者</text>
+<line x1="743.9" y1="569.0" x2="769.9" y2="569.0" stroke="#dc2626" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text x="775.9" y="574.0" font-size="12.5" fill="#64748b" text-anchor="start">min</text>
+<line x1="823.9" y1="569.0" x2="849.9" y2="569.0" stroke="#7c3aed" stroke-width="1.1" stroke-dasharray="4 3"/>
+<text x="855.9" y="574.0" font-size="12.5" fill="#64748b" text-anchor="start">max</text>
+</svg>

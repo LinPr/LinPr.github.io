@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 580" width="960" height="580" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker>
+    <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#059669"/></marker>
+    <marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#ea580c"/></marker>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#dc2626"/></marker>
+    <marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#2563eb"/></marker>
+    <marker id="ap" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#7c3aed"/></marker>
+  </defs>
+  <rect width="960" height="580" fill="#ffffff"/>
+  <text x="480.0" y="32" font-size="19" fill="#1e293b" font-weight="700" text-anchor="middle">一对 (已调度 Pod p, 依赖 d) 怎样计入 Filter 与 Score</text>
+  <text x="480.0" y="54" font-size="12.5" fill="#64748b" text-anchor="middle">checkMaxNetworkCostRequirements 与 getAccumulatedCost 走同一棵判定树，只在「查不到代价」这一支上分道</text>
+  <rect x="24" y="74" width="912" height="40" rx="8" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="480" y="99" font-size="13" fill="#334155" text-anchor="middle">对 scheduledList 里每个已绑定的 Pod p，与当前 Pod 的每个依赖 d 配对（双重循环，副本越多计数越多）</text>
+  <rect x="40" y="134" width="262" height="40" rx="7" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="52" y="159" font-size="13" fill="#1e3a8a" font-weight="700">p 属于 d 指向的 workload？</text>
+  <line x1="171" y1="114" x2="171" y2="130" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="302" y1="154" x2="632" y2="154" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="312" y="148" font-size="12" fill="#64748b">否</text>
+  <rect x="636" y="134" width="300" height="40" rx="7" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="648" y="159" font-size="12.5" fill="#475569">跳过：既不计数，也不加代价</text>
+  <rect x="40" y="196" width="262" height="40" rx="7" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="52" y="221" font-size="13" fill="#1e3a8a" font-weight="700">p 就在候选节点上？</text>
+  <line x1="171" y1="174" x2="171" y2="192" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="179" y="188" font-size="12" fill="#64748b">是</text>
+  <line x1="302" y1="216" x2="632" y2="216" stroke="#059669" stroke-width="1.6" marker-end="url(#ag)"/>
+  <text x="312" y="210" font-size="12" fill="#64748b">是</text>
+  <rect x="636" y="196" width="300" height="40" rx="7" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="648" y="221" font-size="12.5" fill="#065f46">满足 ｜ +0（SameHostname）</text>
+  <rect x="40" y="258" width="262" height="40" rx="7" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="52" y="283" font-size="13" fill="#1e3a8a" font-weight="700">p 的节点 region、zone 都为空？</text>
+  <line x1="171" y1="236" x2="171" y2="254" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="179" y="250" font-size="12" fill="#64748b">否</text>
+  <line x1="302" y1="278" x2="632" y2="278" stroke="#ea580c" stroke-width="1.6" marker-end="url(#ao)"/>
+  <text x="312" y="272" font-size="12" fill="#64748b">是</text>
+  <rect x="636" y="258" width="300" height="40" rx="7" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+  <text x="648" y="283" font-size="12.5" fill="#9a3412">违反 ｜ +100（MaxCost）</text>
+  <rect x="40" y="320" width="262" height="40" rx="7" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="52" y="345" font-size="13" fill="#1e3a8a" font-weight="700">两个节点 region 相同？</text>
+  <line x1="171" y1="298" x2="171" y2="316" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="179" y="312" font-size="12" fill="#64748b">否</text>
+  <line x1="302" y1="340" x2="332" y2="340" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="310" y="334" font-size="12" fill="#64748b">是</text>
+  <rect x="336" y="320" width="262" height="40" rx="7" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="348" y="345" font-size="13" fill="#1e3a8a" font-weight="700">zone 也相同？</text>
+  <line x1="598" y1="340" x2="632" y2="340" stroke="#059669" stroke-width="1.6" marker-end="url(#ag)"/>
+  <text x="606" y="334" font-size="12" fill="#64748b">是</text>
+  <rect x="636" y="320" width="300" height="40" rx="7" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="648" y="345" font-size="12.5" fill="#065f46">满足 ｜ +1（SameZone，不查表）</text>
+  <rect x="336" y="390" width="262" height="40" rx="7" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+  <text x="348" y="415" font-size="13" fill="#1e3a8a" font-weight="700">查 costMap[(本 zone, p zone)]</text>
+  <line x1="467" y1="360" x2="467" y2="386" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="475" y="378" font-size="12" fill="#64748b">否</text>
+  <rect x="40" y="460" width="262" height="40" rx="7" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+  <text x="52" y="485" font-size="13" fill="#1e3a8a" font-weight="700">查 costMap[(本 region, p region)]</text>
+  <line x1="171" y1="360" x2="171" y2="456" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="179" y="420" font-size="12" fill="#64748b">否</text>
+  <rect x="636" y="390" width="300" height="58" rx="7" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="648" y="411" font-size="12.5" fill="#065f46" font-weight="700">查到 cost：</text>
+  <text x="648" y="432" font-size="12" fill="#065f46">≤ maxNetworkCost 满足，否则违反 ｜ +cost</text>
+  <rect x="636" y="460" width="300" height="58" rx="7" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+  <text x="648" y="481" font-size="12.5" fill="#991b1b" font-weight="700">查不到：</text>
+  <text x="648" y="502" font-size="12" fill="#991b1b">Filter 不计数 ｜ Score +100</text>
+  <line x1="598" y1="410" x2="632" y2="412" stroke="#059669" stroke-width="1.6" marker-end="url(#ag)"/>
+  <path d="M598,420 L618,480 L632,482" fill="none" stroke="#dc2626" stroke-width="1.6" marker-end="url(#ar)"/>
+  <path d="M302,470 L396,470 L618,424 L632,424" fill="none" stroke="#059669" stroke-width="1.6" marker-end="url(#ag)"/>
+  <line x1="302" y1="490" x2="632" y2="490" stroke="#dc2626" stroke-width="1.6" marker-end="url(#ar)"/>
+  <rect x="24" y="534" width="912" height="34" rx="7" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="5 4"/>
+  <text x="480" y="556" font-size="12.5" fill="#334155" text-anchor="middle">Filter：violated &gt; satisfied 才返回 Unschedulable ｜ Score：返回累计代价，NormalizeScore 反转为 0~100</text>
+</svg>

@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 640" width="940" height="640" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <rect width="940" height="640" fill="#ffffff"/>
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker>
+    <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#059669"/></marker>
+    <marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#ea580c"/></marker>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#dc2626"/></marker>
+  </defs>
+  <text x="470.0" y="32.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">VolumeZone：PV 标签逐条匹配节点标签</text>
+  <text x="470.0" y="54.0" font-size="12.5" fill="#64748b" text-anchor="middle">PreFilter 把已绑定 PV 的拓扑标签展开成 pvTopology 列表；Filter 对每个节点逐条检查，任一不满足即 UnschedulableAndUnresolvable</text>
+  <text x="20.0" y="90.0" font-size="14" fill="#1e293b" font-weight="700">PreFilter</text>
+  <rect x="20.0" y="102.0" width="214.0" height="76.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="29.0" y="122.0" font-size="13.5" fill="#2563eb" font-weight="700">Pod 卷</text>
+  <text x="29.0" y="142.5" font-size="11.5" fill="#334155">persistentVolumeClaim</text>
+  <text x="29.0" y="161.0" font-size="11.5" fill="#334155">（不含 ephemeral）</text>
+  <line x1="235.0" y1="140.0" x2="247.0" y2="140.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="248.0" y="102.0" width="214.0" height="76.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="257.0" y="122.0" font-size="13.5" fill="#2563eb" font-weight="700">PVC</text>
+  <text x="257.0" y="142.5" font-size="11.5" fill="#334155">volumeName 为空且 WFFC</text>
+  <text x="257.0" y="161.0" font-size="11.5" fill="#334155">→ 跳过，交给 VolumeBinding</text>
+  <line x1="463.0" y1="140.0" x2="475.0" y2="140.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="476.0" y="102.0" width="214.0" height="76.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="485.0" y="122.0" font-size="13.5" fill="#2563eb" font-weight="700">PV labels</text>
+  <text x="485.0" y="142.5" font-size="11.5" fill="#334155">topology.kubernetes.io/zone</text>
+  <text x="485.0" y="161.0" font-size="11.5" fill="#334155">= us-west1-a__us-west1-b</text>
+  <line x1="691.0" y1="140.0" x2="703.0" y2="140.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="704.0" y="102.0" width="214.0" height="76.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="713.0" y="122.0" font-size="13.5" fill="#7c3aed" font-weight="700">podPVTopologies</text>
+  <text x="713.0" y="142.5" font-size="11.5" fill="#334155">{key: zone, values: {a, b}}</text>
+  <text x="713.0" y="161.0" font-size="11.5" fill="#334155">按 "__" 切分（LabelZonesToSet）</text>
+  <text x="20.0" y="214.0" font-size="14" fill="#1e293b" font-weight="700">Filter（每个节点）</text>
+  <rect x="20.0" y="226.0" width="430.0" height="56.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="29.0" y="246.0" font-size="13" fill="#2563eb" font-weight="700">节点有四个拓扑标签中的任意一个吗？</text>
+  <text x="29.0" y="266.0" font-size="11.5" fill="#334155">failure-domain.beta.* 与 topology.kubernetes.io/* 的 zone、region</text>
+  <text x="26.0" y="302.0" font-size="12.5" fill="#059669" font-weight="700">否</text>
+  <line x1="50.0" y1="282.0" x2="50.0" y2="318.0" stroke="#059669" stroke-width="1.6" marker-end="url(#ag)"/>
+  <rect x="20.0" y="320.0" width="150.0" height="52.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="28.0" y="339.0" font-size="13" fill="#059669" font-weight="700">直接通过</text>
+  <text x="28.0" y="359.0" font-size="11.5" fill="#334155">（单可用区集群）</text>
+  <text x="332.0" y="302.0" font-size="12.5" fill="#334155" text-anchor="end" font-weight="700">是：对每条 pvTopology</text>
+  <line x1="340.0" y1="282.0" x2="340.0" y2="318.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="190.0" y="320.0" width="260.0" height="52.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="198.0" y="339.0" font-size="13" fill="#7c3aed" font-weight="700">node.Labels[key] 存在？</text>
+  <text x="198.0" y="359.0" font-size="11.5" fill="#334155">key 为 PV 上的原始标签键</text>
+  <text x="196.0" y="392.0" font-size="12.5" fill="#ea580c" font-weight="700">否</text>
+  <line x1="220.0" y1="372.0" x2="220.0" y2="408.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="190.0" y="410.0" width="260.0" height="70.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="198.0" y="429.0" font-size="13" fill="#7c3aed" font-weight="700">translateToGALabel(key) 再找</text>
+  <text x="198.0" y="449.0" font-size="11.5" fill="#334155">只有 beta → GA：beta zone → zone</text>
+  <text x="198.0" y="467.5" font-size="11.5" fill="#334155">GA key 翻译后不变，找不到即失败</text>
+  <text x="424.0" y="392.0" font-size="12.5" fill="#059669" font-weight="700">是</text>
+  <path d="M450,346 C490,346 490,520 452,520" fill="none" stroke="#059669" stroke-width="1.6" marker-end="url(#ag)"/>
+  <line x1="320.0" y1="480.0" x2="320.0" y2="500.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="190.0" y="502.0" width="260.0" height="40.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="320.0" y="526.7" font-size="13" fill="#7c3aed" text-anchor="middle" font-weight="700">取值 ∈ values？</text>
+  <line x1="320.0" y1="542.0" x2="320.0" y2="562.0" stroke="#dc2626" stroke-width="1.6" marker-end="url(#ar)"/>
+  <rect x="20.0" y="564.0" width="430.0" height="56.0" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+  <text x="29.0" y="584.0" font-size="13" fill="#dc2626" font-weight="700">任一条不满足 → UnschedulableAndUnresolvable</text>
+  <text x="29.0" y="604.0" font-size="12" fill="#334155">node(s) had no available volume zone（全部满足则通过）</text>
+  <text x="500.0" y="214.0" font-size="14" fill="#1e293b" font-weight="700">volume_zone_test.go 中的用例</text>
+  <rect x="500.0" y="226.0" width="420.0" height="30.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="508.0" y="245.5" font-size="12.5" fill="#1e293b" font-weight="700">PV 标签</text>
+  <text x="680.0" y="246.0" font-size="12.5" fill="#1e293b" font-weight="700">节点标签</text>
+  <text x="850.0" y="246.0" font-size="12.5" fill="#1e293b" font-weight="700">结果</text>
+  <rect x="500.0" y="262.0" width="420.0" height="54.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="510.0" y="283.0" font-size="12" fill="#334155">beta zone = us-west1-a</text>
+  <text x="680.0" y="283.0" font-size="12" fill="#334155">GA zone = us-west1-a</text>
+  <text x="850.0" y="283.0" font-size="12.5" fill="#059669" font-weight="700">通过</text>
+  <text x="510.0" y="304.0" font-size="11.5" fill="#64748b">beta 回退到 GA</text>
+  <rect x="500.0" y="324.0" width="420.0" height="54.0" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+  <text x="510.0" y="345.0" font-size="12" fill="#334155">GA zone = us-west1-a</text>
+  <text x="680.0" y="345.0" font-size="12" fill="#334155">beta zone = us-west1-a</text>
+  <text x="850.0" y="345.0" font-size="12.5" fill="#dc2626" font-weight="700">失败</text>
+  <text x="510.0" y="366.0" font-size="11.5" fill="#64748b">没有 GA → beta 的反向翻译</text>
+  <rect x="500.0" y="386.0" width="420.0" height="54.0" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+  <text x="510.0" y="407.0" font-size="12" fill="#334155">GA zone + GA region</text>
+  <text x="680.0" y="407.0" font-size="12" fill="#334155">只有 GA zone</text>
+  <text x="850.0" y="407.0" font-size="12.5" fill="#dc2626" font-weight="700">失败</text>
+  <text x="510.0" y="428.0" font-size="11.5" fill="#64748b">region 在节点上找不到</text>
+  <rect x="500.0" y="448.0" width="420.0" height="54.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="510.0" y="469.0" font-size="12" fill="#334155">任意</text>
+  <text x="680.0" y="469.0" font-size="12" fill="#334155">无任何拓扑标签</text>
+  <text x="850.0" y="469.0" font-size="12.5" fill="#059669" font-weight="700">通过</text>
+  <text x="510.0" y="490.0" font-size="11.5" fill="#64748b">hasAnyNodeConstraint 为假</text>
+  <rect x="500.0" y="510.0" width="420.0" height="54.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="510.0" y="531.0" font-size="12" fill="#334155">GA zone 含 c、a 两区</text>
+  <text x="680.0" y="531.0" font-size="12" fill="#334155">GA zone = us-west1-a</text>
+  <text x="850.0" y="531.0" font-size="12.5" fill="#059669" font-weight="700">通过</text>
+  <text x="510.0" y="552.0" font-size="11.5" fill="#64748b">标签值 us-west1-c__us-west1-a 按 "__" 切分为两个可用区</text>
+</svg>

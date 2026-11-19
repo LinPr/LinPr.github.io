@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" width="1000" height="600" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#94a3b8"/></marker><marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#059669"/></marker><marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#ea580c"/></marker><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#dc2626"/></marker><marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#2563eb"/></marker></defs>
+<rect width="1000" height="600" fill="#ffffff"/>
+<text x="500.0" y="34.0" font-size="19" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">PodGroup controller 的状态机（以代码为准）</text>
+<text x="500.0" y="58.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">pods = 带 pod-group 标签的 Pod；R / S / F = Running / Succeeded / Failed 的 Pod 数；每次 Reconcile 只走一步</text>
+<rect x="30.0" y="230.0" width="110.0" height="50.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="85.0" y="259.7" font-size="13" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Phase = &quot;&quot;</text>
+<rect x="190.0" y="230.0" width="140.0" height="50.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="260.0" y="260.0" font-size="14" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Pending</text>
+<rect x="490.0" y="230.0" width="150.0" height="50.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="565.0" y="260.0" font-size="14" fill="#2563eb" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Scheduling</text>
+<rect x="780.0" y="230.0" width="150.0" height="50.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="855.0" y="260.0" font-size="14" fill="#059669" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Running</text>
+<rect x="780.0" y="420.0" width="150.0" height="50.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+<text x="855.0" y="441.7" font-size="14" fill="#0d9488" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Finished</text>
+<text x="855.0" y="459.3" font-size="11.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">终态，不再 Reconcile</text>
+<rect x="490.0" y="420.0" width="150.0" height="50.0" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="565.0" y="441.7" font-size="14" fill="#dc2626" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Failed</text>
+<text x="565.0" y="459.3" font-size="11.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">终态，不再 Reconcile</text>
+<rect x="30.0" y="420.0" width="200.0" height="50.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="130.0" y="441.7" font-size="14" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Unknown</text>
+<text x="130.0" y="459.3" font-size="11.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">定义了，但控制器从不设置</text>
+<polyline points="140.0,255.0 188.0,255.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="148.5" y="234.1" width="31.0" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="164.0" y="245.0" font-size="11.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">首次</text>
+<polyline points="330.0,248.0 488.0,248.0" fill="none" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ab)"/>
+<rect x="350.4" y="227.1" width="117.1" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="409.0" y="238.0" font-size="11.5" fill="#2563eb" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">pods ≥ minMember</text>
+<polyline points="488.0,266.0 332.0,266.0" fill="none" stroke="#ea580c" stroke-width="1.5" marker-end="url(#ao)"/>
+<rect x="353.0" y="273.1" width="112.1" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="409.0" y="284.0" font-size="11.5" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">pods &lt; minMember</text>
+<polyline points="640.0,248.0 778.0,248.0" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#ag)"/>
+<rect x="671.7" y="227.1" width="74.6" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="709.0" y="238.0" font-size="11.5" fill="#059669" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">R + S ≥ min</text>
+<polyline points="778.0,266.0 642.0,266.0" fill="none" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ab)"/>
+<rect x="674.2" y="273.1" width="69.5" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="709.0" y="284.0" font-size="11.5" fill="#2563eb" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">R + S &lt; min</text>
+<polyline points="855.0,230.0 855.0,160.0 260.0,160.0 260.0,228.0" fill="none" stroke="#ea580c" stroke-width="1.5" marker-end="url(#ao)"/>
+<rect x="412.7" y="141.1" width="284.6" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="555.0" y="152.0" font-size="11.5" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">pods &lt; minMember（任意非终态都会先检查这一条）</text>
+<polyline points="855.0,280.0 855.0,418.0" fill="none" stroke="#0d9488" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="828.2" y="339.1" width="53.7" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="855.0" y="350.0" font-size="11.5" fill="#0d9488" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">S ≥ min</text>
+<polyline points="620.0,280.0 620.0,330.0 820.0,330.0 820.0,418.0" fill="none" stroke="#0d9488" stroke-width="1.5" marker-end="url(#a)" stroke-dasharray="5,4"/>
+<polyline points="540.0,280.0 540.0,418.0" fill="none" stroke="#dc2626" stroke-width="1.5" marker-end="url(#ar)"/>
+<rect x="405.5" y="385.1" width="132.5" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="534.0" y="396.0" font-size="11.5" fill="#dc2626" text-anchor="end" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">F ≠ 0 且 F+R+S ≥ min</text>
+<polyline points="800.0,280.0 800.0,300.0 590.0,300.0 590.0,418.0" fill="none" stroke="#dc2626" stroke-width="1.5" marker-end="url(#ar)"/>
+<text x="300.0" y="330.0" font-size="12" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Scheduling 与 Running 共用同一段判断：</text>
+<text x="300.0" y="350.0" font-size="12" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">两者都可以直接到 Running / Failed / Finished</text>
+<rect x="30.0" y="500.0" width="940.0" height="82.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="40.0" y="519.6" font-size="13" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">与 KEP 状态图的差异</text>
+<text x="40.0" y="537.3" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">· KEP 画了 Failed → 故障恢复后回到 Scheduling/Running；代码里 Failed 与 Finished 一样在 Reconcile 开头直接 return，不会离开。</text>
+<text x="40.0" y="554.7" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">· 同一次 Reconcile 里判断顺序是 Pending 检查 → Scheduling/Running → Failed → Finished，后面的覆盖前面的，所以 Finished 优先级最高。</text>
+<text x="40.0" y="572.1" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">· Pending → Scheduling 只看 Pod 数，不看 Pod 是否已被调度；R/S/F 统计只在离开 Pending 之后才开始。</text>
+</svg>

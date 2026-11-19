@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 480" width="960" height="480" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker>
+    <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#059669"/></marker>
+    <marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#ea580c"/></marker>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#dc2626"/></marker>
+    <marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#2563eb"/></marker>
+    <marker id="ap" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#7c3aed"/></marker>
+  </defs>
+  <rect width="960" height="480" fill="#ffffff"/>
+  <text x="480.0" y="32" font-size="19" fill="#1e293b" font-weight="700" text-anchor="middle">算例集群：两级拓扑、代价矩阵与已调度的依赖 Pod</text>
+  <text x="480.0" y="54" font-size="12.5" fill="#64748b" text-anchor="middle">NetworkTopology「UserDefined」：region 间 20，z1↔z2 为 5，z3↔z4 为 10；同 zone 不查表，固定为 1</text>
+  <rect x="24" y="76" width="444" height="230" rx="8" fill="#f8fbff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="40" y="100" font-size="13.5" fill="#1d4ed8" font-weight="700">region us-west-1</text>
+  <rect x="492" y="76" width="444" height="230" rx="8" fill="#fbfaff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="508" y="100" font-size="13.5" fill="#6d28d9" font-weight="700">region us-east-1</text>
+  <rect x="38" y="112" width="210" height="180" rx="8" fill="#ffffff" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
+  <text x="50" y="132" font-size="12.5" fill="#0f766e" font-weight="700">zone z1</text>
+  <rect x="272" y="112" width="182" height="180" rx="8" fill="#ffffff" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
+  <text x="284" y="132" font-size="12.5" fill="#0f766e" font-weight="700">zone z2</text>
+  <rect x="506" y="112" width="182" height="180" rx="8" fill="#ffffff" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
+  <text x="518" y="132" font-size="12.5" fill="#0f766e" font-weight="700">zone z3</text>
+  <rect x="740" y="112" width="182" height="180" rx="8" fill="#ffffff" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
+  <text x="752" y="132" font-size="12.5" fill="#0f766e" font-weight="700">zone z4</text>
+  <rect x="48" y="146" width="92" height="128" rx="7" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="94" y="168" font-size="13" fill="#334155" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">n-1</text>
+  <rect x="56" y="184" width="76" height="30" rx="6" fill="#ffffff" stroke="#ea580c" stroke-width="1.2"/>
+  <text x="94" y="204" font-size="12" fill="#ea580c" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">cart-a</text>
+  <rect x="148" y="146" width="92" height="128" rx="7" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="194" y="168" font-size="13" fill="#334155" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">n-5</text>
+  <text x="194" y="204" font-size="12" fill="#94a3b8" text-anchor="middle">（空闲）</text>
+  <rect x="316" y="146" width="92" height="128" rx="7" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="362" y="168" font-size="13" fill="#334155" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">n-2</text>
+  <rect x="324" y="184" width="76" height="30" rx="6" fill="#ffffff" stroke="#ea580c" stroke-width="1.2"/>
+  <text x="362" y="204" font-size="12" fill="#ea580c" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">cart-b</text>
+  <rect x="550" y="146" width="92" height="128" rx="7" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="596" y="168" font-size="13" fill="#334155" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">n-3</text>
+  <rect x="558" y="184" width="76" height="30" rx="6" fill="#ffffff" stroke="#059669" stroke-width="1.2"/>
+  <text x="596" y="204" font-size="12" fill="#059669" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">catalog-a</text>
+  <rect x="786" y="146" width="92" height="128" rx="7" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="832" y="168" font-size="13" fill="#334155" font-weight="700" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">n-4</text>
+  <text x="832" y="204" font-size="12" fill="#94a3b8" text-anchor="middle">（空闲）</text>
+  <rect x="244" y="236" width="32" height="22" rx="11" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+  <text x="260" y="252" font-size="13" fill="#c2410c" font-weight="700" text-anchor="middle">5</text>
+  <rect x="706" y="236" width="32" height="22" rx="11" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+  <text x="722" y="252" font-size="13" fill="#c2410c" font-weight="700" text-anchor="middle">10</text>
+  <rect x="456" y="176" width="48" height="26" rx="13" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+  <text x="480" y="194" font-size="14" fill="#c2410c" font-weight="700" text-anchor="middle">20</text>
+  <text x="480" y="222" font-size="11" fill="#9a3412" text-anchor="middle">region</text>
+  <rect x="24" y="324" width="250" height="76" rx="8" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="38" y="348" font-size="13" fill="#334155" font-weight="700" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">n-6</text>
+  <text x="38" y="368" font-size="12" fill="#475569">没有 topology.kubernetes.io/</text>
+  <text x="38" y="386" font-size="12" fill="#475569">region、zone 两个 label</text>
+  <rect x="290" y="324" width="646" height="76" rx="8" fill="#fffaf5" stroke="#ea580c" stroke-width="1.2"/>
+  <text x="304" y="348" font-size="13" fill="#9a3412" font-weight="700">待调度：frontend 的一个副本（AppGroup shop，workload frontend）</text>
+  <text x="304" y="370" font-size="12.5" fill="#334155" xml:space="preserve">dependencies：cart  maxNetworkCost 8；catalog  maxNetworkCost 15</text>
+  <text x="304" y="390" font-size="12.5" fill="#334155">scheduledList（已绑定）：cart-a@n-1，cart-b@n-2，catalog-a@n-3</text>
+  <text x="24" y="430" font-size="12.5" fill="#64748b">节点 label：n-1、n-5 为 us-west-1/z1，n-2 为 us-west-1/z2，n-3 为 us-east-1/z3，n-4 为 us-east-1/z4。</text>
+  <text x="24" y="452" font-size="12.5" fill="#64748b">代价表只写了跨 zone、跨 region 的条目；costMap 以 (本节点的 zone 或 region, 对方的 zone 或 region) 为 key。</text>
+</svg>

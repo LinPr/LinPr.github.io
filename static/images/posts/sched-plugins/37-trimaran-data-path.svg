@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" width="960" height="600" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker></defs>
+<rect width="960" height="600" fill="#ffffff"/>
+<text x="480.0" y="32.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">Trimaran 的数据通路：两条独立的数据源</text>
+<text x="480.0" y="54.0" font-size="12.5" fill="#64748b" text-anchor="middle">指标快照每 30 秒刷新一次；「刚调度的 Pod」由 informer 实时记录，用来弥补指标的滞后</text>
+<rect x="30.0" y="90.0" width="190.0" height="190.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="125.0" y="114.0" font-size="13" fill="#1e293b" text-anchor="middle" font-weight="700">指标源（metricProvider）</text>
+<rect x="40.0" y="130.0" width="170.0" height="40.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="125.0" y="147.0" font-size="12" fill="#334155" text-anchor="middle" font-weight="700">Prometheus</text>
+<text x="125.0" y="163.0" font-size="11" fill="#64748b" text-anchor="middle">avg/stddev_over_time</text>
+<rect x="40.0" y="178.0" width="170.0" height="40.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="125.0" y="195.0" font-size="11.5" fill="#334155" text-anchor="middle" font-weight="700">KubernetesMetricsServer</text>
+<text x="125.0" y="211.0" font-size="11" fill="#64748b" text-anchor="middle">只有 Latest，无 STD</text>
+<rect x="40.0" y="226.0" width="170.0" height="40.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="125.0" y="243.0" font-size="12" fill="#334155" text-anchor="middle" font-weight="700">SignalFx</text>
+<text x="125.0" y="259.0" font-size="11" fill="#64748b" text-anchor="middle">Operator 记为 AVG</text>
+<rect x="260.0" y="90.0" width="300.0" height="190.0" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.2"/>
+<text x="410.0" y="114.0" font-size="13" fill="#7c3aed" text-anchor="middle" font-weight="700">paypal/load-watcher v0.2.4</text>
+<text x="276.0" y="140.0" font-size="12" fill="#334155" text-anchor="start">Watcher：15m / 10m / 5m 三个窗口</text>
+<text x="276.0" y="160.0" font-size="12" fill="#334155" text-anchor="start">每个窗口一个 goroutine，每分钟拉一次</text>
+<text x="276.0" y="180.0" font-size="12" fill="#334155" text-anchor="start">每个窗口只保留最近 5 份结果</text>
+<text x="276.0" y="200.0" font-size="12" fill="#7c3aed" text-anchor="start">GetLatestWatcherMetrics("15m")</text>
+<text x="276.0" y="218.0" font-size="11.5" fill="#64748b" text-anchor="start">优先 15m，取不到再退到 10m、5m</text>
+<rect x="276.0" y="230.0" width="128.0" height="40.0" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+<text x="340.0" y="247.0" font-size="12" fill="#7c3aed" text-anchor="middle" font-weight="700">服务模式</text>
+<text x="340.0" y="263.0" font-size="11" fill="#64748b" text-anchor="middle">watcherAddress</text>
+<rect x="416.0" y="230.0" width="128.0" height="40.0" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+<text x="480.0" y="247.0" font-size="12" fill="#7c3aed" text-anchor="middle" font-weight="700">库模式</text>
+<text x="480.0" y="263.0" font-size="11" fill="#64748b" text-anchor="middle">嵌入调度器进程</text>
+<line x1="220.0" y1="185.0" x2="256.0" y2="185.0" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#ar)"/>
+<rect x="600.0" y="90.0" width="330.0" height="190.0" rx="8" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.2"/>
+<text x="765.0" y="114.0" font-size="13" fill="#2563eb" text-anchor="middle" font-weight="700">trimaran.Collector（每个插件实例一个）</text>
+<text x="616.0" y="140.0" font-size="12" fill="#334155" text-anchor="start">NewCollector：先同步拉一次</text>
+<text x="616.0" y="160.0" font-size="12" fill="#334155" text-anchor="start">之后 ticker 每 30 秒 updateMetrics</text>
+<text x="616.0" y="180.0" font-size="12" fill="#ea580c" text-anchor="start">失败只打日志，旧快照继续用</text>
+<text x="616.0" y="206.0" font-size="12" fill="#2563eb" text-anchor="start">metrics watcher.WatcherMetrics</text>
+<text x="616.0" y="224.0" font-size="11.5" fill="#64748b" text-anchor="start">  Window{Duration, Start, End}</text>
+<text x="616.0" y="242.0" font-size="11.5" fill="#64748b" text-anchor="start">  Data.NodeMetricsMap[node].Metrics</text>
+<text x="616.0" y="266.0" font-size="11.5" fill="#64748b" text-anchor="start">读写由 sync.RWMutex 保护</text>
+<line x1="560.0" y1="185.0" x2="596.0" y2="185.0" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#ar)"/>
+<text x="578.0" y="176.0" font-size="10.5" fill="#64748b" text-anchor="middle">拉取</text>
+<rect x="30.0" y="330.0" width="250.0" height="150.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="155.0" y="354.0" font-size="13" fill="#1e293b" text-anchor="middle" font-weight="700">Pod informer（调度器共享）</text>
+<text x="46.0" y="380.0" font-size="12" fill="#334155" text-anchor="start">FilteringResourceEventHandler</text>
+<text x="46.0" y="400.0" font-size="12" fill="#64748b" text-anchor="start">FilterFunc = isAssigned</text>
+<text x="46.0" y="420.0" font-size="12" fill="#334155" text-anchor="start">未绑定→已绑定的 Update</text>
+<text x="46.0" y="438.0" font-size="12" fill="#334155" text-anchor="start">被转换成 OnAdd</text>
+<text x="46.0" y="464.0" font-size="11.5" fill="#ea580c" text-anchor="start">重启时的全量 List 也走 OnAdd</text>
+<rect x="320.0" y="330.0" width="330.0" height="150.0" rx="8" fill="#f0fdfa" stroke="#99f6e4" stroke-width="1.2"/>
+<text x="485.0" y="354.0" font-size="13" fill="#0d9488" text-anchor="middle" font-weight="700">PodAssignEventHandler</text>
+<text x="336.0" y="380.0" font-size="12" fill="#334155" text-anchor="start">ScheduledPodsCache map[node][]podInfo</text>
+<text x="336.0" y="400.0" font-size="12" fill="#64748b" text-anchor="start">podInfo{Timestamp: time.Now(), Pod}</text>
+<text x="336.0" y="424.0" font-size="12" fill="#334155" text-anchor="start">OnDelete：按 UID 从切片里删掉</text>
+<text x="336.0" y="446.0" font-size="12" fill="#334155" text-anchor="start">每 5 分钟 cleanupCache：</text>
+<text x="336.0" y="464.0" font-size="11.5" fill="#64748b" text-anchor="start">删除 Timestamp+60s 早于当前时间的条目</text>
+<line x1="280.0" y1="405.0" x2="316.0" y2="405.0" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#ar)"/>
+<rect x="690.0" y="330.0" width="240.0" height="150.0" rx="8" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1.2"/>
+<text x="810.0" y="354.0" font-size="13" fill="#059669" text-anchor="middle" font-weight="700">TargetLoadPacking.Score</text>
+<text x="706.0" y="380.0" font-size="12" fill="#334155" text-anchor="start">节点当前用量（指标快照）</text>
+<text x="706.0" y="400.0" font-size="12" fill="#334155" text-anchor="start">+ 待调度 Pod 预测用量</text>
+<text x="706.0" y="420.0" font-size="12" fill="#334155" text-anchor="start">+ 缓存里「指标还没反映」</text>
+<text x="706.0" y="438.0" font-size="12" fill="#334155" text-anchor="start">  的 Pod 的预测用量</text>
+<text x="706.0" y="464.0" font-size="12" fill="#059669" text-anchor="start" font-weight="700">÷ Capacity → U → 打分曲线</text>
+<line x1="650.0" y1="405.0" x2="686.0" y2="405.0" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#ar)"/>
+<path d="M765,280 L765,300 L810,300 L810,326" stroke="#94a3b8" stroke-width="1.2" fill="none" marker-end="url(#ar)"/>
+<rect x="30.0" y="510.0" width="900.0" height="66.0" rx="8" fill="#fff7ed" stroke="#fed7aa" stroke-width="1.2"/>
+<text x="46.0" y="534.0" font-size="12.5" fill="#ea580c" text-anchor="start">另外三个插件：LoadVariationRiskBalancing 也创建并注册了 PodAssignEventHandler，但打分时从不读取；</text>
+<text x="46.0" y="556.0" font-size="12.5" fill="#ea580c" text-anchor="start">LowRiskOverCommitment 和 Peaks 根本不创建。只有 TargetLoadPacking 真正用到了这份「刚调度 Pod」缓存。</text>
+</svg>

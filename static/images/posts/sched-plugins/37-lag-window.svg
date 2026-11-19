@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 380" width="900" height="380" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker></defs>
+<rect width="900" height="380" fill="#ffffff"/>
+<text x="450.0" y="32.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">哪些刚调度的 Pod 要补算用量</text>
+<text x="450.0" y="54.0" font-size="12.5" fill="#64748b" text-anchor="middle">以指标快照的 Window.End 为基准：结束前 60 秒以内、或结束之后才绑定的 Pod，都按预测用量补加</text>
+<line x1="60.0" y1="210.0" x2="860.0" y2="210.0" stroke="#475569" stroke-width="1.5" marker-end="url(#ar)"/>
+<text x="866.0" y="214.0" font-size="13" fill="#475569" text-anchor="start">t</text>
+<rect x="90.0" y="150.0" width="470.0" height="44.0" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.2"/>
+<text x="265.0" y="177.0" font-size="12.5" fill="#7c3aed" text-anchor="middle">指标窗口（Prometheus 下是 15 分钟的平均）</text>
+<line x1="90.0" y1="204.0" x2="90.0" y2="216.0" stroke="#475569" stroke-width="1.5"/>
+<text x="90.0" y="234.0" font-size="12" fill="#475569" text-anchor="middle">Window.Start</text>
+<line x1="560.0" y1="204.0" x2="560.0" y2="216.0" stroke="#475569" stroke-width="1.5"/>
+<text x="560.0" y="234.0" font-size="12" fill="#475569" text-anchor="middle">Window.End</text>
+<line x1="440.0" y1="140.0" x2="440.0" y2="216.0" stroke="#ea580c" stroke-width="1.2" stroke-dasharray="4 3"/>
+<text x="440.0" y="234.0" font-size="12" fill="#ea580c" text-anchor="middle">End − 60s</text>
+<line x1="800.0" y1="204.0" x2="800.0" y2="216.0" stroke="#475569" stroke-width="1.5"/>
+<text x="800.0" y="234.0" font-size="12" fill="#475569" text-anchor="middle">现在（Score）</text>
+<rect x="440.0" y="250.0" width="360.0" height="30.0" rx="6" fill="#fff7ed" stroke="#fed7aa" stroke-width="1.2"/>
+<text x="620.0" y="270.0" font-size="12" fill="#ea580c" text-anchor="middle">补偿区：按 limit / request×1.5 / 1000m 预测用量补加</text>
+<rect x="90.0" y="250.0" width="344.0" height="30.0" rx="6" fill="#ecfdf5" stroke="#a7f3d0" stroke-width="1.2"/>
+<text x="265.0" y="270.0" font-size="12" fill="#059669" text-anchor="middle">认为已体现在指标里，不补</text>
+<circle cx="300.0" cy="210.0" r="6" fill="#059669" stroke="#ffffff" stroke-width="1.5"/>
+<text x="300.0" y="132.0" font-size="1" fill="#334155" text-anchor="start"></text>
+<text x="300.0" y="310.0" font-size="13" fill="#059669" text-anchor="middle" font-weight="700">p1</text>
+<circle cx="500.0" cy="210.0" r="6" fill="#ea580c" stroke="#ffffff" stroke-width="1.5"/>
+<text x="500.0" y="132.0" font-size="1" fill="#334155" text-anchor="start"></text>
+<text x="500.0" y="310.0" font-size="13" fill="#ea580c" text-anchor="middle" font-weight="700">p2</text>
+<circle cx="690.0" cy="210.0" r="6" fill="#ea580c" stroke="#ffffff" stroke-width="1.5"/>
+<text x="690.0" y="132.0" font-size="1" fill="#334155" text-anchor="start"></text>
+<text x="690.0" y="310.0" font-size="13" fill="#ea580c" text-anchor="middle" font-weight="700">p3</text>
+<text x="300.0" y="328.0" font-size="11.5" fill="#64748b" text-anchor="middle">绑定于 End 前 3 分钟</text>
+<text x="500.0" y="328.0" font-size="11.5" fill="#64748b" text-anchor="middle">End 前 20 秒</text>
+<text x="690.0" y="328.0" font-size="11.5" fill="#64748b" text-anchor="middle">End 之后</text>
+<text x="60.0" y="96.0" font-size="12.5" fill="#334155" text-anchor="start">条件：t &gt; End  或  End − t &lt; 60s（metricsAgentReportingIntervalSeconds）</text>
+<text x="60.0" y="116.0" font-size="12" fill="#64748b" text-anchor="start">t 是 informer 收到「Pod 已绑定」事件时的 time.Now()，不是 Pod 的创建或启动时间</text>
+</svg>

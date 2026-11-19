@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="960" height="560" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <rect width="960" height="560" fill="#ffffff"/>
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker>
+    <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#059669"/></marker>
+    <marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#ea580c"/></marker>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#dc2626"/></marker>
+  </defs>
+  <text x="480.0" y="32.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">assume cache：informer 是真相，假设只在版本号相同时生效</text>
+  <text x="480.0" y="54.0" font-size="12.5" fill="#64748b" text-anchor="middle">以 PV「pv-1」为例，Pod A 的 Reserve 假设它绑给 pvc-a；四个时刻的两层存储与读取结果</text>
+  <text x="20.0" y="138.0" font-size="13" fill="#1e293b" font-weight="700">事件</text>
+  <text x="20.0" y="228.0" font-size="13" fill="#1e293b" font-weight="700">informer store</text>
+  <text x="20.0" y="298.0" font-size="13" fill="#1e293b" font-weight="700">assumed map</text>
+  <text x="20.0" y="368.0" font-size="13" fill="#1e293b" font-weight="700">Get / ListPVs 返回</text>
+  <rect x="160.0" y="96.0" width="188.0" height="80.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="169.0" y="116.0" font-size="13" fill="#2563eb" font-weight="700">t1  Reserve（Pod A）</text>
+  <text x="169.0" y="136.0" font-size="11.5" fill="#334155">pvCache.Assume(pv-1′)</text>
+  <text x="169.0" y="154.5" font-size="11.5" fill="#334155">要求 pv-1′ 的 RV 等于 store</text>
+  <rect x="160.0" y="196.0" width="188.0" height="54.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="254.0" y="227.3" font-size="12" fill="#334155" text-anchor="middle">RV 100，claimRef 空</text>
+  <rect x="160.0" y="264.0" width="188.0" height="58.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+  <text x="169.0" y="284.0" font-size="12" fill="#334155">pv-1′：RV 100，claimRef</text>
+  <text x="169.0" y="303.0" font-size="12" fill="#334155">pvc-a，persisted = false</text>
+  <rect x="160.0" y="336.0" width="188.0" height="58.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="169.0" y="356.0" font-size="12" fill="#2563eb" font-weight="700">假设版本（100 == 100）</text>
+  <text x="169.0" y="375.0" font-size="12" fill="#334155">claimRef = pvc-a</text>
+  <line x1="349.0" y1="136.0" x2="355.0" y2="136.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="356.0" y="96.0" width="188.0" height="80.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="365.0" y="116.0" font-size="13" fill="#7c3aed" font-weight="700">t2  Pod B 的 PreFilter</text>
+  <text x="365.0" y="136.0" font-size="11.5" fill="#334155">ListPVs(class) 遍历候选</text>
+  <text x="365.0" y="154.5" font-size="11.5" fill="#334155">按 store 计算索引，再替换</text>
+  <rect x="356.0" y="196.0" width="188.0" height="54.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="450.0" y="227.3" font-size="12" fill="#334155" text-anchor="middle">RV 100，claimRef 空</text>
+  <rect x="356.0" y="264.0" width="188.0" height="58.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+  <text x="365.0" y="297.3" font-size="12" fill="#334155">同 t1</text>
+  <rect x="356.0" y="336.0" width="188.0" height="58.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="365.0" y="356.0" font-size="12" fill="#2563eb" font-weight="700">假设版本 → FindMatching</text>
+  <text x="365.0" y="375.0" font-size="12" fill="#334155">Volume 跳过 pv-1</text>
+  <line x1="545.0" y1="136.0" x2="551.0" y2="136.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="552.0" y="96.0" width="188.0" height="80.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+  <text x="561.0" y="116.0" font-size="13" fill="#0d9488" font-weight="700">t3  PreBind 写 API</text>
+  <text x="561.0" y="136.0" font-size="11.5" fill="#334155">Update PV → RV 101</text>
+  <text x="561.0" y="154.5" font-size="11.5" fill="#334155">informer 事件 → mayExpire</text>
+  <rect x="552.0" y="196.0" width="188.0" height="54.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="646.0" y="227.3" font-size="12" fill="#0d9488" text-anchor="middle" font-weight="700">RV 101，claimRef = pvc-a</text>
+  <rect x="552.0" y="264.0" width="188.0" height="58.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="561.0" y="297.3" font-size="12" fill="#334155">101 ≠ 100 → 删除</text>
+  <rect x="552.0" y="336.0" width="188.0" height="58.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="561.0" y="356.0" font-size="12" fill="#2563eb" font-weight="700">store 版本</text>
+  <text x="561.0" y="375.0" font-size="12" fill="#334155">内容已含 claimRef</text>
+  <line x1="741.0" y1="136.0" x2="747.0" y2="136.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="748.0" y="96.0" width="188.0" height="80.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="757.0" y="116.0" font-size="13" fill="#059669" font-weight="700">t4  之后任意读取</text>
+  <text x="757.0" y="136.0" font-size="11.5" fill="#334155">假设已删除</text>
+  <text x="757.0" y="154.5" font-size="11.5" fill="#334155">直接读 informer</text>
+  <rect x="748.0" y="196.0" width="188.0" height="54.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="842.0" y="227.3" font-size="12" fill="#334155" text-anchor="middle">RV 101，claimRef = pvc-a</text>
+  <rect x="748.0" y="264.0" width="188.0" height="58.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="757.0" y="297.3" font-size="12" fill="#334155">（空）</text>
+  <rect x="748.0" y="336.0" width="188.0" height="58.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="757.0" y="369.3" font-size="12" fill="#2563eb" font-weight="700">store 版本</text>
+  <rect x="20.0" y="414.0" width="452.0" height="128.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="30.0" y="435.0" font-size="13" fill="#7c3aed" font-weight="700">读写规则（component-helpers 的 assumecache 包）</text>
+  <text x="30.0" y="455.0" font-size="12" fill="#334155">Assume：store 中 RV 必须与假设对象相同，否则 out of sync</text>
+  <text x="30.0" y="474.0" font-size="12" fill="#334155">读取：assumed 存在且 preferOver(storeRV) 为真才返回假设版本</text>
+  <text x="30.0" y="493.0" font-size="12" fill="#334155">  persisted = false 时条件是「RV 完全相等」</text>
+  <text x="30.0" y="512.0" font-size="12" fill="#334155">informer 事件 → mayExpire；索引按 store 计算，不受假设影响</text>
+  <rect x="488.0" y="414.0" width="452.0" height="128.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+  <text x="498.0" y="435.0" font-size="13" fill="#ea580c" font-weight="700">Restore（Unreserve / bindAPIUpdate 失败时）</text>
+  <text x="498.0" y="455.0" font-size="12" fill="#334155">只有 assumed 中条目的 RV 与传入对象相同才删除</text>
+  <text x="498.0" y="474.0" font-size="12" fill="#334155">已写入 API 的 PV：BindingInfo.pv 换成了 API 返回的</text>
+  <text x="498.0" y="493.0" font-size="12" fill="#334155">  新对象（RV 101），与假设不同，Restore 不删，等 informer</text>
+  <text x="498.0" y="512.0" font-size="12" fill="#334155">还没写入 API 的：RV 相同，假设被删除，回到 store 视图</text>
+</svg>

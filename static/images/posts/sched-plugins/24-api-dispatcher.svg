@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 600" width="980" height="600" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker>
+    <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#059669"/></marker>
+    <marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#ea580c"/></marker>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#dc2626"/></marker>
+    <marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#2563eb"/></marker>
+    <marker id="ap" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#7c3aed"/></marker>
+  </defs>
+  <rect width="980" height="600" fill="#ffffff"/>
+  <text x="490.0" y="32.0" font-size="19" fill="#1e293b" font-weight="700" text-anchor="middle">SchedulerAsyncAPICalls：每个对象最多一个排队中的 API 调用</text>
+  <text x="490.0" y="54.0" font-size="12.5" fill="#64748b" text-anchor="middle">callQueue 以 Pod UID 为键合并调用；binding 的 relevance(2) 高于 status patch(1)</text>
+  <rect x="30" y="90" width="220" height="64" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="140.0" y="117.9" font-size="12.5" fill="#2563eb" font-weight="700" text-anchor="middle">DefaultBinder.Bind</text>
+  <text x="140.0" y="134.9" font-size="11.5" fill="#334155" text-anchor="middle">APICacher().BindPod(binding)</text>
+  <rect x="30" y="176" width="220" height="64" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="140.0" y="203.9" font-size="12.5" fill="#2563eb" font-weight="700" text-anchor="middle">updatePod / clearNNN</text>
+  <text x="140.0" y="220.9" font-size="11.5" fill="#334155" text-anchor="middle">APICacher().PatchPodStatus</text>
+  <rect x="30" y="290" width="220" height="80" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="140.0" y="317.4" font-size="12.5" fill="#2563eb" font-weight="700" text-anchor="middle">WaitOnFinish(ctx, onFinish)</text>
+  <text x="140.0" y="334.4" font-size="11.5" fill="#334155" text-anchor="middle">Skipped / Overwritten 视为成功</text>
+  <text x="140.0" y="351.4" font-size="11.5" fill="#334155" text-anchor="middle">其它错误原样返回</text>
+  <rect x="300" y="80" width="360" height="300" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="316.0" y="102.0" font-size="13.5" fill="#1e293b" font-weight="700">callQueue</text>
+  <rect x="316" y="116" width="328" height="70" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="328.0" y="138.2" font-size="12" fill="#1e293b" font-weight="700">apiCalls map[UID]*queuedAPICall</text>
+  <text x="328.0" y="155.2" font-size="11.5" fill="#334155">每个 UID 只保留一个调用（可能已替换）</text>
+  <text x="328.0" y="172.2" font-size="11.5" fill="#334155">callID 区分新旧</text>
+  <rect x="316" y="198" width="328" height="62" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="328.0" y="224.7" font-size="12" fill="#1e293b" font-weight="700">callsQueue: Ring[UID]（FIFO）</text>
+  <text x="328.0" y="241.7" font-size="11.5" fill="#334155">pending 的 UID 才在这里</text>
+  <rect x="316" y="272" width="328" height="62" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="328.0" y="298.7" font-size="12" fill="#1e293b" font-weight="700">inFlightEntities: Set[UID]</text>
+  <text x="328.0" y="315.7" font-size="11.5" fill="#334155">pop 时加入，finalize 时移除</text>
+  <text x="480.0" y="362.0" font-size="11.5" fill="#64748b" text-anchor="middle">add → merge → enqueue；pop 时阻塞在 cond.Wait</text>
+  <line x1="250" y1="122" x2="296" y2="140" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="250" y1="208" x2="296" y2="160" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="710" y="90" width="250" height="80" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="835.0" y="117.4" font-size="12.5" fill="#7c3aed" font-weight="700" text-anchor="middle">APIDispatcher.Run</text>
+  <text x="835.0" y="134.4" font-size="11.5" fill="#334155" text-anchor="middle">for { pop → go Execute }</text>
+  <text x="835.0" y="151.4" font-size="11.5" fill="#334155" text-anchor="middle">每个调用一个 goroutine</text>
+  <rect x="710" y="196" width="250" height="64" rx="8" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1.2"/>
+  <text x="835.0" y="223.9" font-size="12.5" fill="#059669" font-weight="700" text-anchor="middle">PodBindingCall.Execute</text>
+  <text x="835.0" y="240.9" font-size="11.5" fill="#334155" text-anchor="middle">util.BindPod（带重试）</text>
+  <rect x="710" y="286" width="250" height="80" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="835.0" y="313.4" font-size="12.5" fill="#7c3aed" font-weight="700" text-anchor="middle">finalize(call)</text>
+  <text x="835.0" y="330.4" font-size="11.5" fill="#334155" text-anchor="middle">map 里还是同一 callID → 删除</text>
+  <text x="835.0" y="347.4" font-size="11.5" fill="#334155" text-anchor="middle">已被替换 → UID 重新入队</text>
+  <line x1="660" y1="230" x2="706" y2="130" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#ap)"/>
+  <line x1="835" y1="170" x2="835" y2="192" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#ap)"/>
+  <line x1="835" y1="260" x2="835" y2="282" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#ap)"/>
+  <path d="M710,340 L680,340 L680,420 L140,420 L140,374" fill="none" stroke="#059669" stroke-width="1.6" marker-end="url(#ag)"/>
+  <text x="410.0" y="412.0" font-size="11.5" fill="#059669" text-anchor="middle">sendOnFinish(err)：非阻塞写入容量为 1 的 channel</text>
+  <text x="30.0" y="466.0" font-size="13" fill="#1e293b" font-weight="700">同一 Pod 已有调用时，新调用如何处理（callQueue.merge / enqueue）</text>
+  <rect x="30" y="482" width="920" height="26" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="44.0" y="500.0" font-size="11.5" fill="#334155">已有 pending status patch，新来 binding</text>
+  <text x="500.0" y="500.0" font-size="11.5" fill="#059669" font-weight="600">覆盖旧调用，旧 onFinish 收到 ErrCallOverwritten</text>
+  <rect x="30" y="510" width="920" height="26" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="44.0" y="528.0" font-size="11.5" fill="#334155">已有 binding（pending 或 in-flight），新来 status patch</text>
+  <text x="500.0" y="528.0" font-size="11.5" fill="#ea580c" font-weight="600">新调用直接 ErrCallSkipped</text>
+  <rect x="30" y="538" width="920" height="26" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="44.0" y="556.0" font-size="11.5" fill="#334155">旧调用 in-flight，类型不同且新的更 relevant</text>
+  <text x="500.0" y="556.0" font-size="11.5" fill="#2563eb" font-weight="600">登记新调用，等旧的 finalize 后重新入队</text>
+  <rect x="30" y="566" width="920" height="26" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="44.0" y="584.0" font-size="11.5" fill="#334155">类型相同</text>
+  <text x="500.0" y="584.0" font-size="11.5" fill="#7c3aed" font-weight="600">newCall.Merge(old)，旧 onFinish 收到 ErrCallOverwritten</text>
+</svg>

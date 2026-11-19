@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 580" width="960" height="580" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker>
+    <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#059669"/></marker>
+    <marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#ea580c"/></marker>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#dc2626"/></marker>
+    <marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#2563eb"/></marker>
+    <marker id="ap" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#7c3aed"/></marker>
+  </defs>
+  <rect width="960" height="580" fill="#ffffff"/>
+  <text x="480.0" y="32.0" font-size="19" fill="#1e293b" font-weight="700" text-anchor="middle">DRA 的四类对象与调度器的读写边界</text>
+  <text x="480.0" y="54.0" font-size="12.5" fill="#64748b" text-anchor="middle">调度器只读 DeviceClass / ResourceSlice，只写 ResourceClaim.status 的 allocation 与 reservedFor</text>
+  <rect x="30" y="84" width="270" height="160" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="42.0" y="114.7" font-size="13.5" fill="#2563eb" font-weight="700">Pod train-0</text>
+  <text x="42.0" y="132.7" font-size="12" fill="#334155">spec.resourceClaims:</text>
+  <text x="42.0" y="150.7" font-size="12" fill="#334155">- name: gpu</text>
+  <text x="42.0" y="168.7" font-size="12" fill="#334155">  resourceClaimTemplateName: gpu-tpl</text>
+  <text x="42.0" y="186.7" font-size="12" fill="#334155">status.resourceClaimStatuses:</text>
+  <text x="42.0" y="204.7" font-size="12" fill="#334155">- name: gpu</text>
+  <text x="42.0" y="222.7" font-size="12" fill="#334155">  resourceClaimName: train-0-gpu-x7k2</text>
+  <rect x="30" y="300" width="270" height="96" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="42.0" y="333.7" font-size="13.5" fill="#1e293b" font-weight="700">ResourceClaimTemplate gpu-tpl</text>
+  <text x="42.0" y="352.7" font-size="12" fill="#334155">spec 与 ResourceClaim.spec 同形</text>
+  <text x="42.0" y="371.7" font-size="12" fill="#334155">resourceclaim controller 按 Pod 实例化</text>
+  <rect x="340" y="84" width="300" height="330" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="352.0" y="121.7" font-size="13.5" fill="#7c3aed" font-weight="700">ResourceClaim train-0-gpu-x7k2</text>
+  <text x="352.0" y="143.7" font-size="12" fill="#334155">spec.devices.requests[]:</text>
+  <text x="352.0" y="165.7" font-size="12" fill="#334155">  exactly: deviceClassName, selectors,</text>
+  <text x="352.0" y="187.7" font-size="12" fill="#334155">           count / allocationMode</text>
+  <text x="352.0" y="209.7" font-size="12" fill="#334155">  firstAvailable[]: 有序的备选子请求</text>
+  <text x="352.0" y="231.7" font-size="12" fill="#334155">spec.devices.constraints[]: matchAttribute</text>
+  <text x="352.0" y="253.7" font-size="12" fill="#334155">status.allocation    ← 调度器写</text>
+  <text x="352.0" y="275.7" font-size="12" fill="#334155">  devices.results[]:</text>
+  <text x="352.0" y="297.7" font-size="12" fill="#334155">    request / driver / pool / device</text>
+  <text x="352.0" y="319.7" font-size="12" fill="#334155">  nodeSelector: 分配结果可用的节点</text>
+  <text x="352.0" y="341.7" font-size="12" fill="#334155">status.reservedFor[] ← 调度器追加 Pod</text>
+  <text x="352.0" y="363.7" font-size="12" fill="#334155">status.devices[]     ← 驱动上报状态</text>
+  <text x="352.0" y="385.7" font-size="12" fill="#334155">finalizer: delete-protection</text>
+  <rect x="680" y="84" width="250" height="120" rx="8" fill="#f0fdfa" stroke="#5eead4" stroke-width="1.2"/>
+  <text x="692.0" y="118.7" font-size="13.5" fill="#0d9488" font-weight="700">DeviceClass gpu-class</text>
+  <text x="692.0" y="138.7" font-size="12" fill="#334155">selectors: CEL 表达式</text>
+  <text x="692.0" y="158.7" font-size="12" fill="#334155">config: 下发给驱动的参数</text>
+  <text x="692.0" y="178.7" font-size="12" fill="#334155">extendedResourceName（可选）</text>
+  <rect x="680" y="236" width="250" height="178" rx="8" fill="#f0fdfa" stroke="#5eead4" stroke-width="1.2"/>
+  <text x="692.0" y="269.7" font-size="13.5" fill="#0d9488" font-weight="700">ResourceSlice（驱动发布）</text>
+  <text x="692.0" y="289.7" font-size="12" fill="#334155">driver, pool{name, generation,</text>
+  <text x="692.0" y="309.7" font-size="12" fill="#334155">             resourceSliceCount}</text>
+  <text x="692.0" y="329.7" font-size="12" fill="#334155">nodeName | nodeSelector | allNodes</text>
+  <text x="692.0" y="349.7" font-size="12" fill="#334155">devices[]:</text>
+  <text x="692.0" y="369.7" font-size="12" fill="#334155">  name, attributes, capacity</text>
+  <text x="692.0" y="389.7" font-size="12" fill="#334155">  taints, bindingConditions</text>
+  <rect x="340" y="470" width="300" height="84" rx="8" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1.2"/>
+  <text x="490.0" y="497.7" font-size="13.5" fill="#059669" font-weight="700" text-anchor="middle">kube-scheduler · DynamicResources</text>
+  <text x="490.0" y="516.7" font-size="12" fill="#334155" text-anchor="middle">Filter：对每个节点跑 allocator</text>
+  <text x="490.0" y="535.7" font-size="12" fill="#334155" text-anchor="middle">PreBind：UpdateStatus 写回 claim</text>
+  <rect x="680" y="470" width="250" height="84" rx="8" fill="#fff7ed" stroke="#fdba74" stroke-width="1.2"/>
+  <text x="805.0" y="497.7" font-size="13.5" fill="#ea580c" font-weight="700" text-anchor="middle">kubelet + DRA 驱动</text>
+  <text x="805.0" y="516.7" font-size="12" fill="#334155" text-anchor="middle">按 allocation 准备设备</text>
+  <text x="805.0" y="535.7" font-size="12" fill="#334155" text-anchor="middle">（NodePrepareResources）</text>
+  <rect x="30" y="470" width="270" height="84" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="165.0" y="497.7" font-size="13.5" fill="#1e293b" font-weight="700" text-anchor="middle">resourceclaim controller</text>
+  <text x="165.0" y="516.7" font-size="12" fill="#334155" text-anchor="middle">从模板创建 claim，回填 Pod status</text>
+  <text x="165.0" y="535.7" font-size="12" fill="#334155" text-anchor="middle">Pod 删除后清理 reservedFor</text>
+  <line x1="300" y1="200" x2="336" y2="200" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="318.0" y="192.0" font-size="11" fill="#64748b" text-anchor="middle">引用</text>
+  <line x1="300" y1="348" x2="336" y2="348" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="318.0" y="340.0" font-size="11" fill="#64748b" text-anchor="middle">生成</text>
+  <line x1="640" y1="140" x2="676" y2="140" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="658.0" y="132.0" font-size="11" fill="#64748b" text-anchor="middle">按名</text>
+  <line x1="490" y1="466" x2="490" y2="418" stroke="#059669" stroke-width="1.6" marker-end="url(#ag)"/>
+  <text x="498.0" y="446.0" font-size="11" fill="#059669">写 status</text>
+  <path d="M780,418 L780,440 L600,440 L600,466" fill="none" stroke="#0d9488" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="690.0" y="434.0" font-size="11" fill="#0d9488" text-anchor="middle">读设备清单</text>
+  <line x1="885" y1="466" x2="885" y2="418" stroke="#ea580c" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#ao)"/>
+  <text x="892.0" y="446.0" font-size="11" fill="#ea580c">发布</text>
+  <path d="M165,466 L165,400" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+</svg>

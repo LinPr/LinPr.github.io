@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 640" width="1000" height="640" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#94a3b8"/></marker><marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#059669"/></marker><marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#ea580c"/></marker><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#dc2626"/></marker><marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#2563eb"/></marker></defs>
+<rect width="1000" height="640" fill="#ffffff"/>
+<text x="500.0" y="34.0" font-size="19" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">NodeName：PreFilterResult 把候选节点缩成一个，Filter 兜住绕过它的路径</text>
+<text x="500.0" y="58.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">左：带 spec.nodeName 的 Pod 通常根本不进调度队列；右：进入调度周期后，PreFilterResult 的交集决定哪些节点进入 Filter</text>
+<rect x="16.0" y="80.0" width="420.0" height="545.0" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="5,4"/>
+<text x="226.0" y="104.0" font-size="14" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">spec.nodeName 非空的 Pod 走哪条路</text>
+<rect x="56.0" y="122.0" width="340.0" height="50.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="226.0" y="143.5" font-size="13.5" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Pod 创建时已写 spec.nodeName</text>
+<text x="226.0" y="160.9" font-size="11.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">静态 Pod 的镜像、手写 YAML、外部调度器</text>
+<polyline points="226.0,172.0 226.0,194.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="56.0" y="196.0" width="340.0" height="64.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="226.0" y="215.3" font-size="13" fill="#2563eb" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">kube-scheduler addPod</text>
+<text x="226.0" y="233.0" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">assignedPod(pod) 为真 → 只进缓存</text>
+<text x="226.0" y="250.4" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">不进调度队列，NodeName 插件不会被调用</text>
+<polyline points="226.0,260.0 226.0,282.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="56.0" y="284.0" width="340.0" height="84.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="226.0" y="304.9" font-size="13" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">kubelet 准入 generalFilter</text>
+<text x="226.0" y="322.2" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">nodename.Fits / NodeAffinity / NodePorts</text>
+<text x="226.0" y="339.4" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">资源是否放得下 / NoExecute 污点</text>
+<text x="226.0" y="356.8" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">不通过 → Pod Failed，reason=插件名</text>
+<text x="226.0" y="398.0" font-size="12.5" fill="#7c3aed" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">唯一的例外（feature gate 默认关闭）</text>
+<rect x="56.0" y="410.0" width="340.0" height="92.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="226.0" y="434.0" font-size="11.5" fill="#7c3aed" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">InPlacePodVerticalScalingSchedulerPreemption</text>
+<text x="226.0" y="451.3" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">已运行 Pod 的 resize 被 kubelet 推迟（Deferred）</text>
+<text x="226.0" y="468.7" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">→ addPod / updatePod 把它放进调度队列</text>
+<text x="226.0" y="486.1" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">目的：在原节点上评估能否通过抢占腾出资源</text>
+<polyline points="226.0,502.0 226.0,524.0" fill="none" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="56.0" y="526.0" width="340.0" height="82.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="226.0" y="546.3" font-size="13" fill="#059669" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">NodeName.PreFilter</text>
+<text x="226.0" y="564.1" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">NodeNames = {spec.nodeName}</text>
+<text x="226.0" y="580.9" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">NodeUnschedulable / TaintToleration /</text>
+<text x="226.0" y="597.6" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">NodeAffinity 对这种 Pod 返回 Skip</text>
+<rect x="456.0" y="80.0" width="528.0" height="545.0" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="5,4"/>
+<text x="720.0" y="104.0" font-size="14" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">RunPreFilterPlugins：逐个 Merge PreFilterResult</text>
+<text x="476.0" y="136.0" font-size="12.5" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">快照里的全部节点</text>
+<rect x="476.0" y="146.0" width="70.0" height="34.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="511.0" y="167.7" font-size="13" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">n1</text>
+<rect x="558.0" y="146.0" width="70.0" height="34.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="593.0" y="167.7" font-size="13" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">n2</text>
+<rect x="640.0" y="146.0" width="70.0" height="34.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="675.0" y="167.7" font-size="13" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">n3</text>
+<rect x="722.0" y="146.0" width="70.0" height="34.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="757.0" y="167.7" font-size="13" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">n4</text>
+<rect x="804.0" y="146.0" width="70.0" height="34.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="839.0" y="167.7" font-size="13" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">n5</text>
+<rect x="886.0" y="146.0" width="70.0" height="34.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="921.0" y="167.7" font-size="13" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">n6</text>
+<rect x="476.0" y="200.0" width="488.0" height="28.0" rx="4" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="486.0" y="219.0" font-size="12" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">插件（按链上顺序）与返回值：一个 DaemonSet Pod</text>
+<text x="800.0" y="219.0" font-size="12" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Merge 后的 result</text>
+<rect x="476.0" y="228.0" width="488.0" height="52.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="486.0" y="249.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">NodeName</text>
+<text x="486.0" y="268.0" font-size="11.5" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">nil（spec.nodeName 为空）</text>
+<text x="800.0" y="259.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">nil（全部节点）</text>
+<rect x="476.0" y="280.0" width="488.0" height="52.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="486.0" y="301.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">NodeUnschedulable / TaintToleration</text>
+<text x="486.0" y="320.0" font-size="11.5" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">nil（从不缩小范围）</text>
+<text x="800.0" y="311.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">nil（全部节点）</text>
+<rect x="476.0" y="332.0" width="488.0" height="52.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="486.0" y="353.0" font-size="12.5" fill="#059669" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">NodeAffinity</text>
+<text x="486.0" y="372.0" font-size="11.5" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">{n3}（matchFields: metadata.name In [n3]）</text>
+<text x="800.0" y="363.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">{n3}</text>
+<text x="486.0" y="404.0" font-size="11.5" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Pod 若写了 spec.nodeName=n3，则由 NodeName 返回 {n3}；多个插件都返回</text>
+<text x="486.0" y="421.0" font-size="11.5" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">集合时取交集，交集为空 → 本周期直接 UnschedulableAndUnresolvable。</text>
+<polyline points="720.0,430.0 720.0,444.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="476.0" y="446.0" width="230.0" height="74.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="591.0" y="470.1" font-size="12.5" fill="#059669" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">getCandidateNodes</text>
+<text x="591.0" y="488.2" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">只有 n3 进入 Filter</text>
+<text x="591.0" y="505.3" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">numNodesToFind 按 1 个节点算</text>
+<rect x="728.0" y="446.0" width="236.0" height="74.0" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="846.0" y="470.5" font-size="12.5" fill="#dc2626" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">其余 n1 n2 n4 n5 n6</text>
+<text x="846.0" y="487.5" font-size="11.5" fill="#dc2626" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">UnschedulableAndUnresolvable</text>
+<text x="846.0" y="504.7" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">抢占不会把它们当候选</text>
+<rect x="476.0" y="534.0" width="488.0" height="76.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="720.0" y="559.8" font-size="12.5" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">绕过 PreFilterResult 的路径：Filter 是最后防线</text>
+<text x="720.0" y="576.9" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">evaluateNominatedNode 直接在 nominatedNodeName（或批处理 hint）</text>
+<text x="720.0" y="593.5" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">上跑 Filter，不看 PreFilterResult；NodeName.Filter 再次比较节点名</text>
+</svg>

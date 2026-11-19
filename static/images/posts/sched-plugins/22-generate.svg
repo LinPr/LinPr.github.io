@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 720" width="1000" height="720" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#94a3b8"/></marker><marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#059669"/></marker><marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#ea580c"/></marker><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#dc2626"/></marker><marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#2563eb"/></marker></defs>
+<rect width="1000" height="720" fill="#ffffff"/>
+<text x="500.0" y="34.0" font-size="19" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">GeneratePlacements：按 topology key 把父 placement 切成若干域</text>
+<text x="500.0" y="58.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">schedulingConstraints.topology[0].key = rack；同一组已调度 Pod 所在的域会把候选收窄到一个</text>
+<text x="30.0" y="96.0" font-size="14" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">父 placement 里的节点</text>
+<rect x="30.0" y="110.0" width="190.0" height="34.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="40.0" y="131.5" font-size="12.5" fill="#2563eb" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">n1   rack=r1</text>
+<rect x="30.0" y="152.0" width="190.0" height="34.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="40.0" y="173.5" font-size="12.5" fill="#2563eb" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">n2   rack=r1</text>
+<rect x="30.0" y="194.0" width="190.0" height="34.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="40.0" y="215.5" font-size="12.5" fill="#7c3aed" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">n3   rack=r2</text>
+<rect x="30.0" y="236.0" width="190.0" height="34.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="40.0" y="257.5" font-size="12.5" fill="#7c3aed" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">n4   rack=r2</text>
+<rect x="30.0" y="278.0" width="190.0" height="34.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+<text x="40.0" y="299.5" font-size="12.5" fill="#0d9488" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">n5   rack=r3</text>
+<rect x="30.0" y="320.0" width="190.0" height="34.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="40.0" y="341.5" font-size="12.5" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">n6   无 rack 标签</text>
+<rect x="30.0" y="362.0" width="190.0" height="34.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="40.0" y="383.5" font-size="12.5" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">n7   rack=&quot;&quot;</text>
+<text x="30.0" y="418.0" font-size="12" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">n6、n7 不属于任何域：</text>
+<text x="30.0" y="436.0" font-size="12" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">永远不会出现在 placement 里</text>
+<rect x="250.0" y="96.0" width="720.0" height="70.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="260.0" y="118.3" font-size="13" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">情况 A：PodGroup 没有 topology 约束</text>
+<text x="260.0" y="136.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">原样返回 parentPlacement → 框架发现「唯一结果 == 输入指针」，视为不约束</text>
+<text x="260.0" y="153.4" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">→ 若没有别的生成插件约束，得到 1 个含全部节点的新 placement</text>
+<rect x="250.0" y="180.0" width="720.0" height="132.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="260.0" y="200.1" font-size="13" fill="#059669" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">情况 B：没有已调度的同组 Pod（首次调度）</text>
+<rect x="266.0" y="216.0" width="210.0" height="50.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="371.0" y="236.8" font-size="12.5" fill="#2563eb" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Placement &quot;r1&quot;</text>
+<text x="371.0" y="254.4" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">Nodes: n1, n2</text>
+<rect x="494.0" y="216.0" width="210.0" height="50.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="599.0" y="236.8" font-size="12.5" fill="#7c3aed" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Placement &quot;r2&quot;</text>
+<text x="599.0" y="254.4" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">Nodes: n3, n4</text>
+<rect x="722.0" y="216.0" width="210.0" height="50.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+<text x="827.0" y="236.8" font-size="12.5" fill="#0d9488" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Placement &quot;r3&quot;</text>
+<text x="827.0" y="254.4" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">Nodes: n5</text>
+<text x="266.0" y="296.0" font-size="12" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">每个非空域一个 placement，Name = 标签值；map 遍历顺序不固定，框架也会再打乱</text>
+<rect x="250.0" y="326.0" width="720.0" height="92.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="260.0" y="346.1" font-size="13" fill="#7c3aed" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">情况 C：同组已有 Pod 调度在 n3（assigned 或 assumed）</text>
+<rect x="266.0" y="358.0" width="210.0" height="50.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="371.0" y="378.8" font-size="12.5" fill="#7c3aed" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Placement &quot;r2&quot;</text>
+<text x="371.0" y="396.4" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">Nodes: n3, n4</text>
+<text x="496.0" y="378.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">requiredDomain = r2：其余域被丢弃，</text>
+<text x="496.0" y="398.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">扩容的新 Pod 只能跟已有 Pod 待在同一个 rack</text>
+<rect x="250.0" y="432.0" width="720.0" height="70.0" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="260.0" y="455.0" font-size="13" fill="#dc2626" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">情况 D：已调度 Pod 分别在 r1 与 r2，或落在没有标签 / 标签为空的节点</text>
+<text x="260.0" y="472.8" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">getScheduledPodsTopologyDomain 返回 error → fwk.AsStatus(err)，整个组调度周期以 Error 结束</text>
+<text x="260.0" y="489.1" font-size="11" fill="#dc2626" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">cannot determine domain for already scheduled pods: more than 1 domain found for pod group</text>
+<rect x="250.0" y="516.0" width="720.0" height="70.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="260.0" y="538.3" font-size="13" fill="#ea580c" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">情况 E：已调度 Pod 在 r2，但父 placement（如 CompositePodGroup 选中的 zone）里没有 r2 的节点</text>
+<text x="260.0" y="556.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">返回空列表 → RunPlacementGeneratePlugins：Unschedulable &quot;no feasible placements found&quot;</text>
+<text x="260.0" y="573.4" font-size="12" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">（这个 placement 对该组不可行，父层会去试别的 placement）</text>
+<rect x="30.0" y="604.0" width="940.0" height="92.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+<text x="40.0" y="628.6" font-size="13" fill="#0d9488" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">多个 PlacementGenerate 插件时：框架对各自的结果做笛卡尔积，节点取交集</text>
+<text x="40.0" y="646.3" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">例：插件 X 给出 {r1, r2}，插件 Y 给出 {gpu-a100, gpu-h100} → 合并为 r1/gpu-a100、r1/gpu-h100、r2/gpu-a100、r2/gpu-h100，</text>
+<text x="40.0" y="663.7" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">交集为空的组合被丢掉；名字用 &quot;/&quot; 连接，所以插件返回的 placement 名字里不能含 &quot;/&quot;，也不能重复（validatePlacementNames）。</text>
+<text x="40.0" y="681.1" font-size="12" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">当前 in-tree 只有 TopologyPlacementGenerator 一个生成插件，所以默认配置下不会发生合并。</text>
+</svg>

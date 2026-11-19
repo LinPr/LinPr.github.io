@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 610" width="980" height="610" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<rect width="980" height="610" fill="#ffffff"/>
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker></defs>
+<text x="490.0" y="34" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="bold">OverReserve 缓存：悲观扣减 + 指纹门控的按节点重同步</text>
+<text x="490.0" y="58" font-size="13" fill="#64748b" text-anchor="middle">cacheResyncPeriodSeconds &gt; 0 且未开启 discardReservedNodes 时启用；NRT 内容只在 Flush 时被替换</text>
+<rect x="24" y="84" width="268" height="54" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="38" y="106" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="bold">启动：List 全部 NRT 对象</text>
+<text x="38" y="127" font-size="12.5" fill="#334155" text-anchor="start">newNrtStore 建立初始快照</text>
+<rect x="24" y="150" width="268" height="54" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+<text x="38" y="172" font-size="13.5" fill="#059669" text-anchor="start" font-weight="bold">Reserve / Unreserve</text>
+<text x="38" y="193" font-size="12.5" fill="#334155" text-anchor="start">assumedResources 增删 Pod 有效请求</text>
+<rect x="24" y="216" width="268" height="54" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.5"/>
+<text x="38" y="238" font-size="13.5" fill="#ea580c" text-anchor="start" font-weight="bold">Filter 拒绝（非抢占流程）</text>
+<text x="38" y="259" font-size="12.5" fill="#334155" text-anchor="start">NodeMaybeOverReserved</text>
+<rect x="24" y="282" width="268" height="54" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.5"/>
+<text x="38" y="304" font-size="13.5" fill="#dc2626" text-anchor="start" font-weight="bold">Pod informer 发现外来 Pod</text>
+<text x="38" y="325" font-size="12.5" fill="#334155" text-anchor="start">schedulerName 不属于本调度器</text>
+<rect x="24" y="348" width="268" height="54" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.5"/>
+<text x="38" y="370" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="bold">NRT watcher</text>
+<text x="38" y="391" font-size="12.5" fill="#334155" text-anchor="start">Topology Manager 属性变化</text>
+<rect x="350" y="84" width="300" height="318" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="500.0" y="108" font-size="14" fill="#7c3aed" text-anchor="middle" font-weight="bold">OverReserve（一把全局 Mutex）</text>
+<rect x="362" y="124" width="276" height="40" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="372" y="141" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="bold" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">nrts</text>
+<text x="372" y="158" font-size="12" fill="#64748b" text-anchor="start">节点 → NRT 快照（+受害者 Pod 列表）</text>
+<rect x="362" y="170" width="276" height="40" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="372" y="187" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="bold" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">assumedResources</text>
+<text x="372" y="204" font-size="12" fill="#64748b" text-anchor="start">节点 → {ns/name → 请求}</text>
+<rect x="362" y="216" width="276" height="40" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="372" y="233" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="bold" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">nodesMaybeOverreserved</text>
+<text x="372" y="250" font-size="12" fill="#64748b" text-anchor="start">节点 → 被拒次数</text>
+<rect x="362" y="262" width="276" height="40" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="372" y="279" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="bold" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">nodesWithForeignPods</text>
+<text x="372" y="296" font-size="12" fill="#64748b" text-anchor="start">节点 → 外来 Pod 计数</text>
+<rect x="362" y="308" width="276" height="40" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="372" y="325" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="bold" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">nodesWithAttrUpdate</text>
+<text x="372" y="342" font-size="12" fill="#64748b" text-anchor="start">节点 → 配置变化</text>
+<rect x="362" y="354" width="276" height="40" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="372" y="371" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="bold" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">generation</text>
+<text x="372" y="388" font-size="12" fill="#64748b" text-anchor="start">每次 Flush 后 +1，仅用于日志</text>
+<line x1="292" y1="111" x2="362" y2="144" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+<line x1="292" y1="177" x2="362" y2="190" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+<line x1="292" y1="243" x2="362" y2="236" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+<line x1="292" y1="309" x2="362" y2="282" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+<line x1="292" y1="375" x2="362" y2="328" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+<rect x="700" y="84" width="256" height="200" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="714" y="108" font-size="14" fill="#2563eb" text-anchor="start" font-weight="bold">Filter / Score 读取</text>
+<text x="714" y="130" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">GetCachedNRTCopy(node)</text>
+<text x="714" y="156" font-size="12.5" fill="#dc2626" text-anchor="start">外来 Pod 标记存在</text>
+<text x="714" y="177" font-size="12.5" fill="#dc2626" text-anchor="start">→ nil + Fresh=false</text>
+<text x="714" y="198" font-size="12.5" fill="#dc2626" text-anchor="start">→ Filter 拒绝，Score 记 0</text>
+<text x="714" y="219" font-size="12.5" fill="#334155" text-anchor="start">否则：快照副本中</text>
+<text x="714" y="240" font-size="12.5" fill="#334155" text-anchor="start">每个 zone 都减去</text>
+<text x="714" y="261" font-size="12.5" fill="#334155" text-anchor="start">Σ assumedResources</text>
+<line x1="650" y1="160" x2="700" y2="160" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+<rect x="700" y="300" width="256" height="102" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="714" y="324" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">为什么每个 zone 都扣</text>
+<text x="714" y="348" font-size="12.5" fill="#334155" text-anchor="start">调度器不知道 kubelet 会把</text>
+<text x="714" y="368" font-size="12.5" fill="#334155" text-anchor="start">Pod 放进哪个 zone，只能假设</text>
+<text x="714" y="388" font-size="12.5" fill="#334155" text-anchor="start">它可能占用任意一个</text>
+<text x="490.0" y="432" font-size="13.5" fill="#1e293b" text-anchor="middle" font-weight="bold">Resync：go wait.Forever(nrtCache.Resync, cacheResyncPeriodSeconds)</text>
+<rect x="24" y="446" width="172" height="66" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.5"/>
+<text x="110.0" y="472" font-size="13.5" fill="#0d9488" text-anchor="middle" font-weight="bold">drainNRTEvents</text>
+<text x="110.0" y="495" font-size="12" fill="#334155" text-anchor="middle">取出 watcher 事件</text>
+<rect x="214" y="446" width="172" height="66" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="300.0" y="472" font-size="13.5" fill="#7c3aed" text-anchor="middle" font-weight="bold">GetDesyncedNodes</text>
+<text x="300.0" y="495" font-size="12" fill="#334155" text-anchor="middle">脏节点 = 被拒 ∪ 外来</text>
+<line x1="196" y1="479" x2="212" y2="479" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+<rect x="404" y="446" width="172" height="66" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="490.0" y="472" font-size="13.5" fill="#2563eb" text-anchor="middle" font-weight="bold">getNodeData</text>
+<text x="490.0" y="495" font-size="12" fill="#334155" text-anchor="middle">GET NRT + 按节点列 Pod</text>
+<line x1="386" y1="479" x2="402" y2="479" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+<rect x="594" y="446" width="172" height="66" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.5"/>
+<text x="680.0" y="472" font-size="13.5" fill="#ea580c" text-anchor="middle" font-weight="bold">指纹门控</text>
+<text x="680.0" y="495" font-size="12" fill="#334155" text-anchor="middle">PFP 与 NRT 中的一致？</text>
+<line x1="576" y1="479" x2="592" y2="479" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+<rect x="784" y="446" width="172" height="66" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+<text x="870.0" y="472" font-size="13.5" fill="#059669" text-anchor="middle" font-weight="bold">FlushNodes</text>
+<text x="870.0" y="495" font-size="12" fill="#334155" text-anchor="middle">替换快照，清空预留与计数</text>
+<line x1="766" y1="479" x2="782" y2="479" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)"/>
+<path d="M680.0,512 L680.0,550 L300.0,550 L300.0,516" fill="none" stroke="#ea580c" stroke-width="1.5" marker-end="url(#arr)" stroke-dasharray="5,4"/>
+<text x="490.0" y="568" font-size="12.5" fill="#ea580c" text-anchor="middle">不一致（NRT 还没反映调度器已知的 Pod 集合）→ 节点保持脏，等下一个周期</text>
+<text x="300.0" y="592" font-size="12.5" fill="#0d9488" text-anchor="start">configChanged 节点走 nullGate：不比指纹、不列 Pod（未开抢占时），直接 Flush</text>
+<path d="M870.0,446 L870.0,410 L560.0,410 L560.0,404" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#arr)"/>
+</svg>

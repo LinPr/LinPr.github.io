@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 530" width="940" height="530" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<rect width="940" height="530" fill="#ffffff"/>
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker></defs>
+<text x="470.0" y="34" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="bold">NodeMetadata：字符串 → 原始分 → 归一化</text>
+<text x="470.0" y="58" font-size="13" fill="#64748b" text-anchor="middle">metadataType=Number、scoringStrategy=Lowest，键为 node.example.com/hourly-cost（annotation）</text>
+<rect x="30" y="84" width="880" height="34" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
+<text x="40" y="106" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">节点</text>
+<text x="150" y="106" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">annotation 值</text>
+<text x="300" y="106" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">ParseFloat → int64</text>
+<text x="480" y="106" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">原始分（Lowest 取负）</text>
+<text x="700" y="106" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">归一化</text>
+<rect x="30" y="128" width="880" height="36" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="40" y="151" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">node-a</text>
+<text x="150" y="151" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">"2.5"</text>
+<text x="300" y="151" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">2</text>
+<text x="480" y="151" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">−2</text>
+<rect x="700" y="137" width="120" height="18" rx="4" fill="#eff6ff" stroke="#cbd5e1" stroke-width="1"/>
+<rect x="700" y="137" width="1.2" height="18" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1"/>
+<text x="830" y="151" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="bold">1</text>
+<rect x="30" y="172" width="880" height="36" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="40" y="195" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">node-b</text>
+<text x="150" y="195" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">"1.2"</text>
+<text x="300" y="195" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">1</text>
+<text x="480" y="195" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">−1</text>
+<rect x="700" y="181" width="120" height="18" rx="4" fill="#eff6ff" stroke="#cbd5e1" stroke-width="1"/>
+<rect x="700" y="181" width="60.0" height="18" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1"/>
+<text x="830" y="195" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="bold">50</text>
+<rect x="30" y="216" width="880" height="36" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="40" y="239" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">node-c</text>
+<text x="150" y="239" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">"1.7"</text>
+<text x="300" y="239" font-size="13.5" fill="#ea580c" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">1</text>
+<text x="480" y="239" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">−1</text>
+<rect x="700" y="225" width="120" height="18" rx="4" fill="#eff6ff" stroke="#cbd5e1" stroke-width="1"/>
+<rect x="700" y="225" width="60.0" height="18" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1"/>
+<text x="830" y="239" font-size="13.5" fill="#ea580c" text-anchor="start" font-weight="bold">50</text>
+<rect x="30" y="260" width="880" height="36" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="40" y="283" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">node-d</text>
+<text x="150" y="283" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">"0.8"</text>
+<text x="300" y="283" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">0</text>
+<text x="480" y="283" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">0</text>
+<rect x="700" y="269" width="120" height="18" rx="4" fill="#eff6ff" stroke="#cbd5e1" stroke-width="1"/>
+<rect x="700" y="269" width="120.0" height="18" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1"/>
+<text x="830" y="283" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="bold">100</text>
+<rect x="30" y="304" width="880" height="36" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="40" y="327" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">node-e</text>
+<text x="150" y="327" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">（缺失）</text>
+<text x="300" y="327" font-size="13.5" fill="#dc2626" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">error</text>
+<text x="480" y="327" font-size="13.5" fill="#dc2626" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">MinInt64</text>
+<rect x="700" y="313" width="120" height="18" rx="4" fill="#eff6ff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="830" y="327" font-size="13.5" fill="#dc2626" text-anchor="start" font-weight="bold">0</text>
+<rect x="30" y="358" width="430" height="150" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="46" y="384" font-size="14" fill="#2563eb" text-anchor="start" font-weight="bold">有效节点映射到 [1, 100]</text>
+<text x="46" y="410" font-size="13" fill="#334155" text-anchor="start">min = −2，max = 0，oldRange = 2</text>
+<text x="46" y="434" font-size="13" fill="#334155" text-anchor="start">newRange = 100 − 1 = 99</text>
+<text x="46" y="458" font-size="13" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">score = (raw − min) × 99 / 2 + 1</text>
+<text x="46" y="482" font-size="13" fill="#334155" text-anchor="start">node-b：1 × 99 / 2 + 1 = 49 + 1 = 50</text>
+<rect x="480" y="358" width="430" height="150" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.5"/>
+<text x="496" y="384" font-size="14" fill="#ea580c" text-anchor="start" font-weight="bold">两个容易忽略的细节</text>
+<text x="496" y="410" font-size="13" fill="#334155" text-anchor="start">int64(1.2) 与 int64(1.7) 都是 1：小数被截断，</text>
+<text x="496" y="434" font-size="13" fill="#334155" text-anchor="start">1.2 元与 1.7 元的节点得分相同</text>
+<text x="496" y="462" font-size="13" fill="#334155" text-anchor="start">无效节点固定 0 分；有效节点最低也有 1 分，</text>
+<text x="496" y="486" font-size="13" fill="#334155" text-anchor="start">保证「有数据」总是排在「没数据」前面</text>
+</svg>

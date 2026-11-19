@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 540" width="940" height="540" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<rect width="940" height="540" fill="#ffffff"/>
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker></defs>
+<text x="470.0" y="32.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">一个 Pod 的「有效请求量」：按阶段取峰值，按维度各取各的</text>
+<text x="470.0" y="54.0" font-size="13" fill="#64748b" text-anchor="middle">sidecar 全程常驻；普通 init 容器与此前启动的 sidecar 叠加；稳态是应用容器 + sidecar；最后加 overhead</text>
+<rect x="30.0" y="76.0" width="14.0" height="14.0" rx="3" fill="#99f6e4" stroke="#94a3b8" stroke-width="1"/>
+<text x="50.0" y="88.0" font-size="12" fill="#1e293b" text-anchor="start">sidecar 200m / 64Mi</text>
+<rect x="210.0" y="76.0" width="14.0" height="14.0" rx="3" fill="#ddd6fe" stroke="#94a3b8" stroke-width="1"/>
+<text x="230.0" y="88.0" font-size="12" fill="#1e293b" text-anchor="start">init migrate 1000m / 512Mi</text>
+<rect x="420.0" y="76.0" width="14.0" height="14.0" rx="3" fill="#bfdbfe" stroke="#94a3b8" stroke-width="1"/>
+<text x="440.0" y="88.0" font-size="12" fill="#1e293b" text-anchor="start">app 500m / 512Mi</text>
+<rect x="580.0" y="76.0" width="14.0" height="14.0" rx="3" fill="#93c5fd" stroke="#94a3b8" stroke-width="1"/>
+<text x="600.0" y="88.0" font-size="12" fill="#1e293b" text-anchor="start">metrics 300m / 128Mi</text>
+<rect x="760.0" y="76.0" width="14.0" height="14.0" rx="3" fill="#fed7aa" stroke="#94a3b8" stroke-width="1"/>
+<text x="780.0" y="88.0" font-size="12" fill="#1e293b" text-anchor="start">overhead 100m / 120Mi</text>
+<rect x="24.0" y="120.0" width="430.0" height="340.0" rx="10" fill="#fbfdff" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="40.0" y="144.0" font-size="14" fill="#1e293b" text-anchor="start" font-weight="700">CPU（毫核）</text>
+<path d="M74.0,430.0 L438.0,430.0" stroke="#94a3b8" stroke-width="1.2" fill="none"/>
+<path d="M70.0,430.0 L74.0,430.0" stroke="#94a3b8" stroke-width="1" fill="none"/>
+<text x="66.0" y="434.0" font-size="10.5" fill="#64748b" text-anchor="end">0</text>
+<path d="M70.0,361.4 L74.0,361.4" stroke="#94a3b8" stroke-width="1" fill="none"/>
+<text x="66.0" y="365.4" font-size="10.5" fill="#64748b" text-anchor="end">400</text>
+<path d="M70.0,292.9 L74.0,292.9" stroke="#94a3b8" stroke-width="1" fill="none"/>
+<text x="66.0" y="296.9" font-size="10.5" fill="#64748b" text-anchor="end">800</text>
+<path d="M70.0,224.3 L74.0,224.3" stroke="#94a3b8" stroke-width="1" fill="none"/>
+<text x="66.0" y="228.3" font-size="10.5" fill="#64748b" text-anchor="end">1200</text>
+<text x="66.0" y="164.0" font-size="10.5" fill="#64748b" text-anchor="end">m</text>
+<rect x="90.0" y="395.7" width="62.0" height="34.3" rx="2" fill="#99f6e4" stroke="#64748b" stroke-width="0.8"/>
+<text x="121.0" y="389.7" font-size="11.5" fill="#1e293b" text-anchor="middle" font-weight="700">200</text>
+<text x="121.0" y="448.0" font-size="10.5" fill="#64748b" text-anchor="middle">① sidecar 启动</text>
+<rect x="184.0" y="395.7" width="62.0" height="34.3" rx="2" fill="#99f6e4" stroke="#64748b" stroke-width="0.8"/>
+<rect x="184.0" y="224.3" width="62.0" height="171.4" rx="2" fill="#ddd6fe" stroke="#64748b" stroke-width="0.8"/>
+<text x="215.0" y="218.3" font-size="11.5" fill="#1e293b" text-anchor="middle" font-weight="700">1200</text>
+<text x="215.0" y="448.0" font-size="10.5" fill="#64748b" text-anchor="middle">② migrate 运行</text>
+<rect x="278.0" y="395.7" width="62.0" height="34.3" rx="2" fill="#99f6e4" stroke="#64748b" stroke-width="0.8"/>
+<rect x="278.0" y="310.0" width="62.0" height="85.7" rx="2" fill="#bfdbfe" stroke="#64748b" stroke-width="0.8"/>
+<rect x="278.0" y="258.6" width="62.0" height="51.4" rx="2" fill="#93c5fd" stroke="#64748b" stroke-width="0.8"/>
+<text x="309.0" y="252.6" font-size="11.5" fill="#1e293b" text-anchor="middle" font-weight="700">1000</text>
+<text x="309.0" y="448.0" font-size="10.5" fill="#64748b" text-anchor="middle">③ 稳态运行</text>
+<rect x="372.0" y="224.3" width="62.0" height="205.7" rx="2" fill="#f1f5f9" stroke="#64748b" stroke-width="0.8"/>
+<text x="403.0" y="331.1" font-size="11" fill="#64748b" text-anchor="middle">峰值</text>
+<rect x="372.0" y="207.1" width="62.0" height="17.1" rx="2" fill="#fed7aa" stroke="#64748b" stroke-width="0.8"/>
+<text x="403.0" y="201.1" font-size="12" fill="#2563eb" text-anchor="middle" font-weight="700">1300</text>
+<text x="403.0" y="448.0" font-size="11" fill="#2563eb" text-anchor="middle" font-weight="700">有效请求</text>
+<path d="M74.0,224.3 L368.0,224.3" stroke="#7c3aed" stroke-width="1.2" fill="none" stroke-dasharray="4 4"/>
+<text x="80.0" y="218.3" font-size="11" fill="#7c3aed" text-anchor="start">max = 1200</text>
+<rect x="486.0" y="120.0" width="430.0" height="340.0" rx="10" fill="#fbfdff" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="502.0" y="144.0" font-size="14" fill="#1e293b" text-anchor="start" font-weight="700">内存（MiB）</text>
+<path d="M536.0,430.0 L900.0,430.0" stroke="#94a3b8" stroke-width="1.2" fill="none"/>
+<path d="M532.0,430.0 L536.0,430.0" stroke="#94a3b8" stroke-width="1" fill="none"/>
+<text x="528.0" y="434.0" font-size="10.5" fill="#64748b" text-anchor="end">0</text>
+<path d="M532.0,376.7 L536.0,376.7" stroke="#94a3b8" stroke-width="1" fill="none"/>
+<text x="528.0" y="380.7" font-size="10.5" fill="#64748b" text-anchor="end">200</text>
+<path d="M532.0,323.3 L536.0,323.3" stroke="#94a3b8" stroke-width="1" fill="none"/>
+<text x="528.0" y="327.3" font-size="10.5" fill="#64748b" text-anchor="end">400</text>
+<path d="M532.0,270.0 L536.0,270.0" stroke="#94a3b8" stroke-width="1" fill="none"/>
+<text x="528.0" y="274.0" font-size="10.5" fill="#64748b" text-anchor="end">600</text>
+<path d="M532.0,216.7 L536.0,216.7" stroke="#94a3b8" stroke-width="1" fill="none"/>
+<text x="528.0" y="220.7" font-size="10.5" fill="#64748b" text-anchor="end">800</text>
+<text x="528.0" y="164.0" font-size="10.5" fill="#64748b" text-anchor="end">Mi</text>
+<rect x="552.0" y="412.9" width="62.0" height="17.1" rx="2" fill="#99f6e4" stroke="#64748b" stroke-width="0.8"/>
+<text x="583.0" y="406.9" font-size="11.5" fill="#1e293b" text-anchor="middle" font-weight="700">64</text>
+<text x="583.0" y="448.0" font-size="10.5" fill="#64748b" text-anchor="middle">① sidecar 启动</text>
+<rect x="646.0" y="412.9" width="62.0" height="17.1" rx="2" fill="#99f6e4" stroke="#64748b" stroke-width="0.8"/>
+<rect x="646.0" y="276.4" width="62.0" height="136.5" rx="2" fill="#ddd6fe" stroke="#64748b" stroke-width="0.8"/>
+<text x="677.0" y="270.4" font-size="11.5" fill="#1e293b" text-anchor="middle" font-weight="700">576</text>
+<text x="677.0" y="448.0" font-size="10.5" fill="#64748b" text-anchor="middle">② migrate 运行</text>
+<rect x="740.0" y="412.9" width="62.0" height="17.1" rx="2" fill="#99f6e4" stroke="#64748b" stroke-width="0.8"/>
+<rect x="740.0" y="276.4" width="62.0" height="136.5" rx="2" fill="#bfdbfe" stroke="#64748b" stroke-width="0.8"/>
+<rect x="740.0" y="242.3" width="62.0" height="34.1" rx="2" fill="#93c5fd" stroke="#64748b" stroke-width="0.8"/>
+<text x="771.0" y="236.3" font-size="11.5" fill="#1e293b" text-anchor="middle" font-weight="700">704</text>
+<text x="771.0" y="448.0" font-size="10.5" fill="#64748b" text-anchor="middle">③ 稳态运行</text>
+<rect x="834.0" y="242.3" width="62.0" height="187.7" rx="2" fill="#f1f5f9" stroke="#64748b" stroke-width="0.8"/>
+<text x="865.0" y="340.1" font-size="11" fill="#64748b" text-anchor="middle">峰值</text>
+<rect x="834.0" y="210.3" width="62.0" height="32.0" rx="2" fill="#fed7aa" stroke="#64748b" stroke-width="0.8"/>
+<text x="865.0" y="204.3" font-size="12" fill="#2563eb" text-anchor="middle" font-weight="700">824</text>
+<text x="865.0" y="448.0" font-size="11" fill="#2563eb" text-anchor="middle" font-weight="700">有效请求</text>
+<path d="M536.0,242.3 L830.0,242.3" stroke="#7c3aed" stroke-width="1.2" fill="none" stroke-dasharray="4 4"/>
+<text x="542.0" y="236.3" font-size="11" fill="#7c3aed" text-anchor="start">max = 704</text>
+<rect x="24.0" y="474.0" width="892.0" height="56.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="250.0" y="496.0" font-size="13" fill="#1e293b" text-anchor="middle" font-weight="700">CPU = max(稳态 1000, init 1200) + 100 = 1300m</text>
+<text x="690.0" y="496.0" font-size="13" fill="#1e293b" text-anchor="middle" font-weight="700">内存 = max(稳态 704, init 576) + 120 = 824Mi</text>
+<text x="470.0" y="518.0" font-size="12" fill="#64748b" text-anchor="middle">CPU 的峰值在 init 阶段，内存的峰值在稳态阶段：每个维度单独取最大值，不要求来自同一时刻</text>
+</svg>

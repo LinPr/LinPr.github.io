@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 660" width="960" height="660" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <rect width="960" height="660" fill="#ffffff"/>
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker>
+    <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#059669"/></marker>
+    <marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#ea580c"/></marker>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#dc2626"/></marker>
+  </defs>
+  <text x="480.0" y="32.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">NodeVolumeLimits：三路来源统一成「驱动名/volumeHandle」再去重计数</text>
+  <text x="480.0" y="54.0" font-size="12.5" fill="#64748b" text-anchor="middle">示例节点：CSINode 中 ebs.csi.aws.com 的 allocatable.count = 4（下文 ebs 即 ebs.csi.aws.com）</text>
+  <rect x="30.0" y="74.0" width="900.0" height="100.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="42.0" y="97.0" font-size="13.5" fill="#7c3aed" font-weight="700">每个卷先换算成同一种键（getCSIDriverInfo / checkAttachableInlineVolume）</text>
+  <text x="42.0" y="117.5" font-size="12.5" fill="#334155">已绑定 CSI PV：spec.csi.driver / spec.csi.volumeHandle</text>
+  <text x="42.0" y="137.0" font-size="12.5" fill="#334155">已绑定 in-tree PV、可迁移内联卷：csi-translation-lib 翻译，如 aws://us-east-1a/vol-3 → ebs / vol-3</text>
+  <text x="42.0" y="156.5" font-size="12.5" fill="#334155">未绑定 PVC：StorageClass.provisioner / &lt;随机前缀&gt;-&lt;ns&gt;/&lt;pvc&gt;（同一 PVC 在同一调度器内键相同）</text>
+  <rect x="30.0" y="194.0" width="520.0" height="120.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="42.0" y="217.0" font-size="13.5" fill="#2563eb" font-weight="700">① 已有 Pod 的卷 → attachedVolumes</text>
+  <text x="42.0" y="237.5" font-size="12.5" fill="#334155">Pod A：pvc-1 → ebs/vol-1</text>
+  <text x="42.0" y="257.0" font-size="12.5" fill="#334155">Pod A：pvc-2 → ebs/vol-2</text>
+  <text x="42.0" y="276.5" font-size="12.5" fill="#334155">Pod B：pvc-2 → ebs/vol-2（与 Pod A 共享，map 去重，只算一次）</text>
+  <text x="42.0" y="296.0" font-size="12.5" fill="#334155">Pod B：内联 awsElasticBlockStore vol-3 → ebs/vol-3</text>
+  <rect x="30.0" y="330.0" width="520.0" height="120.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+  <text x="42.0" y="353.0" font-size="13.5" fill="#0d9488" font-weight="700">② 新 Pod 的卷 → newVolumes</text>
+  <text x="42.0" y="373.5" font-size="12.5" fill="#334155">pvc-2 → ebs/vol-2：已在 attachedVolumes 中，delete，不算新增</text>
+  <text x="42.0" y="393.0" font-size="12.5" fill="#334155">pvc-new（未绑定，WaitForFirstConsumer）</text>
+  <text x="42.0" y="412.5" font-size="12.5" fill="#334155">    → ebs/&lt;prefix&gt;-default/pvc-new，算 1 个新增</text>
+  <text x="42.0" y="432.0" font-size="12.5" fill="#dc2626">PVC 不存在 → UnschedulableAndUnresolvable</text>
+  <rect x="30.0" y="466.0" width="520.0" height="120.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="42.0" y="489.0" font-size="13.5" fill="#7c3aed" font-weight="700">③ 节点上的 VolumeAttachment（按 spec.nodeName 索引）</text>
+  <text x="42.0" y="509.5" font-size="12.5" fill="#334155">vol-1、vol-2：已在 attachedVolumes 中，不重复计</text>
+  <text x="42.0" y="529.0" font-size="12.5" fill="#334155">vol-4：没有 Pod 在用（Pod 已删，尚未 detach），+1</text>
+  <text x="42.0" y="548.5" font-size="12.5" fill="#334155">vol-3 的 VA：source 是 inlineVolumeSpec，没有 PV 名，跳过</text>
+  <text x="42.0" y="568.0" font-size="12.5" fill="#64748b">只统计指向原生 CSI PV 的 VA</text>
+  <rect x="600.0" y="194.0" width="330.0" height="120.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="612.0" y="217.0" font-size="13.5" fill="#2563eb" font-weight="700">attachedVolumeCount[ebs]</text>
+  <text x="612.0" y="237.5" font-size="12.5" fill="#334155">来自 ①：vol-1、vol-2、vol-3 = 3</text>
+  <text x="612.0" y="257.0" font-size="12.5" fill="#334155">来自 ③：vol-4 = 1</text>
+  <text x="612.0" y="276.5" font-size="13" fill="#2563eb" font-weight="700">合计 4</text>
+  <rect x="600.0" y="330.0" width="330.0" height="120.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+  <text x="612.0" y="353.0" font-size="13.5" fill="#0d9488" font-weight="700">newVolumeCount[ebs]</text>
+  <text x="612.0" y="373.5" font-size="12.5" fill="#334155">去重后只剩 pvc-new = 1</text>
+  <text x="612.0" y="393.0" font-size="12.5" fill="#334155">只对 CSINode 上报了上限的驱动比较</text>
+  <text x="612.0" y="412.5" font-size="12.5" fill="#334155">没有上限的驱动直接跳过</text>
+  <rect x="600.0" y="466.0" width="330.0" height="120.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+  <text x="612.0" y="489.0" font-size="14" fill="#ea580c" font-weight="700">判定：4 + 1 = 5 &gt; 4</text>
+  <text x="612.0" y="510.0" font-size="13" fill="#ea580c" font-weight="700">Unschedulable</text>
+  <text x="612.0" y="530.0" font-size="12.5" fill="#334155" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">node(s) exceed max volume count</text>
+  <text x="612.0" y="549.5" font-size="12.5" fill="#059669">若没有 vol-4 的 VA：3 + 1 = 4，通过</text>
+  <line x1="550.0" y1="254.0" x2="596.0" y2="254.0" stroke="#2563eb" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="550.0" y1="390.0" x2="596.0" y2="390.0" stroke="#0d9488" stroke-width="1.6" marker-end="url(#a)"/>
+  <path d="M550,516 C580,500 560,286 596,286" fill="none" stroke="#7c3aed" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="765.0" y1="314.0" x2="765.0" y2="328.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="765.0" y1="450.0" x2="765.0" y2="464.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <text x="480.0" y="616.0" font-size="12.5" fill="#64748b" text-anchor="middle">VA 一路让调度器看见「Pod 已删、卷还挂着」的槽位占用；代价是抢占模拟移除受害者后，它的卷仍会通过 VA 计入，</text>
+  <text x="480.0" y="636.0" font-size="12.5" fill="#64748b" text-anchor="middle">因此对需要 attach 的驱动，卷数量超限基本无法靠抢占解决。</text>
+</svg>

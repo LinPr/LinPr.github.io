@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 660" width="960" height="660" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<rect width="960" height="660" fill="#ffffff"/>
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker></defs>
+<text x="480.0" y="34" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="bold">single-numa-node 的 Filter 模拟：逐资源求 NUMA 位图，再取交集</text>
+<text x="480.0" y="58" font-size="13" fill="#64748b" text-anchor="middle">数据来自 NRT 的 zones[].resources[].available；位为 1 表示该 NUMA zone 单独就能满足这项请求</text>
+<rect x="30" y="86" width="330" height="230" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="46" y="112" font-size="14" fill="#2563eb" text-anchor="start" font-weight="bold">NRT worker-1（available）</text>
+<text x="46" y="142" font-size="12.5" fill="#64748b" text-anchor="start">zone</text>
+<text x="126" y="142" font-size="12.5" fill="#64748b" text-anchor="start">cpu</text>
+<text x="186" y="142" font-size="12.5" fill="#64748b" text-anchor="start">memory</text>
+<text x="270" y="142" font-size="12.5" fill="#64748b" text-anchor="start">gpu*</text>
+<text x="46" y="170" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">node-0</text>
+<text x="126" y="170" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">6</text>
+<text x="186" y="170" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">20Gi</text>
+<text x="270" y="170" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">0</text>
+<text x="46" y="200" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">node-1</text>
+<text x="126" y="200" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">10</text>
+<text x="186" y="200" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">8Gi</text>
+<text x="270" y="200" font-size="13.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">1</text>
+<line x1="42" y1="150" x2="348" y2="150" stroke="#cbd5e1" stroke-width="1"/>
+<text x="46" y="226" font-size="12" fill="#64748b" text-anchor="start">* gpu 指 nvidia.com/gpu</text>
+<text x="46" y="250" font-size="13" fill="#334155" text-anchor="start">节点合计：cpu 16、memory 28Gi、gpu 1</text>
+<text x="46" y="274" font-size="13" fill="#059669" text-anchor="start">NodeResourcesFit 只看总量 → 通过</text>
+<text x="46" y="298" font-size="13" fill="#ea580c" text-anchor="start">但没有任何一个 zone 能同时满足三项</text>
+<rect x="390" y="86" width="540" height="230" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="406" y="112" font-size="14" fill="#7c3aed" text-anchor="start" font-weight="bold">Guaranteed 容器：cpu=4  memory=16Gi  nvidia.com/gpu=1</text>
+<text x="690" y="138" font-size="12" fill="#64748b" text-anchor="start">node-0  node-1</text>
+<text x="810" y="138" font-size="12" fill="#64748b" text-anchor="start">累积位图</text>
+<text x="406" y="168" font-size="13.5" fill="#334155" text-anchor="start" font-weight="bold" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">bitmask.Fill()</text>
+<text x="540" y="168" font-size="12.5" fill="#64748b" text-anchor="start">所有位置 1</text>
+<rect x="690" y="152" width="40" height="22" rx="4" fill="#7c3aed" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="710" y="168" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="bold">1</text>
+<rect x="742" y="152" width="40" height="22" rx="4" fill="#7c3aed" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="762" y="168" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="bold">1</text>
+<text x="793" y="168" font-size="14" fill="#64748b" text-anchor="middle">∧</text>
+<rect x="810" y="152" width="40" height="22" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1.2"/>
+<text x="830" y="168" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="bold">1</text>
+<rect x="862" y="152" width="40" height="22" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1.2"/>
+<text x="882" y="168" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="bold">1</text>
+<text x="406" y="204" font-size="13.5" fill="#334155" text-anchor="start" font-weight="bold" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">cpu 4</text>
+<text x="540" y="204" font-size="12.5" fill="#64748b" text-anchor="start">6≥4 ✓   10≥4 ✓</text>
+<rect x="690" y="188" width="40" height="22" rx="4" fill="#7c3aed" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="710" y="204" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="bold">1</text>
+<rect x="742" y="188" width="40" height="22" rx="4" fill="#7c3aed" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="762" y="204" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="bold">1</text>
+<text x="793" y="204" font-size="14" fill="#64748b" text-anchor="middle">∧</text>
+<rect x="810" y="188" width="40" height="22" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1.2"/>
+<text x="830" y="204" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="bold">1</text>
+<rect x="862" y="188" width="40" height="22" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1.2"/>
+<text x="882" y="204" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="bold">1</text>
+<text x="406" y="240" font-size="13.5" fill="#334155" text-anchor="start" font-weight="bold" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">memory 16Gi</text>
+<text x="540" y="240" font-size="12.5" fill="#64748b" text-anchor="start">20Gi ✓   8Gi ✗</text>
+<rect x="690" y="224" width="40" height="22" rx="4" fill="#7c3aed" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="710" y="240" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="bold">1</text>
+<rect x="742" y="224" width="40" height="22" rx="4" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="762" y="240" font-size="13" fill="#7c3aed" text-anchor="middle" font-weight="bold">0</text>
+<text x="793" y="240" font-size="14" fill="#64748b" text-anchor="middle">∧</text>
+<rect x="810" y="224" width="40" height="22" rx="4" fill="#2563eb" stroke="#2563eb" stroke-width="1.2"/>
+<text x="830" y="240" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="bold">1</text>
+<rect x="862" y="224" width="40" height="22" rx="4" fill="#ffffff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="882" y="240" font-size="13" fill="#2563eb" text-anchor="middle" font-weight="bold">0</text>
+<text x="406" y="276" font-size="13.5" fill="#334155" text-anchor="start" font-weight="bold" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">gpu 1</text>
+<text x="540" y="276" font-size="12.5" fill="#64748b" text-anchor="start">0 ✗   1 ✓</text>
+<rect x="690" y="260" width="40" height="22" rx="4" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="710" y="276" font-size="13" fill="#7c3aed" text-anchor="middle" font-weight="bold">0</text>
+<rect x="742" y="260" width="40" height="22" rx="4" fill="#7c3aed" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="762" y="276" font-size="13" fill="#ffffff" text-anchor="middle" font-weight="bold">1</text>
+<text x="793" y="276" font-size="14" fill="#64748b" text-anchor="middle">∧</text>
+<rect x="810" y="260" width="40" height="22" rx="4" fill="#ffffff" stroke="#ea580c" stroke-width="1.2"/>
+<text x="830" y="276" font-size="13" fill="#ea580c" text-anchor="middle" font-weight="bold">0</text>
+<rect x="862" y="260" width="40" height="22" rx="4" fill="#ffffff" stroke="#ea580c" stroke-width="1.2"/>
+<text x="882" y="276" font-size="13" fill="#ea580c" text-anchor="middle" font-weight="bold">0</text>
+<text x="406" y="304" font-size="13" fill="#ea580c" text-anchor="start" font-weight="bold">累积位图为空 → 立即返回 Unschedulable "cannot align container"</text>
+<text x="480.0" y="352" font-size="14" fill="#1e293b" text-anchor="middle" font-weight="bold">同一个 Pod（两个容器各要 4 个独占 CPU），zone 剩余 node-0=6、node-1=5</text>
+<rect x="30" y="372" width="435" height="270" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+<text x="46" y="398" font-size="13" fill="#059669" text-anchor="start" font-weight="bold">scope=container：singleNUMAContainerLevelHandler</text>
+<rect x="46" y="414" width="403" height="30" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="58" y="434" font-size="13" fill="#334155" text-anchor="start">init 容器逐个判定，不扣减（串行运行，用完即还）</text>
+<rect x="46" y="454" width="403" height="30" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="58" y="474" font-size="13" fill="#334155" text-anchor="start">app 容器 c1：cpu 4 → 位图 11 → 取最低位 node-0</text>
+<rect x="46" y="494" width="403" height="30" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="58" y="514" font-size="13" fill="#334155" text-anchor="start">从 node-0 扣掉 4：node-0 剩 2（在本次 Filter 的副本上）</text>
+<rect x="46" y="534" width="403" height="30" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="58" y="554" font-size="13" fill="#334155" text-anchor="start">app 容器 c2：cpu 4 → node-0 2 ✗、node-1 5 ✓ → node-1</text>
+<rect x="46" y="574" width="403" height="30" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="58" y="594" font-size="13" fill="#059669" text-anchor="start">所有容器都找到 zone → 返回 nil（Success）</text>
+<rect x="495" y="372" width="435" height="270" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.5"/>
+<text x="511" y="398" font-size="13.5" fill="#ea580c" text-anchor="start" font-weight="bold">scope=pod：singleNUMAPodLevelHandler</text>
+<rect x="511" y="414" width="403" height="30" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="523" y="434" font-size="13" fill="#334155" text-anchor="start">GetPodEffectiveRequest：app 容器求和，</text>
+<rect x="511" y="454" width="403" height="30" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="523" y="474" font-size="13" fill="#334155" text-anchor="start">init 容器取最大，再加 Overhead → cpu 8</text>
+<rect x="511" y="494" width="403" height="30" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="523" y="514" font-size="13" fill="#334155" text-anchor="start">整个 Pod 必须落在同一个 zone</text>
+<rect x="511" y="534" width="403" height="30" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="523" y="554" font-size="13" fill="#334155" text-anchor="start">cpu 8：node-0 6 ✗、node-1 5 ✗ → 位图 00</text>
+<rect x="511" y="574" width="403" height="30" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="523" y="594" font-size="13" fill="#ea580c" text-anchor="start">返回 Unschedulable "cannot align pod"</text>
+</svg>

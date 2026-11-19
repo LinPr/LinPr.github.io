@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 620" width="960" height="620" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<rect width="960" height="620" fill="#ffffff"/>
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker></defs>
+<text x="480.0" y="34" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="bold">SySched：把 Pod 放上去之后，节点上所有 Pod 多暴露了多少系统调用</text>
+<text x="480.0" y="58" font-size="13" fill="#64748b" text-anchor="middle">数字代表系统调用；待调度 Pod X 的 seccomp 允许集合为 {4, 7, 8}；原始分越大越差，NormalizeScore 反向映射</text>
+<rect x="30" y="80" width="900" height="44" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.5"/>
+<text x="46" y="108" font-size="14" fill="#7c3aed" text-anchor="start" font-weight="bold">待调度 Pod X</text>
+<rect x="160" y="91" width="26" height="22" rx="4" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="173" y="107" font-size="12.5" fill="#7c3aed" text-anchor="middle" font-weight="bold">4</text>
+<rect x="190" y="91" width="26" height="22" rx="4" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="203" y="107" font-size="12.5" fill="#7c3aed" text-anchor="middle" font-weight="bold">7</text>
+<rect x="220" y="91" width="26" height="22" rx="4" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="233" y="107" font-size="12.5" fill="#7c3aed" text-anchor="middle" font-weight="bold">8</text>
+<text x="270" y="108" font-size="12.5" fill="#64748b" text-anchor="start">来自 SPO SeccompProfile 中 action 为 SCMP_ACT_ALLOW / SCMP_ACT_LOG 的 names</text>
+<rect x="30" y="144" width="288" height="300" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="44" y="170" font-size="14.5" fill="#1e293b" text-anchor="start" font-weight="bold">node-1</text>
+<text x="44" y="192" font-size="12.5" fill="#64748b" text-anchor="start">已有 P1 = {1,2,3,5}</text>
+<rect x="44" y="204" width="26" height="22" rx="4" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="57" y="220" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="bold">1</text>
+<rect x="74" y="204" width="26" height="22" rx="4" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="87" y="220" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="bold">2</text>
+<rect x="104" y="204" width="26" height="22" rx="4" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="117" y="220" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="bold">3</text>
+<rect x="134" y="204" width="26" height="22" rx="4" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="147" y="220" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="bold">5</text>
+<text x="44" y="264" font-size="12.5" fill="#334155" text-anchor="start">X 多暴露：{1,2,3,5} − {4,7,8} → 4</text>
+<text x="44" y="292" font-size="12.5" fill="#334155" text-anchor="start">并集变为 {1,2,3,4,5,7,8}</text>
+<text x="44" y="320" font-size="12.5" fill="#334155" text-anchor="start">P1 多暴露：并集 − P1 = {4,7,8} → 3</text>
+<text x="44" y="348" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="bold">原始分 = 4 + 3 = 7</text>
+<rect x="44" y="384" width="260" height="44" rx="6" fill="#fff7ed" stroke="#ea580c" stroke-width="1.5"/>
+<text x="174.0" y="412" font-size="14" fill="#ea580c" text-anchor="middle" font-weight="bold">归一化后 0 分</text>
+<rect x="336" y="144" width="288" height="300" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="350" y="170" font-size="14.5" fill="#1e293b" text-anchor="start" font-weight="bold">node-2</text>
+<text x="350" y="192" font-size="12.5" fill="#64748b" text-anchor="start">空节点（HostSyscalls 中无记录）</text>
+<text x="350" y="264" font-size="12.5" fill="#334155" text-anchor="start">getHostSyscalls 返回 nil</text>
+<text x="350" y="292" font-size="12.5" fill="#334155" text-anchor="start">直接返回 0，不再计算</text>
+<text x="350" y="348" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="bold">原始分 = 0</text>
+<rect x="350" y="384" width="260" height="44" rx="6" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+<text x="480.0" y="412" font-size="14" fill="#059669" text-anchor="middle" font-weight="bold">归一化后 100 分</text>
+<rect x="642" y="144" width="288" height="300" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="656" y="170" font-size="14.5" fill="#1e293b" text-anchor="start" font-weight="bold">node-3</text>
+<text x="656" y="192" font-size="12.5" fill="#64748b" text-anchor="start">已有 P3 = {4,7,8,9}</text>
+<rect x="656" y="204" width="26" height="22" rx="4" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="669" y="220" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="bold">4</text>
+<rect x="686" y="204" width="26" height="22" rx="4" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="699" y="220" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="bold">7</text>
+<rect x="716" y="204" width="26" height="22" rx="4" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="729" y="220" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="bold">8</text>
+<rect x="746" y="204" width="26" height="22" rx="4" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="759" y="220" font-size="12.5" fill="#2563eb" text-anchor="middle" font-weight="bold">9</text>
+<text x="656" y="264" font-size="12.5" fill="#334155" text-anchor="start">X 多暴露：{4,7,8,9} − {4,7,8} → 1</text>
+<text x="656" y="292" font-size="12.5" fill="#334155" text-anchor="start">并集仍为 {4,7,8,9}</text>
+<text x="656" y="320" font-size="12.5" fill="#334155" text-anchor="start">P3 多暴露：并集 − P3 = {} → 0</text>
+<text x="656" y="348" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="bold">原始分 = 1 + 0 = 1</text>
+<rect x="656" y="384" width="260" height="44" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+<text x="786.0" y="412" font-size="14" fill="#2563eb" text-anchor="middle" font-weight="bold">归一化后 86 分</text>
+<text x="30" y="470" font-size="13" fill="#1e293b" text-anchor="start" font-weight="bold">DefaultNormalizeScore(100, reverse=true)：score = 100 − 100 × raw / max(raw)，max = 7</text>
+<text x="30" y="494" font-size="13" fill="#334155" text-anchor="start">node-1：100 − 100 = 0；node-3：100 − 100×1/7 = 100 − 14 = 86；node-2：100 − 0 = 100</text>
+<rect x="30" y="512" width="900" height="92" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.5"/>
+<text x="46" y="538" font-size="13" fill="#334155" text-anchor="start">空节点永远拿满分：只要还有空节点，SySched 会把 Pod 往空节点上铺，「物以类聚」只在节点都有 Pod 后才显现。</text>
+<text x="46" y="562" font-size="13" fill="#334155" text-anchor="start">没有 seccomp 配置的 Pod 会被赋予默认 profile（defaultProfileName，示例为 full-seccomp 的 300 多个调用），</text>
+<text x="46" y="584" font-size="13" fill="#334155" text-anchor="start">它所在节点的并集几乎是全集，之后放上来的每个受限 Pod 都会在这个节点上得到很大的原始分。</text>
+</svg>

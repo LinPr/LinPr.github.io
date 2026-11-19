@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 990 800" width="990" height="800" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <rect width="990" height="800" fill="#ffffff"/>
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker>
+    <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#059669"/></marker>
+    <marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#ea580c"/></marker>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#dc2626"/></marker>
+  </defs>
+  <text x="495.0" y="32.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">从 Reserve 到 Pod 绑定：调度器只写意图，执行交给 PV 控制器和供给器</text>
+  <text x="495.0" y="54.0" font-size="12.5" fill="#64748b" text-anchor="middle">静态绑定靠 PV.spec.claimRef，动态供给靠 PVC 上的 volume.kubernetes.io/selected-node 注解；PreBind 轮询 API 直到完成</text>
+  <rect x="16.0" y="70.0" width="228.0" height="716.0" rx="10" fill="#fbfdff" stroke="#e2e8f0" stroke-width="1.2"/>
+  <text x="130.0" y="92.0" font-size="13" fill="#1e293b" text-anchor="middle" font-weight="700">调度器 · 调度周期（串行）</text>
+  <rect x="259.0" y="70.0" width="228.0" height="716.0" rx="10" fill="#fbfdff" stroke="#e2e8f0" stroke-width="1.2"/>
+  <text x="373.0" y="92.0" font-size="13" fill="#1e293b" text-anchor="middle" font-weight="700">调度器 · 绑定周期（goroutine）</text>
+  <rect x="502.0" y="70.0" width="228.0" height="716.0" rx="10" fill="#fbfdff" stroke="#e2e8f0" stroke-width="1.2"/>
+  <text x="616.0" y="92.0" font-size="13" fill="#1e293b" text-anchor="middle" font-weight="700">PV 控制器</text>
+  <rect x="745.0" y="70.0" width="228.0" height="716.0" rx="10" fill="#fbfdff" stroke="#e2e8f0" stroke-width="1.2"/>
+  <text x="859.0" y="92.0" font-size="13" fill="#1e293b" text-anchor="middle" font-weight="700">external-provisioner + 驱动</text>
+  <rect x="20.0" y="108.0" width="220.0" height="66.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="29.0" y="128.0" font-size="13.5" fill="#2563eb" font-weight="700">Filter / Score</text>
+  <text x="29.0" y="148.5" font-size="12" fill="#334155">为每个节点算出 PodVolumes</text>
+  <text x="29.0" y="167.5" font-size="12" fill="#334155">选出 node-1</text>
+  <line x1="130.0" y1="174.0" x2="130.0" y2="196.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="20.0" y="198.0" width="220.0" height="116.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="29.0" y="218.0" font-size="12.5" fill="#2563eb" font-weight="700">Reserve · AssumePodVolumes</text>
+  <text x="29.0" y="237.5" font-size="12" fill="#334155">PV 副本写 claimRef → pvCache</text>
+  <text x="29.0" y="256.5" font-size="12" fill="#334155">PVC 副本加 selected-node</text>
+  <text x="29.0" y="275.5" font-size="12" fill="#334155">  = node-1 → pvcCache</text>
+  <text x="29.0" y="294.5" font-size="12" fill="#64748b">只改内存，不调 API</text>
+  <line x1="240.0" y1="230.0" x2="261.0" y2="230.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="263.0" y="198.0" width="220.0" height="66.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="272.0" y="218.0" font-size="13.5" fill="#7c3aed" font-weight="700">PreBindPreFlight</text>
+  <text x="272.0" y="238.5" font-size="12" fill="#334155">allBound 为 false → 返回成功</text>
+  <text x="272.0" y="257.5" font-size="12" fill="#334155">调度器先写 nominatedNodeName</text>
+  <line x1="373.0" y1="264.0" x2="373.0" y2="286.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="263.0" y="288.0" width="220.0" height="84.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="272.0" y="308.0" font-size="13.5" fill="#7c3aed" font-weight="700">PreBind · bindAPIUpdate</text>
+  <text x="272.0" y="328.5" font-size="12" fill="#334155">① Update PV（claimRef）</text>
+  <text x="272.0" y="347.5" font-size="12" fill="#334155">② Update PVC（selected-node）</text>
+  <text x="272.0" y="366.5" font-size="12" fill="#64748b">已写入的不回滚</text>
+  <line x1="483.0" y1="318.0" x2="504.0" y2="318.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="506.0" y="288.0" width="220.0" height="84.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+  <text x="515.0" y="308.0" font-size="13.5" fill="#0d9488" font-weight="700">静态：syncUnboundClaim</text>
+  <text x="515.0" y="328.5" font-size="12" fill="#334155">发现 PV.claimRef 指向自己</text>
+  <text x="515.0" y="347.5" font-size="12" fill="#334155">bind：PVC.volumeName</text>
+  <text x="515.0" y="366.5" font-size="12" fill="#334155">  + bind-completed，轮询可见</text>
+  <path d="M483,360 C497,360 492,420 504,420" fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="506.0" y="392.0" width="220.0" height="104.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+  <text x="515.0" y="412.0" font-size="13.5" fill="#0d9488" font-weight="700">动态：provisionClaim</text>
+  <text x="515.0" y="432.5" font-size="12" fill="#334155">看到 selected-node</text>
+  <text x="515.0" y="451.5" font-size="12" fill="#334155">给 PVC 加注解</text>
+  <text x="515.0" y="470.5" font-size="11.5" fill="#334155" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" xml:space="preserve">volume.kubernetes.io/</text>
+  <text x="515.0" y="489.0" font-size="11.5" fill="#334155" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" xml:space="preserve">  storage-provisioner</text>
+  <line x1="726.0" y1="430.0" x2="747.0" y2="430.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="749.0" y="392.0" width="220.0" height="132.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="758.0" y="412.0" font-size="13.5" fill="#059669" font-weight="700">shouldProvision</text>
+  <text x="758.0" y="432.5" font-size="12" fill="#334155">WFFC 必须有 selected-node</text>
+  <text x="758.0" y="451.5" font-size="12" fill="#334155">按选中节点的拓扑生成</text>
+  <text x="758.0" y="470.5" font-size="11.5" fill="#334155" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" xml:space="preserve">accessibility_requirements</text>
+  <text x="758.0" y="489.0" font-size="12" fill="#334155">CreateVolume 成功 → 创建 PV</text>
+  <text x="758.0" y="508.0" font-size="12" fill="#334155">（nodeAffinity = 驱动拓扑）</text>
+  <path d="M749,505 C735,505 740,545 728,545" fill="none" stroke="#059669" stroke-width="1.6" marker-end="url(#ag)"/>
+  <rect x="506.0" y="514.0" width="220.0" height="58.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+  <text x="515.0" y="534.0" font-size="13.5" fill="#0d9488" font-weight="700">绑定 PVC ↔ 新 PV</text>
+  <text x="515.0" y="554.5" font-size="12" fill="#334155">PVC 加 bind-completed</text>
+  <rect x="263.0" y="420.0" width="220.0" height="152.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="272.0" y="440.0" font-size="13.5" fill="#7c3aed" font-weight="700">checkBindings 每秒轮询</text>
+  <text x="272.0" y="460.5" font-size="12" fill="#334155">读 informer 版本（GetAPIObj）</text>
+  <text x="272.0" y="479.5" font-size="12" fill="#334155">最长 bindTimeout = 600s</text>
+  <text x="272.0" y="498.5" font-size="12" fill="#dc2626">Pod 已删 / claimRef 被清 /</text>
+  <text x="272.0" y="517.5" font-size="12" fill="#dc2626">selected-node 消失 → 报错</text>
+  <text x="272.0" y="536.5" font-size="12" fill="#059669">全部 PVC bind-completed</text>
+  <text x="272.0" y="555.5" font-size="12" fill="#059669">  → 成功</text>
+  <line x1="373.0" y1="372.0" x2="373.0" y2="418.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="506.0" y1="545.0" x2="485.0" y2="545.0" stroke="#0d9488" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="373.0" y1="572.0" x2="373.0" y2="594.0" stroke="#059669" stroke-width="1.6" marker-end="url(#ag)"/>
+  <rect x="263.0" y="596.0" width="220.0" height="52.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="272.0" y="616.0" font-size="13.5" fill="#059669" font-weight="700">Bind（DefaultBinder）</text>
+  <text x="272.0" y="636.5" font-size="12" fill="#334155">写 Pod 的 nodeName</text>
+  <line x1="859.0" y1="524.0" x2="859.0" y2="590.0" stroke="#dc2626" stroke-width="1.6" marker-end="url(#ar)"/>
+  <rect x="749.0" y="592.0" width="220.0" height="102.0" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+  <text x="758.0" y="612.0" font-size="13.5" fill="#dc2626" font-weight="700">供给失败需重调度</text>
+  <text x="758.0" y="632.5" font-size="12" fill="#334155">ResourceExhausted 或</text>
+  <text x="758.0" y="651.5" font-size="12" fill="#334155">选中节点不存在</text>
+  <text x="758.0" y="670.5" font-size="12" fill="#334155" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" xml:space="preserve">→ ProvisioningReschedule</text>
+  <text x="758.0" y="689.5" font-size="12" fill="#334155">→ 删除 selected-node 注解</text>
+  <path d="M749,680 C629,700 563,730 485,730" fill="none" stroke="#dc2626" stroke-width="1.6" marker-end="url(#ar)"/>
+  <rect x="263.0" y="670.0" width="220.0" height="104.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+  <text x="272.0" y="690.0" font-size="13.5" fill="#ea580c" font-weight="700">PreBind 返回 Error</text>
+  <text x="272.0" y="710.5" font-size="12" fill="#334155">provisioning failed 或超时</text>
+  <text x="272.0" y="729.5" font-size="12" fill="#334155">→ Unreserve 撤销假设</text>
+  <text x="272.0" y="748.5" font-size="12" fill="#334155">→ Pod 进 backoffQ</text>
+  <text x="272.0" y="767.5" font-size="12" fill="#64748b">不算 unschedulable</text>
+  <path d="M263,500 C245,560 245,700 261,720" fill="none" stroke="#ea580c" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#ao)"/>
+  <rect x="20.0" y="340.0" width="220.0" height="132.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <text x="29.0" y="360.0" font-size="13.5" fill="#1e293b" font-weight="700">与此同时</text>
+  <text x="29.0" y="380.5" font-size="12" fill="#334155">下一个 Pod 的调度周期已开始</text>
+  <text x="29.0" y="399.5" font-size="12" fill="#334155">ListPVs / Get PVC 读到的是</text>
+  <text x="29.0" y="418.5" font-size="12" fill="#334155">assume 后的版本：PV 已被</text>
+  <text x="29.0" y="437.5" font-size="12" fill="#334155">pvc-a 占用，PVC 已钉在</text>
+  <text x="29.0" y="456.5" font-size="12" fill="#334155">node-1，不会重复选择</text>
+</svg>

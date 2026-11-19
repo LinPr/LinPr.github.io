@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 860" width="1000" height="860" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#94a3b8"/></marker><marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#059669"/></marker><marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#ea580c"/></marker><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#dc2626"/></marker><marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#2563eb"/></marker></defs>
+<rect width="1000" height="860" fill="#ffffff"/>
+<text x="500.0" y="34.0" font-size="19" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">PodGroup 调度周期：从入队到绑定</text>
+<text x="500.0" y="58.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">左侧是队列侧的门禁，右侧是 scheduleOnePodGroup 的主流程；GangScheduling 出现在 PreEnqueue 与 PlacementFeasible 两处</text>
+<text x="30.0" y="96.0" font-size="15" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">队列侧（scheduling_queue.go）</text>
+<rect x="30.0" y="110.0" width="330.0" height="66.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="40.0" y="130.3" font-size="13" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">informer 事件处理（eventhandlers.go）</text>
+<text x="40.0" y="148.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Pod / PodGroup 增删改 → HierarchyTracker</text>
+<text x="40.0" y="165.4" font-size="12" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">allPods / readyChildren 计数，向父组传播</text>
+<rect x="30.0" y="196.0" width="330.0" height="62.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="40.0" y="214.3" font-size="13" fill="#ea580c" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">incompletePodGroupPods</text>
+<text x="40.0" y="232.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">PodGroup（或父 CompositePodGroup）对象</text>
+<text x="40.0" y="249.4" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">还没被 workloadForest 观察到的 Pod</text>
+<rect x="30.0" y="278.0" width="330.0" height="108.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="40.0" y="301.9" font-size="13" fill="#2563eb" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">QueuedPodGroupInfo（以根组为单位）</text>
+<text x="40.0" y="319.6" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">同一根组的 Pod 合并成一个队列实体</text>
+<text x="40.0" y="337.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">moveToActiveQ 前对每个 Pod 跑 PreEnqueue</text>
+<text x="40.0" y="354.4" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">GangScheduling.PreEnqueue 查 tracker：</text>
+<text x="40.0" y="371.8" font-size="12" fill="#dc2626" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">根组未达 quorum → 整个实体 gated</text>
+<rect x="30.0" y="406.0" width="282.0" height="62.0" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="40.0" y="424.3" font-size="13" fill="#dc2626" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">unschedulableEntities（gated）</text>
+<text x="40.0" y="442.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">等 Pod/Add、PodGroup/Add、minCount 变小</text>
+<text x="40.0" y="459.4" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">等事件的 QueueingHint 返回 Queue</text>
+<rect x="30.0" y="488.0" width="330.0" height="46.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="40.0" y="515.5" font-size="12.5" fill="#059669" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">activeQ：PrioritySort 按组优先级 + 时间戳排序</text>
+<rect x="30.0" y="554.0" width="330.0" height="82.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="40.0" y="573.6" font-size="13" fill="#7c3aed" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pendingPodGroupPods</text>
+<text x="40.0" y="591.3" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">组正在被调度（in-flight）时新来的 Pod，</text>
+<text x="40.0" y="608.7" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">以及本轮失败回队的 Pod，先暂存在这里，</text>
+<text x="40.0" y="626.1" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">由 AddAttemptedPodGroupIfNeeded 重新组装入队</text>
+<polyline points="195.0,176.0 195.0,194.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<polyline points="195.0,258.0 195.0,276.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="232.2" y="259.1" width="65.5" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="265.0" y="270.0" font-size="11.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">组对象到达</text>
+<polyline points="135.0,386.0 135.0,404.0" fill="none" stroke="#dc2626" stroke-width="1.5" marker-end="url(#ar)"/>
+<polyline points="338.0,386.0 338.0,486.0" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#ag)"/>
+<rect x="322.5" y="429.1" width="31.0" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="338.0" y="440.0" font-size="11.5" fill="#059669" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">放行</text>
+<polyline points="60.0,468.0 60.0,486.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="410.0" y="96.0" font-size="15" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">scheduleOnePodGroup（schedule_one_podgroup.go）</text>
+<rect x="410.0" y="110.0" width="560.0" height="56.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="420.0" y="133.6" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">① UpdateSnapshot → reconcilePodGroupWithSnapshot → validatePodGroupHierarchy</text>
+<text x="420.0" y="151.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">→ skipPodGroupPodSchedule（剔除正在删除或已 assume 的 Pod）</text>
+<rect x="410.0" y="184.0" width="560.0" height="56.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+<text x="420.0" y="208.0" font-size="13" fill="#0d9488" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">② PlacementGenerate（仅 TopologyAwareWorkloadScheduling）</text>
+<text x="420.0" y="225.7" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">TopologyPlacementGenerator 按拓扑域切出候选 placement（第 22 篇）</text>
+<rect x="410.0" y="258.0" width="560.0" height="150.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="420.0" y="285.5" font-size="13" fill="#2563eb" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">③ 对每个候选 placement：AssumePlacement 限定节点集合</text>
+<text x="420.0" y="303.2" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">按固定顺序逐个 Pod：schedulingAlgorithm（PreFilter/Filter/Score）</text>
+<text x="420.0" y="320.6" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">  失败时不跑 PostFilter；成功则 AssumeAndReserveInSnapshot</text>
+<text x="420.0" y="338.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">每评估完一个 Pod 调一次 PlacementFeasible（GangScheduling）：</text>
+<text x="420.0" y="355.4" font-size="12" fill="#ea580c" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">  Wait：继续评估下一个 Pod</text>
+<text x="420.0" y="372.8" font-size="12" fill="#059669" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">  Success：minCount 已满足，继续评估剩余 Pod</text>
+<text x="420.0" y="390.2" font-size="12" fill="#ea580c" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">  Unschedulable：剩下的 Pod 全成功也凑不够，提前结束</text>
+<rect x="410.0" y="426.0" width="560.0" height="56.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+<text x="420.0" y="450.0" font-size="13" fill="#0d9488" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">④ PlacementScore 选最优 placement（仅 TAS）</text>
+<text x="420.0" y="467.7" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">PodGroupPodsCount + NodeResourcesFit(MostAllocated)（第 23 篇）</text>
+<rect x="410.0" y="500.0" width="560.0" height="56.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="420.0" y="524.0" font-size="13" fill="#ea580c" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">⑤ 根组 Unschedulable → RunPodGroupPostFilterPlugins</text>
+<text x="420.0" y="541.7" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">DefaultPreemption 做整组抢占；成功则整组标记 waitingOnPreemption</text>
+<rect x="410.0" y="574.0" width="560.0" height="96.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="420.0" y="591.9" font-size="13" fill="#059669" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">⑥ submitPodGroupAlgorithmResult</text>
+<text x="420.0" y="609.6" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">组 Success：成功的 Pod 走 AssumeAndReserveInCache + Permit，</text>
+<text x="420.0" y="627.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">  然后各自 go runBindingCycle（绑定互相独立）</text>
+<text x="420.0" y="644.4" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">组失败或单个 Pod 失败：FailureHandler → 回到 pendingPodGroupPods</text>
+<text x="420.0" y="661.8" font-size="12" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">最后更新 PodGroup 的 PodGroupInitiallyScheduled condition</text>
+<polyline points="690.0,166.0 690.0,182.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<polyline points="690.0,240.0 690.0,256.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<polyline points="690.0,408.0 690.0,424.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<polyline points="690.0,482.0 690.0,498.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<polyline points="690.0,556.0 690.0,572.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<polyline points="360.0,511.0 385.0,511.0 385.0,138.0 408.0,138.0" fill="none" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ab)"/>
+<rect x="370.3" y="308.6" width="29.4" height="16.2" fill="#ffffff" opacity="0.92"/>
+<text x="385.0" y="320.0" font-size="12" fill="#2563eb" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Pop</text>
+<polyline points="410.0,610.0 362.0,610.0" fill="none" stroke="#7c3aed" stroke-width="1.5"/>
+<polygon points="361.0,610 369.0,605 369.0,615" fill="#7c3aed"/>
+<polyline points="90.0,636.0 90.0,700.0 260.0,700.0" fill="none" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="262.0" y="684.0" width="360.0" height="34.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="272.0" y="705.3" font-size="12" fill="#7c3aed" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">AddAttemptedPodGroupIfNeeded：回 activeQ / backoffQ</text>
+<text x="30.0" y="760.0" font-size="12.5" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">状态码配色：</text>
+<rect x="114.0" y="748.0" width="14.0" height="14.0" rx="3" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="134.0" y="760.0" font-size="12.5" fill="#059669" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Success</text>
+<rect x="200.0" y="748.0" width="14.0" height="14.0" rx="3" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="220.0" y="760.0" font-size="12.5" fill="#ea580c" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Wait / Unschedulable（可经抢占解决）</text>
+<rect x="460.0" y="748.0" width="14.0" height="14.0" rx="3" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="480.0" y="760.0" font-size="12.5" fill="#dc2626" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">UnschedulableAndUnresolvable（PreEnqueue 门禁）</text>
+<text x="30.0" y="790.0" font-size="12.5" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">没有开启 TopologyAwareWorkloadScheduling 时跳过 ② 和 ④：整组在一个隐式 placement（全部节点）里只跑一遍 ③。</text>
+<text x="30.0" y="814.0" font-size="12.5" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">CompositePodGroup 的根组会递归地对子组重复 ②~③，子组结果再按 minGroupCount 由 PlacementFeasible 汇总。</text>
+</svg>

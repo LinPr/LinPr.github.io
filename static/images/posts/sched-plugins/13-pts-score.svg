@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 530" width="960" height="530" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker><marker id="arg" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#059669"/></marker><marker id="aro" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#ea580c"/></marker><marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#dc2626"/></marker></defs>
+  <rect width="960" height="530" fill="#ffffff"/>
+  <text x="480.0" y="32.0" font-size="19" fill="#1e293b" font-weight="700" text-anchor="middle">Score 算例：系统默认约束下 4 个节点的打分</text>
+  <text x="480.0" y="54.0" font-size="12.5" fill="#64748b" text-anchor="middle">hostname（maxSkew=3）与 zone（maxSkew=5）两条 ScheduleAnyway 约束；同一 ReplicaSet 已有 4 个副本</text>
+  <rect x="30.0" y="74.0" width="440.0" height="92.0" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="250.0" y="105.8" font-size="13" fill="#7c3aed" font-weight="700" text-anchor="middle">权重 topologyNormalizingWeight = ln(域数 + 2)</text>
+  <text x="250.0" y="124.7" font-size="13" fill="#334155" text-anchor="middle">hostname：4 个候选节点 → ln 6 ≈ 1.792</text>
+  <text x="250.0" y="143.5" font-size="13" fill="#334155" text-anchor="middle">zone：3 个 zone → ln 5 ≈ 1.609</text>
+  <rect x="490.0" y="74.0" width="440.0" height="92.0" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="710.0" y="105.8" font-size="13" fill="#7c3aed" font-weight="700" text-anchor="middle">scoreForCount = cnt × 权重 + (maxSkew − 1)</text>
+  <text x="710.0" y="124.7" font-size="13" fill="#334155" text-anchor="middle">hostname 项：cnt = 本节点上的匹配数，加 2</text>
+  <text x="710.0" y="143.5" font-size="13" fill="#334155" text-anchor="middle">zone 项：cnt = 节点所在 zone 的匹配数，加 4</text>
+  <rect x="30.0" y="186.0" width="900.0" height="34.0" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="65.0" y="208.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">节点</text>
+  <text x="135.0" y="208.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">zone</text>
+  <text x="205.0" y="208.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">本节点</text>
+  <text x="277.0" y="208.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">本 zone</text>
+  <text x="384.0" y="208.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">hostname 项</text>
+  <text x="524.0" y="208.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">zone 项</text>
+  <text x="640.0" y="208.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">原始分</text>
+  <text x="748.0" y="208.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">Normalize</text>
+  <text x="870.0" y="208.0" font-size="13" fill="#1e293b" font-weight="700" text-anchor="middle">× 权重 2</text>
+  <rect x="30.0" y="226.0" width="900.0" height="34.0" rx="6" fill="#fff7ed" stroke="#ea580c" stroke-width="1"/>
+  <text x="65.0" y="248.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">n1</text>
+  <text x="135.0" y="248.0" font-size="12.5" fill="#1e293b" text-anchor="middle">a</text>
+  <text x="205.0" y="248.0" font-size="12.5" fill="#1e293b" text-anchor="middle">2</text>
+  <text x="277.0" y="248.0" font-size="12.5" fill="#1e293b" text-anchor="middle">3</text>
+  <text x="384.0" y="248.0" font-size="12.5" fill="#1e293b" text-anchor="middle">2×1.792+2 = 5.58</text>
+  <text x="524.0" y="248.0" font-size="12.5" fill="#1e293b" text-anchor="middle">3×1.609+4 = 8.83</text>
+  <text x="640.0" y="248.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">14</text>
+  <text x="748.0" y="248.0" font-size="12.5" fill="#1e293b" text-anchor="middle">100×6/14 = 42</text>
+  <text x="870.0" y="248.0" font-size="12.5" fill="#ea580c" font-weight="700" text-anchor="middle">84</text>
+  <rect x="30.0" y="266.0" width="900.0" height="34.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="65.0" y="288.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">n2</text>
+  <text x="135.0" y="288.0" font-size="12.5" fill="#1e293b" text-anchor="middle">a</text>
+  <text x="205.0" y="288.0" font-size="12.5" fill="#1e293b" text-anchor="middle">1</text>
+  <text x="277.0" y="288.0" font-size="12.5" fill="#1e293b" text-anchor="middle">3</text>
+  <text x="384.0" y="288.0" font-size="12.5" fill="#1e293b" text-anchor="middle">1×1.792+2 = 3.79</text>
+  <text x="524.0" y="288.0" font-size="12.5" fill="#1e293b" text-anchor="middle">3×1.609+4 = 8.83</text>
+  <text x="640.0" y="288.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">13</text>
+  <text x="748.0" y="288.0" font-size="12.5" fill="#1e293b" text-anchor="middle">100×7/14 = 50</text>
+  <text x="870.0" y="288.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">100</text>
+  <rect x="30.0" y="306.0" width="900.0" height="34.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="65.0" y="328.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">n3</text>
+  <text x="135.0" y="328.0" font-size="12.5" fill="#1e293b" text-anchor="middle">b</text>
+  <text x="205.0" y="328.0" font-size="12.5" fill="#1e293b" text-anchor="middle">1</text>
+  <text x="277.0" y="328.0" font-size="12.5" fill="#1e293b" text-anchor="middle">1</text>
+  <text x="384.0" y="328.0" font-size="12.5" fill="#1e293b" text-anchor="middle">1×1.792+2 = 3.79</text>
+  <text x="524.0" y="328.0" font-size="12.5" fill="#1e293b" text-anchor="middle">1×1.609+4 = 5.61</text>
+  <text x="640.0" y="328.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">9</text>
+  <text x="748.0" y="328.0" font-size="12.5" fill="#1e293b" text-anchor="middle">100×11/14 = 78</text>
+  <text x="870.0" y="328.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">156</text>
+  <rect x="30.0" y="346.0" width="900.0" height="34.0" rx="6" fill="#ecfdf5" stroke="#059669" stroke-width="1"/>
+  <text x="65.0" y="368.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">n4</text>
+  <text x="135.0" y="368.0" font-size="12.5" fill="#1e293b" text-anchor="middle">c</text>
+  <text x="205.0" y="368.0" font-size="12.5" fill="#1e293b" text-anchor="middle">0</text>
+  <text x="277.0" y="368.0" font-size="12.5" fill="#1e293b" text-anchor="middle">0</text>
+  <text x="384.0" y="368.0" font-size="12.5" fill="#1e293b" text-anchor="middle">0×1.792+2 = 2.00</text>
+  <text x="524.0" y="368.0" font-size="12.5" fill="#1e293b" text-anchor="middle">0×1.609+4 = 4.00</text>
+  <text x="640.0" y="368.0" font-size="12.5" fill="#1e293b" font-weight="700" text-anchor="middle">6</text>
+  <text x="748.0" y="368.0" font-size="12.5" fill="#1e293b" text-anchor="middle">100×14/14 = 100</text>
+  <text x="870.0" y="368.0" font-size="12.5" fill="#059669" font-weight="700" text-anchor="middle">200</text>
+  <rect x="30.0" y="400.0" width="900.0" height="100.0" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="50.0" y="426.4" font-size="13" fill="#1e293b" font-weight="700">NormalizeScore：score = 100 × (maxScore + minScore − s) / maxScore，整数除法</text>
+  <text x="50.0" y="445.3" font-size="13" fill="#334155">原始分用 math.Round 取整：14.41→14，12.62→13，9.40→9，6.00→6；maxScore=14，minScore=6</text>
+  <text x="50.0" y="464.1" font-size="13" fill="#334155">它不是 min-max 归一化：最差的 n1 仍得 42 分，不是 0。分母是 maxScore，所以 (maxSkew−1) 这类常数偏移</text>
+  <text x="50.0" y="483.0" font-size="13" fill="#334155">会把所有节点的分数往 100 推近——maxSkew 越大，打分对偏差越「宽容」</text>
+  <text x="480.0" y="524.0" font-size="12.5" fill="#64748b" text-anchor="middle">原始分越小表示越分散；NormalizeScore 把方向翻过来，n4 所在的空 zone、空节点得满分</text>
+</svg>

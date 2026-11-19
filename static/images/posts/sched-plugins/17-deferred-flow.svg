@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 710" width="960" height="710" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker><marker id="arg" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#059669"/></marker><marker id="aro" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#ea580c"/></marker><marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#dc2626"/></marker></defs>
+  <rect width="960" height="710" fill="#ffffff"/>
+  <text x="480.0" y="32.0" font-size="19" fill="#1e293b" font-weight="700" text-anchor="middle">一个 Deferred resize 在调度器里走一圈</text>
+  <text x="480.0" y="54.0" font-size="12.5" fill="#64748b" text-anchor="middle">节点 allocatable cpu=300m；preemptor 已在节点上运行，allocated 100m，spec 改成 300m；victim-1 低优先级，200m</text>
+  <rect x="100.0" y="74.0" width="530.0" height="50.0" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="114.0" y="94.4" font-size="12.5" fill="#334155" font-weight="700">kubelet 判定放不下：PodResizePending，reason=Deferred</text>
+  <text x="114.0" y="112.6" font-size="12.5" fill="#334155">开启 gate 后，kubelet 不再为 resize 做关键 Pod 抢占，交给调度器</text>
+  <rect x="20.0" y="85.0" width="68.0" height="28.0" rx="14" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="54.0" y="104.0" font-size="12" fill="#2563eb" font-weight="700" text-anchor="middle">kubelet</text>
+  <line x1="320.0" y1="124.0" x2="320.0" y2="138.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <rect x="100.0" y="142.0" width="530.0" height="50.0" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="114.0" y="162.4" font-size="12.5" fill="#334155" font-weight="700">eventhandlers.updatePod：已绑定的 Pod 变成 Deferred</text>
+  <text x="114.0" y="180.6" font-size="12.5" fill="#334155">addPodToSchedulingQueue——已绑定的 Pod 重新进入调度队列</text>
+  <rect x="20.0" y="153.0" width="68.0" height="28.0" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="54.0" y="172.0" font-size="12" fill="#7c3aed" font-weight="700" text-anchor="middle">调度器</text>
+  <line x1="320.0" y1="192.0" x2="320.0" y2="206.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <rect x="100.0" y="210.0" width="530.0" height="50.0" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="114.0" y="230.4" font-size="12.5" fill="#334155" font-weight="700">PreFilter：其它插件对 Deferred Pod 一律返回 Skip</text>
+  <text x="114.0" y="248.6" font-size="12.5" fill="#334155">还在跑的只有 NodeName、DeferredPodScheduling、NodeResourcesFit</text>
+  <rect x="20.0" y="221.0" width="68.0" height="28.0" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="54.0" y="240.0" font-size="12" fill="#7c3aed" font-weight="700" text-anchor="middle">调度器</text>
+  <line x1="320.0" y1="260.0" x2="320.0" y2="274.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <rect x="100.0" y="278.0" width="530.0" height="104.0" rx="8" fill="#fff7ed" stroke="#fdba74" stroke-width="1.2"/>
+  <text x="114.0" y="298.2" font-size="12.5" fill="#334155" font-weight="700">Filter（默认顺序：NodeName → … → DeferredPodScheduling → Fit）</text>
+  <text x="114.0" y="316.4" font-size="12.5" fill="#334155">其它节点：NodeName → UnschedulableAndUnresolvable</text>
+  <text x="114.0" y="334.5" font-size="12.5" fill="#334155">本节点禁用 resize 抢占：DeferredPodScheduling → UnschedulableAndUnresolvable</text>
+  <text x="114.0" y="352.6" font-size="12.5" fill="#ea580c">本节点：Fit 算增量 delta = max(0, 300 − 300) = 0，但 requested 500 &gt; 300</text>
+  <text x="114.0" y="370.8" font-size="12.5" fill="#ea580c" font-weight="700">→ Insufficient cpu，Unschedulable</text>
+  <rect x="20.0" y="316.0" width="68.0" height="28.0" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="54.0" y="335.0" font-size="12" fill="#7c3aed" font-weight="700" text-anchor="middle">调度器</text>
+  <line x1="320.0" y1="382.0" x2="320.0" y2="396.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <rect x="100.0" y="400.0" width="530.0" height="50.0" rx="8" fill="#fff7ed" stroke="#fdba74" stroke-width="1.2"/>
+  <text x="114.0" y="420.4" font-size="12.5" fill="#334155" font-weight="700">PostFilter（DefaultPreemption）：唯一候选就是本节点</text>
+  <text x="114.0" y="438.6" font-size="12.5" fill="#334155">驱逐 victim-1；不设置 nominatedNodeName，PodScheduled 保持 True</text>
+  <rect x="20.0" y="411.0" width="68.0" height="28.0" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="54.0" y="430.0" font-size="12" fill="#7c3aed" font-weight="700" text-anchor="middle">调度器</text>
+  <line x1="320.0" y1="450.0" x2="320.0" y2="464.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <rect x="100.0" y="468.0" width="530.0" height="50.0" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="114.0" y="488.4" font-size="12.5" fill="#334155" font-weight="700">victim-1 删除：AssignedPod/Delete 发生在同一节点</text>
+  <text x="114.0" y="506.6" font-size="12.5" fill="#334155">NodeResourcesFit 的 hint 返回 Queue（不同节点的删除返回 QueueSkip）</text>
+  <rect x="20.0" y="479.0" width="68.0" height="28.0" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="54.0" y="498.0" font-size="12" fill="#7c3aed" font-weight="700" text-anchor="middle">调度器</text>
+  <line x1="320.0" y1="518.0" x2="320.0" y2="532.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <rect x="100.0" y="536.0" width="530.0" height="86.0" rx="8" fill="#ecfdf5" stroke="#86efac" stroke-width="1.2"/>
+  <text x="114.0" y="556.3" font-size="12.5" fill="#059669" font-weight="700">再来一轮：requested 300 ≤ 300，Filter 全部通过</text>
+  <text x="114.0" y="574.4" font-size="12.5" fill="#334155">设计意图：Permit 拒绝，UnschedulableAndUnresolvable，</text>
+  <text x="114.0" y="592.6" font-size="12.5" fill="#334155">「pod resize fits, waiting for Kubelet actuation」，Pod 停在 unschedulable 队列</text>
+  <text x="114.0" y="610.7" font-size="12.5" fill="#dc2626">本提交实测：先到 AssumePod，缓存里已有该 Pod，返回 Error 走退避</text>
+  <rect x="20.0" y="565.0" width="68.0" height="28.0" rx="14" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="54.0" y="584.0" font-size="12" fill="#7c3aed" font-weight="700" text-anchor="middle">调度器</text>
+  <line x1="320.0" y1="622.0" x2="320.0" y2="636.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <rect x="100.0" y="640.0" width="530.0" height="50.0" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="114.0" y="660.4" font-size="12.5" fill="#334155" font-weight="700">kubelet 重试 pending resize 成功，清掉 Deferred 条件</text>
+  <text x="114.0" y="678.6" font-size="12.5" fill="#334155">updatePod：Deferred → 非 Deferred，deletePodFromSchedulingQueue</text>
+  <rect x="20.0" y="651.0" width="68.0" height="28.0" rx="14" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="54.0" y="670.0" font-size="12" fill="#2563eb" font-weight="700" text-anchor="middle">kubelet</text>
+  <rect x="650.0" y="74.0" width="290.0" height="400.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="666.0" y="98.0" font-size="13.5" fill="#1e293b" font-weight="700">调度器缓存里的 cpu 账本</text>
+  <text x="666.0" y="120.0" font-size="12" fill="#64748b">resize 中的 Pod 按 max(spec, 实际, 已分配)</text>
+  <text x="666.0" y="138.0" font-size="12" fill="#64748b">计入节点 requested</text>
+  <text x="666.0" y="170.0" font-size="12.5" fill="#1e293b" font-weight="700">抢占前：500m &gt; 300m</text>
+  <rect x="670.0" y="178.0" width="100.0" height="30.0" rx="4" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+  <text x="720.0" y="198.0" font-size="11.5" fill="#ea580c" font-weight="700" text-anchor="middle">victim 200m</text>
+  <rect x="770.0" y="178.0" width="150.0" height="30.0" rx="4" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="845.0" y="198.0" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="middle">preemptor 300m</text>
+  <line x1="820.0" y1="168.0" x2="820.0" y2="178.0" stroke="#dc2626" stroke-width="2"/>
+  <line x1="820.0" y1="208.0" x2="820.0" y2="218.0" stroke="#dc2626" stroke-width="2"/>
+  <text x="820.0" y="232.0" font-size="11.5" fill="#dc2626" text-anchor="middle">allocatable 300m</text>
+  <text x="666.0" y="270.0" font-size="12.5" fill="#1e293b" font-weight="700">抢占后：300m ≤ 300m</text>
+  <rect x="670.0" y="278.0" width="150.0" height="30.0" rx="4" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="745.0" y="298.0" font-size="11.5" fill="#7c3aed" font-weight="700" text-anchor="middle">preemptor 300m</text>
+  <line x1="820.0" y1="268.0" x2="820.0" y2="278.0" stroke="#dc2626" stroke-width="2"/>
+  <line x1="820.0" y1="308.0" x2="820.0" y2="318.0" stroke="#dc2626" stroke-width="2"/>
+  <rect x="664.0" y="334.0" width="262.0" height="126.0" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="795.0" y="365.2" font-size="12.5" fill="#7c3aed" font-weight="700" text-anchor="middle">为什么 delta 是 0</text>
+  <text x="795.0" y="383.4" font-size="12.5" fill="#334155" text-anchor="middle">新需求 300m 已经算在账本里，</text>
+  <text x="795.0" y="401.5" font-size="12.5" fill="#334155" text-anchor="middle">再加一遍就重复了；所以 Fit 只拿</text>
+  <text x="795.0" y="419.6" font-size="12.5" fill="#334155" text-anchor="middle">「请求 − 缓存值」去比剩余量，</text>
+  <text x="795.0" y="437.8" font-size="12.5" fill="#334155" text-anchor="middle">实际是在检查节点是否超卖</text>
+  <rect x="650.0" y="490.0" width="290.0" height="160.0" rx="8" fill="#f0fdfa" stroke="#5eead4" stroke-width="1.2"/>
+  <text x="795.0" y="529.2" font-size="12.5" fill="#0d9488" font-weight="700" text-anchor="middle">为什么插在 NodeResourcesFit 之前</text>
+  <text x="795.0" y="547.3" font-size="12.5" fill="#334155" text-anchor="middle">Filter 遇到第一个失败就返回。</text>
+  <text x="795.0" y="565.4" font-size="12.5" fill="#334155" text-anchor="middle">若 Fit 先失败，记下的是 Fit，</text>
+  <text x="795.0" y="583.6" font-size="12.5" fill="#334155" text-anchor="middle">节点重新允许 resize 抢占时，</text>
+  <text x="795.0" y="601.7" font-size="12.5" fill="#334155" text-anchor="middle">UpdateNodePreemptionPolicy 事件</text>
+  <text x="795.0" y="619.8" font-size="12.5" fill="#334155" text-anchor="middle">唤不醒这个 Pod</text>
+</svg>

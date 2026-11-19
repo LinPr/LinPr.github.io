@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" width="960" height="520" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<rect width="960" height="520" fill="#ffffff"/>
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 z" fill="#94a3b8"/></marker></defs>
+<text x="480.0" y="34.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">为什么单节点抢占解决不了拓扑分布</text>
+<text x="480.0" y="58.0" font-size="13" fill="#64748b" text-anchor="middle">来自 cross_node_preemption_test.go：p 带 foo 标签、优先级 100，topologySpreadConstraint maxSkew=1，topologyKey=zone</text>
+<rect x="30.0" y="80.0" width="470.0" height="160.0" rx="10" fill="#ffffff" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="6 4"/>
+<text x="46.0" y="102.0" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">zone1：已有 2 个 foo</text>
+<rect x="50.0" y="114.0" width="200.0" height="110.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="62.0" y="134.0" font-size="13" fill="#1e293b" text-anchor="start" font-weight="700">node-a</text>
+<rect x="62.0" y="150.0" width="110.0" height="40.0" rx="6" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="117.0" y="167.0" font-size="12.5" fill="#ea580c" text-anchor="middle" font-weight="700">pod-a</text>
+<text x="117.0" y="183.0" font-size="11" fill="#64748b" text-anchor="middle">foo，优先级 0</text>
+<rect x="275.0" y="114.0" width="200.0" height="110.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="287.0" y="134.0" font-size="13" fill="#1e293b" text-anchor="start" font-weight="700">node-b</text>
+<rect x="287.0" y="150.0" width="110.0" height="40.0" rx="6" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="342.0" y="167.0" font-size="12.5" fill="#ea580c" text-anchor="middle" font-weight="700">pod-b</text>
+<text x="342.0" y="183.0" font-size="11" fill="#64748b" text-anchor="middle">foo，优先级 0</text>
+<rect x="530.0" y="80.0" width="400.0" height="160.0" rx="10" fill="#ffffff" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="6 4"/>
+<text x="546.0" y="102.0" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">zone2：0 个 foo</text>
+<rect x="550.0" y="114.0" width="200.0" height="110.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="562.0" y="134.0" font-size="13" fill="#1e293b" text-anchor="start" font-weight="700">node-x（pods 容量 1）</text>
+<rect x="562.0" y="150.0" width="150.0" height="40.0" rx="6" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="637.0" y="167.0" font-size="12.5" fill="#7c3aed" text-anchor="middle" font-weight="700">pod-x</text>
+<text x="637.0" y="183.0" font-size="11" fill="#64748b" text-anchor="middle">无 foo，优先级 100</text>
+<rect x="770.0" y="114.0" width="140.0" height="110.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="782.0" y="146.3" font-size="13" fill="#1e293b" text-anchor="start" font-weight="700">放进 zone2</text>
+<text x="782.0" y="164.6" font-size="12.5" fill="#334155" text-anchor="start">分布约束满足</text>
+<text x="782.0" y="182.7" font-size="12.5" fill="#334155" text-anchor="start">但节点已满，</text>
+<text x="782.0" y="200.9" font-size="12.5" fill="#334155" text-anchor="start">pod-x 不比 p 低</text>
+<rect x="30.0" y="270.0" width="288.0" height="150.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="42.0" y="313.6" font-size="14" fill="#ea580c" text-anchor="start" font-weight="700">in-tree：只看 node-a</text>
+<text x="42.0" y="332.3" font-size="12.5" fill="#334155" text-anchor="start">候选受害者只能在 node-a 上：pod-a</text>
+<text x="42.0" y="350.4" font-size="12.5" fill="#334155" text-anchor="start">移除后 zone1 仍有 pod-b</text>
+<text x="42.0" y="368.5" font-size="12.5" fill="#334155" text-anchor="start">放入 p：zone1 = 2，zone2 = 0</text>
+<text x="42.0" y="386.7" font-size="12.5" fill="#334155" text-anchor="start">skew = 2 &gt; 1，Filter 失败</text>
+<rect x="336.0" y="270.0" width="288.0" height="150.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="348.0" y="313.6" font-size="14" fill="#ea580c" text-anchor="start" font-weight="700">in-tree：只看 node-x</text>
+<text x="348.0" y="332.3" font-size="12.5" fill="#334155" text-anchor="start">pod-x 优先级 100，不低于 p</text>
+<text x="348.0" y="350.4" font-size="12.5" fill="#334155" text-anchor="start">没有候选受害者</text>
+<text x="348.0" y="368.5" font-size="12.5" fill="#334155" text-anchor="start">UnschedulableAndUnresolvable</text>
+<text x="348.0" y="386.7" font-size="12.5" fill="#334155" text-anchor="start">node-b 与 node-a 对称，同样失败</text>
+<rect x="642.0" y="270.0" width="288.0" height="150.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="654.0" y="313.6" font-size="14" fill="#059669" text-anchor="start" font-weight="700">跨节点：一次选两个</text>
+<text x="654.0" y="332.3" font-size="12.5" fill="#334155" text-anchor="start">同时移除 pod-a 与 pod-b</text>
+<text x="654.0" y="350.4" font-size="12.5" fill="#334155" text-anchor="start">放入 p：zone1 = 1，zone2 = 0</text>
+<text x="654.0" y="368.5" font-size="12.5" fill="#334155" text-anchor="start">skew = 1 ≤ 1，Filter 通过</text>
+<text x="654.0" y="386.7" font-size="12.5" fill="#334155" text-anchor="start">提名 node-a 或 node-b 均可</text>
+<rect x="30.0" y="440.0" width="900.0" height="60.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="42.0" y="465.1" font-size="13" fill="#334155" text-anchor="start">PodTopologySpread 的计数是跨节点的：zone1 的计数由 node-a、node-b 上的 Pod 共同决定。</text>
+<text x="42.0" y="483.9" font-size="13" fill="#334155" text-anchor="start">Evaluator 每次只在一个节点副本上移除受害者，另一个节点上的 pod-b 永远留在计数里。</text>
+</svg>

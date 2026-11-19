@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 560" width="880" height="560" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker></defs>
+<rect width="880" height="560" fill="#ffffff"/>
+<text x="440.0" y="32.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">TargetLoadPacking 打分曲线：目标利用率处是尖顶</text>
+<text x="440.0" y="54.0" font-size="12.5" fill="#64748b" text-anchor="middle">横轴是「节点当前 CPU 利用率 + 待调度 Pod 预测用量 + 滞后补偿」，实线 T=40（默认），虚线 T=70</text>
+<line x1="100.0" y1="460.0" x2="640.0" y2="460.0" stroke="#e2e8f0" stroke-width="1"/>
+<text x="92.0" y="464.0" font-size="11.5" fill="#64748b" text-anchor="end">0</text>
+<line x1="100.0" y1="386.0" x2="640.0" y2="386.0" stroke="#e2e8f0" stroke-width="1"/>
+<text x="92.0" y="390.0" font-size="11.5" fill="#64748b" text-anchor="end">20</text>
+<line x1="100.0" y1="312.0" x2="640.0" y2="312.0" stroke="#e2e8f0" stroke-width="1"/>
+<text x="92.0" y="316.0" font-size="11.5" fill="#64748b" text-anchor="end">40</text>
+<line x1="100.0" y1="238.0" x2="640.0" y2="238.0" stroke="#e2e8f0" stroke-width="1"/>
+<text x="92.0" y="242.0" font-size="11.5" fill="#64748b" text-anchor="end">60</text>
+<line x1="100.0" y1="164.0" x2="640.0" y2="164.0" stroke="#e2e8f0" stroke-width="1"/>
+<text x="92.0" y="168.0" font-size="11.5" fill="#64748b" text-anchor="end">80</text>
+<line x1="100.0" y1="90.0" x2="640.0" y2="90.0" stroke="#e2e8f0" stroke-width="1"/>
+<text x="92.0" y="94.0" font-size="11.5" fill="#64748b" text-anchor="end">100</text>
+<line x1="100.0" y1="460.0" x2="100.0" y2="465.0" stroke="#475569" stroke-width="1"/>
+<text x="100.0" y="479.0" font-size="11.5" fill="#64748b" text-anchor="middle">0</text>
+<line x1="149.1" y1="460.0" x2="149.1" y2="465.0" stroke="#475569" stroke-width="1"/>
+<text x="149.1" y="479.0" font-size="11.5" fill="#64748b" text-anchor="middle">10</text>
+<line x1="198.2" y1="460.0" x2="198.2" y2="465.0" stroke="#475569" stroke-width="1"/>
+<text x="198.2" y="479.0" font-size="11.5" fill="#64748b" text-anchor="middle">20</text>
+<line x1="247.3" y1="460.0" x2="247.3" y2="465.0" stroke="#475569" stroke-width="1"/>
+<text x="247.3" y="479.0" font-size="11.5" fill="#64748b" text-anchor="middle">30</text>
+<line x1="296.4" y1="460.0" x2="296.4" y2="465.0" stroke="#475569" stroke-width="1"/>
+<text x="296.4" y="479.0" font-size="11.5" fill="#64748b" text-anchor="middle">40</text>
+<line x1="345.5" y1="460.0" x2="345.5" y2="465.0" stroke="#475569" stroke-width="1"/>
+<text x="345.5" y="479.0" font-size="11.5" fill="#64748b" text-anchor="middle">50</text>
+<line x1="394.5" y1="460.0" x2="394.5" y2="465.0" stroke="#475569" stroke-width="1"/>
+<text x="394.5" y="479.0" font-size="11.5" fill="#64748b" text-anchor="middle">60</text>
+<line x1="443.6" y1="460.0" x2="443.6" y2="465.0" stroke="#475569" stroke-width="1"/>
+<text x="443.6" y="479.0" font-size="11.5" fill="#64748b" text-anchor="middle">70</text>
+<line x1="492.7" y1="460.0" x2="492.7" y2="465.0" stroke="#475569" stroke-width="1"/>
+<text x="492.7" y="479.0" font-size="11.5" fill="#64748b" text-anchor="middle">80</text>
+<line x1="541.8" y1="460.0" x2="541.8" y2="465.0" stroke="#475569" stroke-width="1"/>
+<text x="541.8" y="479.0" font-size="11.5" fill="#64748b" text-anchor="middle">90</text>
+<line x1="590.9" y1="460.0" x2="590.9" y2="465.0" stroke="#475569" stroke-width="1"/>
+<text x="590.9" y="479.0" font-size="11.5" fill="#64748b" text-anchor="middle">100</text>
+<line x1="640.0" y1="460.0" x2="640.0" y2="465.0" stroke="#475569" stroke-width="1"/>
+<text x="640.0" y="479.0" font-size="11.5" fill="#64748b" text-anchor="middle">110</text>
+<line x1="100.0" y1="460.0" x2="640.0" y2="460.0" stroke="#475569" stroke-width="1.3"/>
+<line x1="100.0" y1="90.0" x2="100.0" y2="460.0" stroke="#475569" stroke-width="1.3"/>
+<text x="370.0" y="500.0" font-size="12.5" fill="#475569" text-anchor="middle">预测 CPU 利用率 U（%）</text>
+<text x="54" y="275.0" font-size="12.5" fill="#475569" text-anchor="middle" transform="rotate(-90 54 275.0)">Score</text>
+<path d="M100.0,201.0 L104.3,199.6 L108.6,198.2 L112.9,196.8 L117.2,195.4 L121.5,194.1 L125.8,192.7 L130.1,191.3 L134.4,189.9 L138.7,188.5 L143.0,187.1 L147.2,185.7 L151.5,184.4 L155.8,183.0 L160.1,181.6 L164.4,180.2 L168.7,178.8 L173.0,177.4 L177.3,176.0 L181.6,174.6 L185.9,173.2 L190.2,171.9 L194.5,170.5 L198.8,169.1 L203.1,167.7 L207.4,166.3 L211.7,164.9 L216.0,163.5 L220.3,162.1 L224.6,160.8 L228.9,159.4 L233.2,158.0 L237.5,156.6 L241.8,155.2 L246.0,153.8 L250.3,152.4 L254.6,151.1 L258.9,149.7 L263.2,148.3 L267.5,146.9 L271.8,145.5 L276.1,144.1 L280.4,142.7 L284.7,141.3 L289.0,139.9 L293.3,138.6 L297.6,137.2 L301.9,135.8 L306.2,134.4 L310.5,133.0 L314.8,131.6 L319.1,130.2 L323.4,128.8 L327.7,127.5 L332.0,126.1 L336.2,124.7 L340.5,123.3 L344.8,121.9 L349.1,120.5 L353.4,119.1 L357.7,117.8 L362.0,116.4 L366.3,115.0 L370.6,113.6 L374.9,112.2 L379.2,110.8 L383.5,109.4 L387.8,108.0 L392.1,106.7 L396.4,105.3 L400.7,103.9 L405.0,102.5 L409.3,101.1 L413.6,99.7 L417.9,98.3 L422.2,96.9 L426.5,95.6 L430.8,94.2 L435.0,92.8 L439.3,91.4 L443.6,90.0" stroke="#7c3aed" stroke-width="2.4" fill="none" stroke-dasharray="7 5"/>
+<path d="M443.6,201.0 L445.5,204.2 L447.3,207.5 L449.2,210.7 L451.0,214.0 L452.8,217.2 L454.7,220.4 L456.5,223.7 L458.4,226.9 L460.2,230.1 L462.0,233.4 L463.9,236.6 L465.7,239.9 L467.6,243.1 L469.4,246.3 L471.3,249.6 L473.1,252.8 L474.9,256.0 L476.8,259.3 L478.6,262.5 L480.5,265.8 L482.3,269.0 L484.1,272.2 L486.0,275.5 L487.8,278.7 L489.7,281.9 L491.5,285.2 L493.3,288.4 L495.2,291.7 L497.0,294.9 L498.9,298.1 L500.7,301.4 L502.5,304.6 L504.4,307.8 L506.2,311.1 L508.1,314.3 L509.9,317.6 L511.8,320.8 L513.6,324.0 L515.4,327.3 L517.3,330.5 L519.1,333.7 L521.0,337.0 L522.8,340.2 L524.6,343.5 L526.5,346.7 L528.3,349.9 L530.2,353.2 L532.0,356.4 L533.8,359.6 L535.7,362.9 L537.5,366.1 L539.4,369.4 L541.2,372.6 L543.0,375.8 L544.9,379.1 L546.7,382.3 L548.6,385.5 L550.4,388.8 L552.3,392.0 L554.1,395.3 L555.9,398.5 L557.8,401.7 L559.6,405.0 L561.5,408.2 L563.3,411.4 L565.1,414.7 L567.0,417.9 L568.8,421.2 L570.7,424.4 L572.5,427.6 L574.3,430.9 L576.2,434.1 L578.0,437.3 L579.9,440.6 L581.7,443.8 L583.5,447.1 L585.4,450.3 L587.2,453.5 L589.1,456.8 L590.9,460.0" stroke="#7c3aed" stroke-width="2.4" fill="none" stroke-dasharray="7 5"/>
+<line x1="443.6" y1="90.0" x2="443.6" y2="201.0" stroke="#7c3aed" stroke-width="1.2" stroke-dasharray="2 4"/>
+<path d="M100.0,312.0 L102.5,309.2 L104.9,306.5 L107.4,303.7 L109.8,300.9 L112.3,298.1 L114.7,295.4 L117.2,292.6 L119.6,289.8 L122.1,287.0 L124.5,284.2 L127.0,281.5 L129.5,278.7 L131.9,275.9 L134.4,273.1 L136.8,270.4 L139.3,267.6 L141.7,264.8 L144.2,262.0 L146.6,259.3 L149.1,256.5 L151.5,253.7 L154.0,251.0 L156.5,248.2 L158.9,245.4 L161.4,242.6 L163.8,239.9 L166.3,237.1 L168.7,234.3 L171.2,231.5 L173.6,228.8 L176.1,226.0 L178.5,223.2 L181.0,220.4 L183.5,217.6 L185.9,214.9 L188.4,212.1 L190.8,209.3 L193.3,206.5 L195.7,203.8 L198.2,201.0 L200.6,198.2 L203.1,195.4 L205.5,192.7 L208.0,189.9 L210.5,187.1 L212.9,184.4 L215.4,181.6 L217.8,178.8 L220.3,176.0 L222.7,173.2 L225.2,170.5 L227.6,167.7 L230.1,164.9 L232.5,162.1 L235.0,159.4 L237.5,156.6 L239.9,153.8 L242.4,151.1 L244.8,148.3 L247.3,145.5 L249.7,142.7 L252.2,139.9 L254.6,137.2 L257.1,134.4 L259.5,131.6 L262.0,128.8 L264.5,126.1 L266.9,123.3 L269.4,120.5 L271.8,117.8 L274.3,115.0 L276.7,112.2 L279.2,109.4 L281.6,106.7 L284.1,103.9 L286.5,101.1 L289.0,98.3 L291.5,95.6 L293.9,92.8 L296.4,90.0" stroke="#2563eb" stroke-width="2.4" fill="none"/>
+<path d="M296.4,312.0 L300.0,313.9 L303.7,315.7 L307.4,317.6 L311.1,319.4 L314.8,321.3 L318.5,323.1 L322.1,325.0 L325.8,326.8 L329.5,328.7 L333.2,330.5 L336.9,332.4 L340.5,334.2 L344.2,336.1 L347.9,337.9 L351.6,339.8 L355.3,341.6 L359.0,343.5 L362.6,345.3 L366.3,347.2 L370.0,349.0 L373.7,350.9 L377.4,352.7 L381.0,354.6 L384.7,356.4 L388.4,358.3 L392.1,360.1 L395.8,362.0 L399.5,363.8 L403.1,365.7 L406.8,367.5 L410.5,369.4 L414.2,371.2 L417.9,373.1 L421.5,374.9 L425.2,376.8 L428.9,378.6 L432.6,380.5 L436.3,382.3 L440.0,384.2 L443.6,386.0 L447.3,387.9 L451.0,389.7 L454.7,391.6 L458.4,393.4 L462.0,395.3 L465.7,397.1 L469.4,399.0 L473.1,400.8 L476.8,402.7 L480.5,404.5 L484.1,406.4 L487.8,408.2 L491.5,410.1 L495.2,411.9 L498.9,413.8 L502.5,415.6 L506.2,417.5 L509.9,419.3 L513.6,421.2 L517.3,423.0 L521.0,424.9 L524.6,426.7 L528.3,428.6 L532.0,430.4 L535.7,432.3 L539.4,434.1 L543.0,436.0 L546.7,437.8 L550.4,439.7 L554.1,441.5 L557.8,443.4 L561.5,445.2 L565.1,447.1 L568.8,448.9 L572.5,450.8 L576.2,452.6 L579.9,454.5 L583.5,456.3 L587.2,458.2 L590.9,460.0" stroke="#2563eb" stroke-width="2.4" fill="none"/>
+<line x1="296.4" y1="90.0" x2="296.4" y2="312.0" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="2 4"/>
+<path d="M590.9,460.0 L640.0,460.0" stroke="#dc2626" stroke-width="3" fill="none"/>
+<text x="594.8" y="411.9" font-size="11" fill="#dc2626" text-anchor="start">U&gt;100 → 0</text>
+<text x="139.3" y="255.6" font-size="12" fill="#2563eb" text-anchor="start">(100−T)·U/T + T</text>
+<text x="414.2" y="393.2" font-size="12" fill="#2563eb" text-anchor="start">T·(100−U)/(100−T)</text>
+<text x="296.4" y="82.0" font-size="12" fill="#2563eb" text-anchor="middle" font-weight="700">T=40</text>
+<text x="443.6" y="82.0" font-size="12" fill="#7c3aed" text-anchor="middle" font-weight="700">T=70</text>
+<text x="291.5" y="289.8" font-size="11.5" fill="#64748b" text-anchor="end">落差 100→T</text>
+<circle cx="210.5" cy="187.1" r="5.5" fill="#059669" stroke="#ffffff" stroke-width="1.5"/>
+<text x="220.5" y="177.1" font-size="13" fill="#059669" text-anchor="start" font-weight="700">A</text>
+<circle cx="284.1" cy="103.9" r="5.5" fill="#059669" stroke="#ffffff" stroke-width="1.5"/>
+<text x="270.1" y="93.9" font-size="13" fill="#059669" text-anchor="end" font-weight="700">B</text>
+<circle cx="330.1" cy="329.0" r="5.5" fill="#ea580c" stroke="#ffffff" stroke-width="1.5"/>
+<text x="340.1" y="347.0" font-size="13" fill="#ea580c" text-anchor="start" font-weight="700">B'</text>
+<circle cx="382.3" cy="355.2" r="5.5" fill="#059669" stroke="#ffffff" stroke-width="1.5"/>
+<text x="392.3" y="345.2" font-size="13" fill="#059669" text-anchor="start" font-weight="700">C</text>
+<path d="M288.1,111.9 Q325.8,164.0 330.1,320.0" stroke="#ea580c" stroke-width="1.3" fill="none" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+<rect x="668.0" y="96.0" width="196.0" height="300.0" rx="8" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.2"/>
+<text x="680.0" y="120.0" font-size="13" fill="#2563eb" text-anchor="start" font-weight="700">算例（8 核，T=40）</text>
+<text x="680.0" y="140.0" font-size="11.5" fill="#334155" text-anchor="start">Pod：limit 1000m → +12.5%</text>
+<text x="680.0" y="170.0" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">A</text>
+<text x="700.0" y="170.0" font-size="11.5" fill="#334155" text-anchor="start">10% + 12.5%</text>
+<text x="700.0" y="186.0" font-size="11.5" fill="#64748b" text-anchor="start">U=22.5</text>
+<text x="852.0" y="178.0" font-size="13" fill="#059669" text-anchor="end" font-weight="700">74 分</text>
+<text x="680.0" y="214.0" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">B</text>
+<text x="700.0" y="214.0" font-size="11.5" fill="#334155" text-anchor="start">25% + 12.5%</text>
+<text x="700.0" y="230.0" font-size="11.5" fill="#64748b" text-anchor="start">U=37.5</text>
+<text x="852.0" y="222.0" font-size="13" fill="#059669" text-anchor="end" font-weight="700">96 分</text>
+<text x="680.0" y="258.0" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">C</text>
+<text x="700.0" y="258.0" font-size="11.5" fill="#334155" text-anchor="start">45% + 12.5%</text>
+<text x="700.0" y="274.0" font-size="11.5" fill="#64748b" text-anchor="start">U=57.5</text>
+<text x="852.0" y="266.0" font-size="13" fill="#059669" text-anchor="end" font-weight="700">28 分</text>
+<line x1="680.0" y1="290.0" x2="852.0" y2="290.0" stroke="#bfdbfe" stroke-width="1.2"/>
+<text x="680.0" y="310.0" font-size="12.5" fill="#ea580c" text-anchor="start" font-weight="700">B'</text>
+<text x="700.0" y="310.0" font-size="11.5" fill="#334155" text-anchor="start">B 上 20 秒前刚绑定一个</text>
+<text x="700.0" y="326.0" font-size="11.5" fill="#334155" text-anchor="start">request 500m 的 Pod</text>
+<text x="700.0" y="342.0" font-size="11.5" fill="#64748b" text-anchor="start">补偿 750m → U=46.875</text>
+<text x="852.0" y="360.0" font-size="13" fill="#ea580c" text-anchor="end" font-weight="700">35 分</text>
+<text x="680.0" y="382.0" font-size="11.5" fill="#ea580c" text-anchor="start">补偿让 B 从第一掉到最后</text>
+<text x="100.0" y="528.0" font-size="12" fill="#64748b" text-anchor="start">注：U 恰好等于 T 时走上升分支，得 100 分；超过 T 后第一点就跌到 T 分附近，曲线在 T 处不连续。</text>
+</svg>

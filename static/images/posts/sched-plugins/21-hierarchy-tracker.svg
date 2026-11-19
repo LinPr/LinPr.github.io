@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 560" width="980" height="560" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#94a3b8"/></marker><marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#059669"/></marker><marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#ea580c"/></marker><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#dc2626"/></marker><marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#2563eb"/></marker></defs>
+<rect width="980" height="560" fill="#ffffff"/>
+<text x="490.0" y="34.0" font-size="19" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">HierarchyTracker：PreEnqueue 判定 quorum 的计数树</text>
+<text x="490.0" y="58.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">叶子 PodGroup 数 Pod（allPods），CompositePodGroup 数「已就绪的子组」（readyChildren）；只在跨越阈值时向上传播 ±1</text>
+<text x="250.0" y="98.0" font-size="14" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">状态 1：worker-b 只到了 1 个 Pod</text>
+<rect x="140.0" y="116.0" width="220.0" height="64.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="250.0" y="135.3" font-size="13" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">CompositePodGroup train</text>
+<text x="250.0" y="153.0" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">gang.minGroupCount = 2</text>
+<text x="250.0" y="170.4" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">readyChildren = 1</text>
+<rect x="30.0" y="236.0" width="140.0" height="80.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="100.0" y="254.0" font-size="11.5" fill="#059669" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">PodGroup  worker-a</text>
+<text x="100.0" y="271.3" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">minCount = 2</text>
+<text x="100.0" y="288.7" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">allPods = 2</text>
+<text x="100.0" y="306.1" font-size="12" fill="#059669" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">就绪</text>
+<polyline points="100.0,234.0 100.0,210.0 250.0,210.0 250.0,182.0" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#ag)"/>
+<rect x="89.6" y="213.1" width="20.9" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="100.0" y="224.0" font-size="11.5" fill="#059669" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">+1</text>
+<rect x="180.0" y="236.0" width="140.0" height="80.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="250.0" y="254.0" font-size="11.5" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">PodGroup  worker-b</text>
+<text x="250.0" y="271.3" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">minCount = 2</text>
+<text x="250.0" y="288.7" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">allPods = 1</text>
+<text x="250.0" y="306.1" font-size="12" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">未就绪</text>
+<polyline points="250.0,234.0 250.0,210.0 250.0,210.0 250.0,182.0" fill="none" stroke="#cbd5e1" stroke-width="1.2"/>
+<rect x="330.0" y="236.0" width="140.0" height="80.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="400.0" y="254.0" font-size="11.5" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">PodGroup  ps</text>
+<text x="400.0" y="271.3" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">minCount = 1</text>
+<text x="400.0" y="288.7" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">allPods = 0</text>
+<text x="400.0" y="306.1" font-size="12" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">未就绪</text>
+<polyline points="400.0,234.0 400.0,210.0 250.0,210.0 250.0,182.0" fill="none" stroke="#cbd5e1" stroke-width="1.2"/>
+<rect x="30.0" y="340.0" width="440.0" height="76.0" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="40.0" y="365.8" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">worker-a / worker-b / ps 的所有 Pod 跑 PreEnqueue：</text>
+<text x="40.0" y="383.4" font-size="12" fill="#dc2626" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">UnschedulableAndUnresolvable</text>
+<text x="40.0" y="399.7" font-size="11" fill="#dc2626" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">waiting for compositepodgroup/default/train to meet its quorum</text>
+<text x="730.0" y="98.0" font-size="14" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">状态 2：worker-b 的第 2 个 Pod 到达</text>
+<rect x="620.0" y="116.0" width="220.0" height="64.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="730.0" y="135.3" font-size="13" fill="#059669" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">CompositePodGroup train</text>
+<text x="730.0" y="153.0" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">gang.minGroupCount = 2</text>
+<text x="730.0" y="170.4" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">readyChildren = 2</text>
+<rect x="510.0" y="236.0" width="140.0" height="80.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="580.0" y="254.0" font-size="11.5" fill="#059669" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">PodGroup  worker-a</text>
+<text x="580.0" y="271.3" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">minCount = 2</text>
+<text x="580.0" y="288.7" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">allPods = 2</text>
+<text x="580.0" y="306.1" font-size="12" fill="#059669" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">就绪</text>
+<polyline points="580.0,234.0 580.0,210.0 730.0,210.0 730.0,182.0" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#ag)"/>
+<rect x="569.6" y="213.1" width="20.9" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="580.0" y="224.0" font-size="11.5" fill="#059669" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">+1</text>
+<rect x="660.0" y="236.0" width="140.0" height="80.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="730.0" y="254.0" font-size="11.5" fill="#059669" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">PodGroup  worker-b</text>
+<text x="730.0" y="271.3" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">minCount = 2</text>
+<text x="730.0" y="288.7" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">allPods = 2</text>
+<text x="730.0" y="306.1" font-size="12" fill="#059669" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">就绪</text>
+<polyline points="730.0,234.0 730.0,210.0 730.0,210.0 730.0,182.0" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#ag)"/>
+<rect x="719.6" y="213.1" width="20.9" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="730.0" y="224.0" font-size="11.5" fill="#059669" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">+1</text>
+<rect x="654.0" y="230.0" width="152.0" height="92.0" rx="10" fill="none" stroke="#2563eb" stroke-width="1.6" stroke-dasharray="5,4"/>
+<rect x="810.0" y="236.0" width="140.0" height="80.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="880.0" y="254.0" font-size="11.5" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">PodGroup  ps</text>
+<text x="880.0" y="271.3" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">minCount = 1</text>
+<text x="880.0" y="288.7" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">allPods = 0</text>
+<text x="880.0" y="306.1" font-size="12" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">未就绪</text>
+<polyline points="880.0,234.0 880.0,210.0 730.0,210.0 730.0,182.0" fill="none" stroke="#cbd5e1" stroke-width="1.2"/>
+<rect x="510.0" y="340.0" width="440.0" height="76.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="520.0" y="364.7" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">worker-a / worker-b / ps 的所有 Pod 跑 PreEnqueue：</text>
+<text x="520.0" y="382.9" font-size="12.5" fill="#059669" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">根组 readyChildren = 2 ≥ 2，IsReady = true</text>
+<text x="520.0" y="400.4" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">PreEnqueue 返回 nil，整组实体进入 activeQ</text>
+<polyline points="472.0,272.0 502.0,272.0" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#ab)"/>
+<rect x="461.8" y="251.6" width="50.5" height="14.9" fill="#ffffff" opacity="0.92"/>
+<text x="487.0" y="262.0" font-size="11" fill="#2563eb" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Pod Add</text>
+<rect x="30.0" y="436.0" width="920.0" height="104.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="40.0" y="466.6" font-size="13" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">几个只有读代码才看得到的细节</text>
+<text x="40.0" y="484.3" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">· Pod 先于 PodGroup 到达时，getOrCreateGroup 先建占位节点，minCount 默认 1；PodGroup 对象到达后再用真实值重算并补传播。</text>
+<text x="40.0" y="501.7" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">· ps 的 minCount=1 却未就绪：它一个 Pod 都没有。根组只要求 2 个子组就绪，ps 不就绪也不影响放行（minGroupCount 不是「全部」）。</text>
+<text x="40.0" y="519.1" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">· 不开 CompositePodGroup 时 parentKey 被忽略，每个 PodGroup 自己就是根；PreEnqueue 退化为「本组 Pod 总数 ≥ minCount」。</text>
+</svg>

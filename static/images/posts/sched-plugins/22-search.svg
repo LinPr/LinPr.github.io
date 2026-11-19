@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700" width="1000" height="700" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#94a3b8"/></marker><marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#059669"/></marker><marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#ea580c"/></marker><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#dc2626"/></marker><marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#2563eb"/></marker></defs>
+<rect width="1000" height="700" fill="#ffffff"/>
+<text x="500.0" y="34.0" font-size="19" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">podGroupSchedulingPlacementAlgorithm：在多个 placement 里找一个最好的</text>
+<text x="500.0" y="58.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">每个 placement 都完整跑一遍第 21 篇的逐 Pod 试放；评估完立刻 revert，最后只留下被选中的那份结果</text>
+<rect x="30.0" y="90.0" width="560.0" height="50.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+<text x="40.0" y="110.8" font-size="12.5" fill="#0d9488" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">① RunPlacementGeneratePlugins(allNodes = 当前父 placement 的节点)</text>
+<text x="40.0" y="128.4" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">得到 N 个候选 placement，记录 scheduler_generated_placements_total</text>
+<rect x="30.0" y="160.0" width="560.0" height="92.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="40.0" y="184.4" font-size="12.5" fill="#7c3aed" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">② NominatedNodeName 快速路径（仅独立 PodGroup）</text>
+<text x="40.0" y="202.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">组内 Pod 的 NNN 恰好落在唯一一个 placement 里 → 先评估它</text>
+<text x="40.0" y="219.4" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Success 且 anyScheduled → 直接采用，跳过其余 placement 和打分</text>
+<text x="40.0" y="236.8" font-size="12" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">NNN 命中多个 placement（重叠）或没有 NNN → 走常规搜索</text>
+<rect x="30.0" y="272.0" width="560.0" height="74.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="40.0" y="296.1" font-size="12.5" fill="#2563eb" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">③ placementsToEvaluate</text>
+<text x="40.0" y="313.7" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">有 PlacementScore 插件：numToFind = numFeasiblePlacementsToFind(...)，否则为 1</text>
+<text x="40.0" y="331.1" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">numToFind &lt; N 时克隆并随机打乱顺序（不信任生成插件给出的顺序）</text>
+<rect x="30.0" y="366.0" width="560.0" height="112.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="40.0" y="391.7" font-size="12.5" fill="#2563eb" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">④ 逐个 evaluatePlacement</text>
+<text x="40.0" y="409.3" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">AssumePlacement(p)：后续 ListNodesInPlacement 只返回 p 的节点</text>
+<text x="40.0" y="426.7" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">newPlacementCycleState：复制生成阶段挂在 p 上的 StateData</text>
+<text x="40.0" y="444.1" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">podGroupSchedulingDefaultAlgorithm（逐 Pod 试放 + PlacementFeasible）</text>
+<text x="40.0" y="461.5" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">placementRevertFns.revert()：撤销本 placement 里的所有 snapshot assume</text>
+<rect x="30.0" y="498.0" width="270.0" height="96.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="40.0" y="524.4" font-size="12.5" fill="#ea580c" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">⑤a 一个可行的都没有</text>
+<text x="40.0" y="542.0" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Unschedulable，消息形如</text>
+<text x="40.0" y="559.4" font-size="12" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">0/N placements are available,</text>
+<text x="40.0" y="576.8" font-size="12" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">first placement status: ...</text>
+<rect x="320.0" y="498.0" width="270.0" height="76.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="330.0" y="523.1" font-size="12.5" fill="#059669" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">⑤b 找够 numToFind 个即停</text>
+<text x="330.0" y="540.7" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">只有 1 个可行：直接选它</text>
+<text x="330.0" y="558.1" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">多个：RunPlacementScorePlugins</text>
+<rect x="320.0" y="594.0" width="270.0" height="76.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="330.0" y="619.1" font-size="12.5" fill="#059669" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">⑥ findBestPlacement</text>
+<text x="330.0" y="636.7" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">TotalScore 最高者胜；同分时</text>
+<text x="330.0" y="654.1" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">比较 rand.Int() 生成的 Randomizer</text>
+<polyline points="310.0,140.0 310.0,158.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<polyline points="310.0,252.0 310.0,270.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<polyline points="310.0,346.0 310.0,364.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<polyline points="165.0,478.0 165.0,496.0" fill="none" stroke="#ea580c" stroke-width="1.5" marker-end="url(#ao)"/>
+<polyline points="455.0,478.0 455.0,496.0" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#ag)"/>
+<polyline points="455.0,574.0 455.0,592.0" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#ag)"/>
+<polyline points="590.0,440.0 610.0,440.0 610.0,390.0 592.0,390.0" fill="none" stroke="#2563eb" stroke-width="1.5" marker-end="url(#ab)"/>
+<text x="614.0" y="418.0" font-size="11" fill="#2563eb" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">下一个</text>
+<rect x="650.0" y="90.0" width="320.0" height="196.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="660.0" y="114.1" font-size="13" fill="#1e293b" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">numFeasiblePlacementsToFind</text>
+<text x="660.0" y="131.9" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">N &lt; 1 时返回 N</text>
+<text x="660.0" y="149.3" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">percentage 取 profile 或全局</text>
+<text x="660.0" y="166.7" font-size="12" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">percentageOfPlacementsToScore</text>
+<text x="660.0" y="184.1" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">若为 0（默认）：</text>
+<text x="660.0" y="201.5" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">sum = 所有 placement 的节点数之和</text>
+<text x="660.0" y="218.9" font-size="12" fill="#2563eb" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pct = max(5, 100 - sum×9/500)</text>
+<text x="660.0" y="236.3" font-size="12" fill="#2563eb" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">numToFind = max(1, N×pct/100)</text>
+<text x="660.0" y="253.7" font-size="12" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">（整数运算，重叠节点按出现次数计）</text>
+<rect x="650.0" y="304.0" width="320.0" height="150.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="660.0" y="326.1" font-size="13" fill="#2563eb" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">算例</text>
+<text x="660.0" y="343.9" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">40 个 rack × 每个 50 节点：sum = 2000</text>
+<text x="660.0" y="361.3" font-size="12" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">pct = 100 - 2000×9/500 = 100 - 36 = 64</text>
+<text x="660.0" y="378.7" font-size="12" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">numToFind = 40×64/100 = 25</text>
+<text x="660.0" y="396.1" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">200 个 rack × 每个 40 节点：sum = 8000</text>
+<text x="660.0" y="413.5" font-size="12" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">pct = max(5, 100 - 144) = 5</text>
+<text x="660.0" y="430.9" font-size="12" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">numToFind = 200×5/100 = 10</text>
+<rect x="650.0" y="472.0" width="320.0" height="122.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="660.0" y="494.1" font-size="13" fill="#ea580c" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">最坏情况的成本</text>
+<text x="660.0" y="511.9" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">不可行的 placement 不计入 numToFind，</text>
+<text x="660.0" y="529.3" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">它们也要完整试放一遍（直到</text>
+<text x="660.0" y="546.7" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">PlacementFeasible 提前判死）。</text>
+<text x="660.0" y="564.1" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">若所有域都放不下，就会把 N 个</text>
+<text x="660.0" y="581.5" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">placement 全部评估一遍才返回失败。</text>
+</svg>

@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 640" width="960" height="640" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker><marker id="arg" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#059669"/></marker><marker id="aro" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#ea580c"/></marker><marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#dc2626"/></marker></defs>
+  <rect width="960" height="640" fill="#ffffff"/>
+  <text x="480.0" y="32.0" font-size="19" fill="#1e293b" font-weight="700" text-anchor="middle">InterPodAffinityHostnameFastPath：hostname 规则不再进全局表</text>
+  <text x="480.0" y="54.0" font-size="12.5" fill="#64748b" text-anchor="middle">开启 gate 后 PreFilter 先按拓扑键给规则分组；kubernetes.io/hostname 的规则改在 Filter 中只看本节点的 Pod</text>
+  <text x="130.0" y="92.0" font-size="13.5" fill="#1e293b" font-weight="700" text-anchor="middle">规则来源</text>
+  <text x="445.0" y="92.0" font-size="13.5" fill="#7c3aed" font-weight="700" text-anchor="middle">PreFilter（全集群扫描）</text>
+  <text x="785.0" y="92.0" font-size="13.5" fill="#0d9488" font-weight="700" text-anchor="middle">Filter（逐节点）</text>
+  <rect x="20.0" y="108.0" width="920.0" height="170.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <rect x="36.0" y="148.0" width="190.0" height="90.0" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+  <text x="131.0" y="179.4" font-size="12.5" fill="#334155" font-weight="700" text-anchor="middle">新 Pod 的亲和项</text>
+  <text x="131.0" y="197.5" font-size="12.5" fill="#334155" text-anchor="middle">同一个已有 Pod 须满足全部项</text>
+  <text x="131.0" y="215.6" font-size="12.5" fill="#7c3aed" text-anchor="middle">是否全部是 hostname 项？</text>
+  <rect x="260.0" y="122.0" width="370.0" height="62.0" rx="8" fill="#ecfdf5" stroke="#86efac" stroke-width="1.2"/>
+  <text x="445.0" y="148.4" font-size="12.5" fill="#059669" font-weight="700" text-anchor="middle">是：hostScopedAffinityTerms</text>
+  <text x="445.0" y="166.6" font-size="12.5" fill="#334155" text-anchor="middle">不建表，只数全集群有几个匹配 Pod</text>
+  <rect x="260.0" y="202.0" width="370.0" height="62.0" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="445.0" y="228.4" font-size="12.5" fill="#2563eb" font-weight="700" text-anchor="middle">否：clusterWideAffinityTerms（含 hostname 项）</text>
+  <text x="445.0" y="246.6" font-size="12.5" fill="#334155" text-anchor="middle">全部项一起建 clusterWideAffinityCounts</text>
+  <line x1="226.0" y1="180.0" x2="256.0" y2="154.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <line x1="226.0" y1="206.0" x2="256.0" y2="232.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <rect x="660.0" y="122.0" width="264.0" height="62.0" rx="8" fill="#ffffff" stroke="#5eead4" stroke-width="1.2"/>
+  <text x="792.0" y="148.4" font-size="12.5" fill="#334155" text-anchor="middle">遍历本节点的 Pod 找一个全匹配的；</text>
+  <text x="792.0" y="166.6" font-size="12.5" fill="#334155" text-anchor="middle">找不到且计数为 0 → 自亲和放行</text>
+  <rect x="660.0" y="202.0" width="264.0" height="62.0" rx="8" fill="#ffffff" stroke="#5eead4" stroke-width="1.2"/>
+  <text x="792.0" y="228.4" font-size="12.5" fill="#334155" text-anchor="middle">按节点标签查表</text>
+  <text x="792.0" y="246.6" font-size="12.5" fill="#334155" text-anchor="middle">（与 gate 关闭时相同）</text>
+  <line x1="630.0" y1="153.0" x2="656.0" y2="153.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <line x1="630.0" y1="233.0" x2="656.0" y2="233.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <rect x="20.0" y="290.0" width="920.0" height="150.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <rect x="36.0" y="320.0" width="190.0" height="90.0" rx="8" fill="#ffffff" stroke="#fdba74" stroke-width="1.2"/>
+  <text x="131.0" y="351.4" font-size="12.5" fill="#334155" font-weight="700" text-anchor="middle">新 Pod 的反亲和项</text>
+  <text x="131.0" y="369.5" font-size="12.5" fill="#334155" text-anchor="middle">任一项冲突就拒绝</text>
+  <text x="131.0" y="387.6" font-size="12.5" fill="#334155" text-anchor="middle">每一项可以单独判断</text>
+  <rect x="260.0" y="302.0" width="370.0" height="56.0" rx="8" fill="#fff7ed" stroke="#fdba74" stroke-width="1.2"/>
+  <text x="445.0" y="325.4" font-size="12.5" fill="#ea580c" font-weight="700" text-anchor="middle">hostname 项 → hostScopedAntiAffinityTerms</text>
+  <text x="445.0" y="343.6" font-size="12.5" fill="#334155" text-anchor="middle">不建表</text>
+  <rect x="260.0" y="372.0" width="370.0" height="56.0" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="445.0" y="395.4" font-size="12.5" fill="#2563eb" font-weight="700" text-anchor="middle">其它项 → clusterWideAntiAffinityTerms</text>
+  <text x="445.0" y="413.6" font-size="12.5" fill="#334155" text-anchor="middle">建 clusterWideAntiAffinityCounts</text>
+  <line x1="226.0" y1="352.0" x2="256.0" y2="330.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <line x1="226.0" y1="378.0" x2="256.0" y2="400.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <rect x="660.0" y="302.0" width="264.0" height="56.0" rx="8" fill="#ffffff" stroke="#5eead4" stroke-width="1.2"/>
+  <text x="792.0" y="325.4" font-size="12.5" fill="#334155" text-anchor="middle">遍历本节点所有 Pod</text>
+  <text x="792.0" y="343.6" font-size="12.5" fill="#334155" text-anchor="middle">有一个匹配就 Unschedulable</text>
+  <rect x="660.0" y="372.0" width="264.0" height="56.0" rx="8" fill="#ffffff" stroke="#5eead4" stroke-width="1.2"/>
+  <text x="792.0" y="404.5" font-size="12.5" fill="#334155" text-anchor="middle">按节点标签查表</text>
+  <line x1="630.0" y1="330.0" x2="656.0" y2="330.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <line x1="630.0" y1="400.0" x2="656.0" y2="400.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <rect x="20.0" y="452.0" width="920.0" height="150.0" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <rect x="36.0" y="482.0" width="190.0" height="90.0" rx="8" fill="#ffffff" stroke="#fca5a5" stroke-width="1.2"/>
+  <text x="131.0" y="513.4" font-size="12.5" fill="#334155" font-weight="700" text-anchor="middle">已有 Pod 的反亲和项</text>
+  <text x="131.0" y="531.5" font-size="12.5" fill="#334155" text-anchor="middle">它们不允许新 Pod</text>
+  <text x="131.0" y="549.6" font-size="12.5" fill="#334155" text-anchor="middle">出现在同一拓扑域</text>
+  <rect x="260.0" y="464.0" width="370.0" height="56.0" rx="8" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.2"/>
+  <text x="445.0" y="487.4" font-size="12.5" fill="#dc2626" font-weight="700" text-anchor="middle">只扫「有非 hostname 反亲和 Pod」的节点</text>
+  <text x="445.0" y="505.6" font-size="12.5" fill="#334155" text-anchor="middle">快照里新增的 NodeInfo 列表</text>
+  <rect x="260.0" y="534.0" width="370.0" height="56.0" rx="8" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.2"/>
+  <text x="445.0" y="557.4" font-size="12.5" fill="#dc2626" font-weight="700" text-anchor="middle">hostname 项不计数，只记一个布尔值</text>
+  <text x="445.0" y="575.6" font-size="12.5" fill="#334155" text-anchor="middle">mustEvaluateHostScopedAntiAffinity</text>
+  <line x1="226.0" y1="514.0" x2="256.0" y2="492.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <line x1="226.0" y1="540.0" x2="256.0" y2="562.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <rect x="660.0" y="464.0" width="264.0" height="56.0" rx="8" fill="#ffffff" stroke="#5eead4" stroke-width="1.2"/>
+  <text x="792.0" y="487.6" font-size="12" fill="#334155" text-anchor="middle">existingClusterWideAntiAffinityCounts</text>
+  <text x="792.0" y="505.0" font-size="12" fill="#334155" text-anchor="middle">遍历节点全部标签查表</text>
+  <rect x="660.0" y="534.0" width="264.0" height="56.0" rx="8" fill="#ffffff" stroke="#5eead4" stroke-width="1.2"/>
+  <text x="792.0" y="557.4" font-size="12.5" fill="#334155" text-anchor="middle">遍历本节点带反亲和的 Pod，</text>
+  <text x="792.0" y="575.6" font-size="12.5" fill="#334155" text-anchor="middle">检查它们的 hostname 项</text>
+  <line x1="630.0" y1="492.0" x2="656.0" y2="492.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <line x1="630.0" y1="562.0" x2="656.0" y2="562.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+  <text x="480.0" y="628.0" font-size="12.5" fill="#64748b" text-anchor="middle">gate 关闭（1.37 默认）时：所有项都进三张全局表，Filter 只查表；hostname 项和其它项走同一条路</text>
+</svg>

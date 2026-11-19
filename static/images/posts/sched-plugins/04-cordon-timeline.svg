@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" width="1000" height="600" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#94a3b8"/></marker><marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#059669"/></marker><marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#ea580c"/></marker><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#dc2626"/></marker><marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#2563eb"/></marker></defs>
+<rect width="1000" height="600" fill="#ffffff"/>
+<text x="500.0" y="34.0" font-size="19" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">cordon / uncordon 在三个组件之间的时间线</text>
+<text x="500.0" y="58.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">spec.unschedulable 和 node.kubernetes.io/unschedulable:NoSchedule 污点是两份状态，由不同组件写入，调度器两边都检查</text>
+<rect x="20.0" y="84.0" width="960.0" height="110.0" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="0.8"/>
+<rect x="26.0" y="92.0" width="108.0" height="94.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="80.0" y="143.3" font-size="12" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">kubectl</text>
+<rect x="20.0" y="202.0" width="960.0" height="110.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<rect x="26.0" y="210.0" width="108.0" height="94.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="80.0" y="261.3" font-size="12" fill="#2563eb" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Node 对象</text>
+<rect x="20.0" y="320.0" width="960.0" height="110.0" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="0.8"/>
+<rect x="26.0" y="328.0" width="108.0" height="94.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="80.0" y="370.6" font-size="12" fill="#7c3aed" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">node-lifecycle</text>
+<text x="80.0" y="388.0" font-size="12" fill="#7c3aed" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">controller</text>
+<rect x="20.0" y="438.0" width="960.0" height="110.0" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<rect x="26.0" y="446.0" width="108.0" height="94.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="80.0" y="497.3" font-size="12" fill="#059669" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">kube-scheduler</text>
+<text x="228.0" y="78.0" font-size="12.5" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">① cordon</text>
+<text x="394.0" y="78.0" font-size="12.5" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">② 补上污点</text>
+<text x="560.0" y="78.0" font-size="12.5" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">③ 新 Pod 调度</text>
+<text x="726.0" y="78.0" font-size="12.5" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">④ uncordon</text>
+<text x="892.0" y="78.0" font-size="12.5" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">⑤ 去掉污点</text>
+<rect x="150.0" y="94.0" width="156.0" height="90.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="228.0" y="126.1" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">kubectl cordon n1</text>
+<text x="228.0" y="143.7" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">PATCH spec</text>
+<text x="228.0" y="161.1" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">unschedulable=true</text>
+<rect x="150.0" y="212.0" width="156.0" height="90.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="228.0" y="243.6" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">spec.unschedulable</text>
+<text x="228.0" y="261.5" font-size="12.5" fill="#2563eb" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">= true</text>
+<text x="228.0" y="279.1" font-size="12" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">taints：还没有</text>
+<polyline points="228.0,184.0 228.0,210.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="316.0" y="330.0" width="156.0" height="90.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="394.0" y="362.1" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">doNoSchedule</text>
+<text x="394.0" y="378.8" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">TaintingPass</text>
+<text x="394.0" y="396.0" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">spec 为 true → 加污点</text>
+<rect x="316.0" y="212.0" width="156.0" height="90.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="394.0" y="243.9" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">taints +=</text>
+<text x="394.0" y="261.3" font-size="12" fill="#2563eb" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">unschedulable</text>
+<text x="394.0" y="278.7" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">:NoSchedule</text>
+<polyline points="394.0,330.0 394.0,302.0" fill="none" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="482.0" y="448.0" width="156.0" height="96.0" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="560.0" y="474.9" font-size="12" fill="#dc2626" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">NodeUnschedulable</text>
+<text x="560.0" y="492.3" font-size="12" fill="#dc2626" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">不容忍 → U&amp;U</text>
+<text x="560.0" y="509.2" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">容忍（DaemonSet</text>
+<text x="560.0" y="525.9" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">默认带）→ 放行</text>
+<rect x="648.0" y="94.0" width="156.0" height="90.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="726.0" y="126.3" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">kubectl uncordon</text>
+<text x="726.0" y="143.7" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">PATCH spec</text>
+<text x="726.0" y="160.5" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">unschedulable=false</text>
+<rect x="648.0" y="212.0" width="156.0" height="90.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="726.0" y="243.6" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">spec.unschedulable</text>
+<text x="726.0" y="261.5" font-size="12.5" fill="#2563eb" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">= false</text>
+<text x="726.0" y="279.1" font-size="12" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">污点仍在</text>
+<rect x="648.0" y="448.0" width="156.0" height="96.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="726.0" y="483.1" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">事件 UpdateNodeTaint</text>
+<text x="726.0" y="499.8" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">NodeUnschedulable</text>
+<text x="726.0" y="517.0" font-size="12" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">hint → Queue</text>
+<polyline points="726.0,184.0 726.0,210.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<polyline points="726.0,302.0 726.0,446.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)" stroke-dasharray="4,3"/>
+<rect x="814.0" y="330.0" width="118.0" height="90.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="873.0" y="362.3" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">下一次巡检</text>
+<text x="873.0" y="379.7" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">spec 已为</text>
+<text x="873.0" y="396.5" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">false → 删污点</text>
+<rect x="814.0" y="212.0" width="156.0" height="90.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="892.0" y="243.9" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">taints -=</text>
+<text x="892.0" y="261.3" font-size="12" fill="#2563eb" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">unschedulable</text>
+<text x="892.0" y="278.7" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">:NoSchedule</text>
+<rect x="814.0" y="448.0" width="156.0" height="96.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="892.0" y="483.1" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">事件 UpdateNodeTaint</text>
+<text x="892.0" y="499.8" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">TaintToleration</text>
+<text x="892.0" y="517.0" font-size="12" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">hint → Queue</text>
+<polyline points="873.0,330.0 873.0,302.0" fill="none" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#a)"/>
+<polyline points="954.0,302.0 954.0,446.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)" stroke-dasharray="4,3"/>
+<rect x="20.0" y="556.0" width="960.0" height="44.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="500.0" y="582.1" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">④ 与 ⑤ 之间如果 Pod 被重新调度，NodeUnschedulable 放行，但 TaintToleration 仍会因污点拒绝（U&amp;U），Pod 改为等 ⑤ 的事件；U&amp;U = UnschedulableAndUnresolvable</text>
+</svg>

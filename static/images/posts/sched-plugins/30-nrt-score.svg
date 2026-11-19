@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" width="960" height="560" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<rect width="960" height="560" fill="#ffffff"/>
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/></marker></defs>
+<text x="480.0" y="34" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="bold">Score：每个 zone 单独打分，节点分取「非零 zone 分」的最小值</text>
+<text x="480.0" y="58" font-size="13" fill="#64748b" text-anchor="middle">Guaranteed Pod 请求 cpu=4、memory=8Gi，权重均为 1；zone 数值是 NRT 的 available（已扣除 OverReserve 预留）</text>
+<rect x="30" y="86" width="900" height="36" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
+<text x="40" y="109" font-size="13.5" fill="#1e293b" text-anchor="start" font-weight="bold">节点 / zone（available）</text>
+<text x="430" y="109" font-size="13.5" fill="#1e293b" text-anchor="middle" font-weight="bold">LeastAllocated</text>
+<text x="610" y="109" font-size="13.5" fill="#1e293b" text-anchor="middle" font-weight="bold">MostAllocated</text>
+<text x="800" y="109" font-size="13.5" fill="#1e293b" text-anchor="middle" font-weight="bold">BalancedAllocation</text>
+<rect x="30" y="130" width="900" height="34" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="40" y="152" font-size="13" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">A · node-0 · cpu 8 · mem 32Gi</text>
+<text x="430" y="152" font-size="14" fill="#334155" text-anchor="middle">62</text>
+<text x="610" y="152" font-size="14" fill="#334155" text-anchor="middle">37</text>
+<text x="800" y="152" font-size="14" fill="#334155" text-anchor="middle">96</text>
+<rect x="30" y="172" width="900" height="34" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="40" y="194" font-size="13" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">A · node-1 · cpu 16 · mem 32Gi</text>
+<text x="430" y="194" font-size="14" fill="#334155" text-anchor="middle">75</text>
+<text x="610" y="194" font-size="14" fill="#334155" text-anchor="middle">25</text>
+<text x="800" y="194" font-size="14" fill="#334155" text-anchor="middle">100</text>
+<rect x="30" y="214" width="900" height="34" rx="6" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="40" y="236" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="bold">节点 A 得分（min 非零）</text>
+<text x="430" y="236" font-size="14" fill="#64748b" text-anchor="middle" font-weight="bold">62</text>
+<text x="610" y="236" font-size="14" fill="#059669" text-anchor="middle" font-weight="bold">25</text>
+<text x="800" y="236" font-size="14" fill="#64748b" text-anchor="middle" font-weight="bold">96</text>
+<rect x="30" y="262" width="900" height="34" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="40" y="284" font-size="13" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">B · node-0 · cpu 4 · mem 8Gi</text>
+<text x="430" y="284" font-size="14" fill="#ea580c" text-anchor="middle">0</text>
+<text x="610" y="284" font-size="14" fill="#334155" text-anchor="middle">100</text>
+<text x="800" y="284" font-size="14" fill="#334155" text-anchor="middle">100</text>
+<rect x="30" y="304" width="900" height="34" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+<text x="40" y="326" font-size="13" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">B · node-1 · cpu 30 · mem 64Gi</text>
+<text x="430" y="326" font-size="14" fill="#334155" text-anchor="middle">86</text>
+<text x="610" y="326" font-size="14" fill="#334155" text-anchor="middle">12</text>
+<text x="800" y="326" font-size="14" fill="#334155" text-anchor="middle">99</text>
+<rect x="30" y="346" width="900" height="34" rx="6" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="40" y="368" font-size="13.5" fill="#7c3aed" text-anchor="start" font-weight="bold">节点 B 得分（min 非零）</text>
+<text x="430" y="368" font-size="14" fill="#059669" text-anchor="middle" font-weight="bold">86</text>
+<text x="610" y="368" font-size="14" fill="#64748b" text-anchor="middle" font-weight="bold">12</text>
+<text x="800" y="368" font-size="14" fill="#059669" text-anchor="middle" font-weight="bold">99</text>
+<text x="430" y="394" font-size="13" fill="#059669" text-anchor="middle" font-weight="bold">胜者 B</text>
+<text x="610" y="394" font-size="13" fill="#059669" text-anchor="middle" font-weight="bold">胜者 A</text>
+<text x="800" y="394" font-size="13" fill="#059669" text-anchor="middle" font-weight="bold">胜者 B</text>
+<rect x="30" y="414" width="900" height="108" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.5"/>
+<text x="46" y="444" font-size="13" fill="#334155" text-anchor="start">B 的 node-0 恰好放满：LeastAllocated 算出 (4−4)/4 = 0，被当成「放不下」直接忽略，节点分取 node-1 的 86。</text>
+<text x="46" y="474" font-size="13" fill="#334155" text-anchor="start">kubelet 的 single-numa-node 在多个可行 zone 中选编号最小的那个，B 上实际会落在 node-0；打分并不模拟这一选择。</text>
+<text x="46" y="504" font-size="13" fill="#334155" text-anchor="start">MostAllocated 本意是装箱，B 有一个完美贴合的 zone，却因为「取最小」被 node-1 的 12 分拖累，输给了 A。</text>
+</svg>

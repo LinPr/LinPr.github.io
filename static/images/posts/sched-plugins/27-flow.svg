@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 900" width="1000" height="900" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#94a3b8"/></marker><marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#059669"/></marker><marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#ea580c"/></marker><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#dc2626"/></marker><marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#2563eb"/></marker></defs>
+<rect width="1000" height="900" fill="#ffffff"/>
+<text x="500.0" y="34.0" font-size="19" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Coscheduling 在一个 Pod 的调度旅程里做的事</text>
+<text x="500.0" y="58.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">每个 Pod 仍然单独走调度周期；成组语义靠 PreFilter 拦截、Permit 等齐、PostFilter / Unreserve 连坐来实现</text>
+<rect x="30.0" y="92.0" width="300.0" height="92.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="180.0" y="142.9" font-size="13.5" fill="#2563eb" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">QueueSort：Less</text>
+<rect x="30.0" y="204.0" width="300.0" height="196.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="180.0" y="306.9" font-size="13.5" fill="#2563eb" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">PreFilter：四道检查</text>
+<rect x="30.0" y="420.0" width="300.0" height="60.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="180.0" y="454.9" font-size="13.5" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Filter（其他插件）</text>
+<rect x="30.0" y="500.0" width="300.0" height="132.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="180.0" y="570.9" font-size="13.5" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">PostFilter：整组拒绝</text>
+<rect x="30.0" y="652.0" width="300.0" height="34.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="180.0" y="673.9" font-size="13.5" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Reserve：空实现</text>
+<rect x="30.0" y="706.0" width="300.0" height="92.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="180.0" y="756.9" font-size="13.5" fill="#7c3aed" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Permit：等齐 minMember</text>
+<rect x="30.0" y="818.0" width="300.0" height="62.0" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="180.0" y="853.9" font-size="13.5" fill="#dc2626" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">WaitOnPermit 超时 → Unreserve</text>
+<rect x="360.0" y="92.0" width="610.0" height="92.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="370.0" y="115.3" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">① 优先级高者在前（PodPriority）</text>
+<text x="370.0" y="133.4" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">② GetCreationTimestamp：组最近失败过 → 失败时刻；否则 PodGroup 创建时间；</text>
+<text x="370.0" y="151.6" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">   不属于任何组 → Pod 的 InitialAttemptTimestamp</text>
+<text x="370.0" y="169.7" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">③ 时间相同 → 比较 &quot;namespace/name&quot;，让同组 Pod 在 activeQ 里相邻</text>
+<rect x="360.0" y="204.0" width="610.0" height="196.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="370.0" y="226.0" font-size="12.5" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Pod 没有 scheduling.x-k8s.io/pod-group 标签或 PodGroup 不存在 → 放行</text>
+<text x="370.0" y="244.1" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">① backedOffPG 里有这个组（PostFilter 设的 backoff）</text>
+<text x="370.0" y="261.7" font-size="12" fill="#dc2626" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">     → podGroup ns/pg failed recently</text>
+<text x="370.0" y="279.7" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">② 带同一标签的 Pod 总数 &lt; minMember</text>
+<text x="370.0" y="297.3" font-size="12" fill="#dc2626" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">     → cannot find enough sibling pods</text>
+<text x="370.0" y="315.2" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">③ 每有一个带 schedulingGates 的同组 Pod，缺口 +1，缺口 &gt; 0</text>
+<text x="370.0" y="332.8" font-size="12" fill="#dc2626" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">     → cannot proceed due to gated pods in the same PodGroup</text>
+<text x="370.0" y="350.7" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">④ 设置了 minResources 且组不在 permittedPG 缓存里：集群剩余资源之和</text>
+<text x="370.0" y="368.8" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">   不够 minResources + minMember 个 pods → resource gap；够则缓存</text>
+<text x="370.0" y="387.0" font-size="12.5" fill="#dc2626" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">任一失败 → UnschedulableAndUnresolvable（注释：避免触发任何抢占尝试）</text>
+<rect x="360.0" y="420.0" width="610.0" height="60.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="370.0" y="445.4" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">NodeResourcesFit 等插件判定没有节点可用 → 进入 PostFilter</text>
+<text x="370.0" y="463.6" font-size="12.5" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Coscheduling 排在 DefaultPreemption 之后；抢占成功则不会走到它</text>
+<rect x="360.0" y="500.0" width="610.0" height="132.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="370.0" y="525.2" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">assigned = 已 Permit 或已绑定的同组 Pod 数（assignedPodsByPG）</text>
+<text x="370.0" y="543.3" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">assigned ≥ minMember → Unschedulable，不连坐（组已经够数了）</text>
+<text x="370.0" y="561.4" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">(minMember - assigned) / minMember ≤ podGroupRejectPercentage（默认 10%）</text>
+<text x="370.0" y="579.6" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">   → Unschedulable，不连坐（只差一点，让后面的 Pod 再试试）</text>
+<text x="370.0" y="597.7" font-size="12.5" fill="#ea580c" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">否则：Reject 所有同组 waiting Pod；Pod 总数 ≥ minMember 时按 podGroup-</text>
+<text x="370.0" y="615.8" font-size="12.5" fill="#ea580c" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">BackoffSeconds 进 backoff；删 permittedPG；记录失败时刻（影响排序）</text>
+<rect x="360.0" y="652.0" width="610.0" height="34.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="370.0" y="673.5" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Reserve 返回 nil；Unreserve 才是真正的逻辑</text>
+<rect x="360.0" y="706.0" width="610.0" height="92.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="370.0" y="729.3" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">把本 Pod 加入 assignedPodsByPG；数量 ≥ minMember → Success，Allow 所有同组 waiting Pod</text>
+<text x="370.0" y="747.4" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">否则 → Wait，超时 = PodGroup.scheduleTimeoutSeconds，未设则 permitWaitingTimeSeconds</text>
+<text x="370.0" y="765.6" font-size="12.5" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">   （默认 60s；框架上限 15 分钟）</text>
+<text x="370.0" y="783.7" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">组里第一个到 Permit 的 Pod（len == 1）负责 ActivateSiblings，把同组 Pod 挪进 activeQ</text>
+<rect x="360.0" y="818.0" width="610.0" height="62.0" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="370.0" y="844.4" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">waitingPod 计时器到期 → Reject → 绑定周期失败 → 对该 Pod 跑 Unreserve</text>
+<text x="370.0" y="862.6" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Coscheduling.Unreserve：移出 assigned，Reject 所有同组 waiting Pod，记录失败时刻</text>
+<polyline points="330.0,138.0 358.0,138.0" fill="none" stroke="#cbd5e1" stroke-width="1.2"/>
+<polyline points="330.0,302.0 358.0,302.0" fill="none" stroke="#cbd5e1" stroke-width="1.2"/>
+<polyline points="330.0,450.0 358.0,450.0" fill="none" stroke="#cbd5e1" stroke-width="1.2"/>
+<polyline points="330.0,566.0 358.0,566.0" fill="none" stroke="#cbd5e1" stroke-width="1.2"/>
+<polyline points="330.0,669.0 358.0,669.0" fill="none" stroke="#cbd5e1" stroke-width="1.2"/>
+<polyline points="330.0,752.0 358.0,752.0" fill="none" stroke="#cbd5e1" stroke-width="1.2"/>
+<polyline points="330.0,849.0 358.0,849.0" fill="none" stroke="#cbd5e1" stroke-width="1.2"/>
+<polyline points="180.0,184.0 180.0,202.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<polyline points="180.0,400.0 180.0,418.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<polyline points="180.0,480.0 180.0,498.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<polyline points="180.0,632.0 180.0,650.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<polyline points="180.0,686.0 180.0,704.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<polyline points="180.0,798.0 180.0,816.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+</svg>

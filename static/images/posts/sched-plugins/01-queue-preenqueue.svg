@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700" width="1000" height="700" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#94a3b8"/></marker><marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#059669"/></marker><marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#ea580c"/></marker><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#dc2626"/></marker><marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#2563eb"/></marker></defs>
+<rect width="1000" height="700" fill="#ffffff"/>
+<text x="500.0" y="34.0" font-size="19" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">调度队列的三个子队列与 PreEnqueue 闸门</text>
+<text x="500.0" y="58.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">PreEnqueue 在实体进入 activeQ（以及开启 SchedulerPopFromBackoffQ 时进入 backoffQ）之前执行；被拒绝的实体以 gated 状态留在 unschedulableEntities</text>
+<rect x="20.0" y="110.0" width="190.0" height="64.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="115.0" y="138.2" font-size="13.5" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">informer：新建 Pod</text>
+<text x="115.0" y="156.1" font-size="12" fill="#64748b" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">addPod → moveToActiveQ</text>
+<rect x="280.0" y="90.0" width="220.0" height="140.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="390.0" y="131.3" font-size="15" fill="#7c3aed" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">PreEnqueue 闸门</text>
+<text x="390.0" y="149.8" font-size="12" fill="#7c3aed" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">runPreEnqueuePlugins</text>
+<text x="390.0" y="167.8" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">SchedulingGates</text>
+<text x="390.0" y="184.3" font-size="11" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">DynamicResources · GangScheduling</text>
+<text x="390.0" y="200.8" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">DefaultPreemption（异步抢占）</text>
+<rect x="570.0" y="90.0" width="200.0" height="140.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="670.0" y="138.6" font-size="15" fill="#2563eb" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">activeQ</text>
+<text x="670.0" y="157.6" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">heap，比较函数 =</text>
+<text x="670.0" y="175.7" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">QueueSort 插件的 Less</text>
+<text x="670.0" y="193.3" font-size="12" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">（默认 PrioritySort）</text>
+<rect x="840.0" y="90.0" width="140.0" height="140.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="910.0" y="138.9" font-size="15" fill="#059669" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">调度周期</text>
+<text x="910.0" y="158.0" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Pop 出队</text>
+<text x="910.0" y="175.6" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">PreFilter → Filter</text>
+<text x="910.0" y="193.0" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">→ Score → …</text>
+<polyline points="210.0,142.0 276.0,142.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<polyline points="500.0,160.0 566.0,160.0" fill="none" stroke="#059669" stroke-width="1.5" marker-end="url(#ag)"/>
+<rect x="506.0" y="141.1" width="54.0" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="533.0" y="152.0" font-size="11.5" fill="#059669" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">全部通过</text>
+<polyline points="770.0,160.0 836.0,160.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="788.8" y="141.1" width="28.5" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="803.0" y="152.0" font-size="11.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Pop</text>
+<rect x="780.0" y="300.0" width="200.0" height="92.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="880.0" y="333.8" font-size="13.5" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">调度失败</text>
+<text x="880.0" y="351.2" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">AddUnschedulablePod…</text>
+<text x="880.0" y="368.4" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">按 QueueingHint 决定去向</text>
+<polyline points="910.0,230.0 910.0,296.0" fill="none" stroke="#ea580c" stroke-width="1.5" marker-end="url(#ao)"/>
+<rect x="200.0" y="450.0" width="360.0" height="170.0" rx="10" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="380.0" y="476.0" font-size="14" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">unschedulableEntities（map，不是 heap）</text>
+<rect x="216.0" y="490.0" width="160.0" height="116.0" rx="8" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="296.0" y="526.8" font-size="13.5" fill="#7c3aed" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">gated 实体</text>
+<text x="296.0" y="544.7" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">GatingPlugin ≠ &quot;&quot;</text>
+<text x="296.0" y="562.1" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">只响应 GatingPlugin</text>
+<text x="296.0" y="579.5" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">注册的事件</text>
+<rect x="386.0" y="490.0" width="160.0" height="116.0" rx="8" fill="#ffffff" stroke="#ea580c" stroke-width="1.2"/>
+<text x="466.0" y="526.9" font-size="13" fill="#ea580c" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">unschedulable 实体</text>
+<text x="466.0" y="544.2" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">UnschedulablePlugins</text>
+<text x="466.0" y="561.4" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">由插件的 QueueingHint</text>
+<text x="466.0" y="578.8" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">决定是否唤醒</text>
+<rect x="670.0" y="470.0" width="220.0" height="130.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+<text x="780.0" y="513.9" font-size="15" fill="#0d9488" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">backoffQ</text>
+<text x="780.0" y="533.0" font-size="12.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">按退避到期时间排序</text>
+<text x="780.0" y="550.6" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">1s → 2s → 4s → … → 10s</text>
+<text x="780.0" y="568.0" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">同一 1s 窗口内再按 Less</text>
+<polyline points="330.0,230.0 330.0,340.0 296.0,340.0 296.0,486.0" fill="none" stroke="#7c3aed" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="333.5" y="289.1" width="77.0" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="372.0" y="300.0" font-size="11.5" fill="#7c3aed" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">任一插件拒绝</text>
+<rect x="331.2" y="305.1" width="81.6" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="372.0" y="316.0" font-size="11.5" fill="#7c3aed" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">→ 记为 gated</text>
+<polyline points="466.0,486.0 466.0,380.0 450.0,380.0 450.0,234.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="494.9" y="319.1" width="114.3" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="552.0" y="330.0" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">集群事件 / Pod 更新</text>
+<rect x="476.1" y="335.1" width="151.8" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="552.0" y="346.0" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">QHint=Queue 且退避已结束</text>
+<rect x="493.1" y="351.1" width="117.7" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="552.0" y="362.0" font-size="11.5" fill="#64748b" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">→ moveToActiveQ</text>
+<polyline points="830.0,392.0 800.0,466.0" fill="none" stroke="#0d9488" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="822.0" y="429.1" width="102.3" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="826.0" y="440.0" font-size="11.5" fill="#0d9488" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Queue 且仍在退避</text>
+<polyline points="790.0,392.0 560.0,500.0" fill="none" stroke="#ea580c" stroke-width="1.5" marker-end="url(#ao)"/>
+<rect x="624.4" y="441.1" width="71.1" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="660.0" y="452.0" font-size="11.5" fill="#ea580c" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">QueueSkip</text>
+<polyline points="560.0,580.0 676.0,580.0" fill="none" stroke="#0d9488" stroke-width="1.5" marker-end="url(#a)"/>
+<rect x="591.0" y="561.1" width="54.0" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="618.0" y="572.0" font-size="11.5" fill="#0d9488" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">仍在退避</text>
+<rect x="561.0" y="588.0" width="114.1" height="14.2" fill="#ffffff" opacity="0.92"/>
+<text x="618.0" y="598.0" font-size="10.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">入队前跑 PreEnqueue</text>
+<polyline points="712.0,466.0 712.0,234.0" fill="none" stroke="#0d9488" stroke-width="1.5" marker-end="url(#a)" stroke-dasharray="5,4"/>
+<rect x="508.7" y="251.1" width="201.3" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="706.0" y="262.0" font-size="11.5" fill="#0d9488" text-anchor="end" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">flushBackoffQCompleted（每 1s）</text>
+<rect x="504.7" y="267.1" width="205.3" height="15.5" fill="#ffffff" opacity="0.92"/>
+<text x="706.0" y="278.0" font-size="11.5" fill="#0d9488" text-anchor="end" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">直接进 activeQ，不再跑 PreEnqueue</text>
+<rect x="20.0" y="636.0" width="960.0" height="52.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="500.0" y="657.6" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">每 30s 扫描一次 unschedulableEntities：停留超过 5min 的实体以通配事件 UnschedulableTimeout 重新评估；</text>
+<text x="500.0" y="675.0" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">gated 实体因此大约每 5min 重跑一次 PreEnqueue，仍被拦下就原样放回。</text>
+<rect x="20.0" y="260.0" width="230.0" height="150.0" rx="8" fill="#ffffff" stroke="#64748b" stroke-width="1.2" stroke-dasharray="4,3"/>
+<text x="135.0" y="298.7" font-size="13" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Pod 带 schedulingGates</text>
+<text x="135.0" y="315.9" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">SchedulingGates.PreEnqueue 返回</text>
+<text x="135.0" y="332.6" font-size="11.5" fill="#dc2626" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">UnschedulableAndUnresolvable</text>
+<text x="135.0" y="349.3" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">外部控制器删光 gate 后：</text>
+<text x="135.0" y="365.4" font-size="11" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">UpdatePodSchedulingGates</text>
+<text x="135.0" y="381.4" font-size="11" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">Eliminated → Queue</text>
+<polyline points="135.0,410.0 135.0,548.0 212.0,548.0" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#a)" stroke-dasharray="4,3"/>
+</svg>

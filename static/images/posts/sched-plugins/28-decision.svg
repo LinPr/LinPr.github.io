@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 640" width="1000" height="640" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<rect width="1000" height="640" fill="#ffffff"/>
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 z" fill="#94a3b8"/></marker></defs>
+<text x="500.0" y="34.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">PreFilter 的两道检查与 PostFilter 的受害者选择</text>
+<text x="500.0" y="58.0" font-size="13" fill="#64748b" text-anchor="middle">req = 本 Pod 请求 + 相关 nominated Pod 请求；任一资源维度超出即判定为「超」</text>
+<text x="30.0" y="92.0" font-size="15" fill="#1e293b" text-anchor="start" font-weight="700">PreFilter</text>
+<text x="510.0" y="92.0" font-size="15" fill="#1e293b" text-anchor="start" font-weight="700">PostFilter：SelectVictimsOnNode（逐节点）</text>
+<rect x="30.0" y="104.0" width="290.0" height="44.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="42.0" y="130.5" font-size="13" fill="#334155" text-anchor="start">该 Namespace 有 ElasticQuota？</text>
+<rect x="345.0" y="104.0" width="140.0" height="44.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="357.0" y="121.8" font-size="13" fill="#059669" text-anchor="start" font-weight="700">否：Success</text>
+<text x="357.0" y="139.6" font-size="12" fill="#64748b" text-anchor="start">不受配额约束</text>
+<line x1="320.0" y1="126.0" x2="343.0" y2="126.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<rect x="30.0" y="172.0" width="290.0" height="64.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="42.0" y="199.8" font-size="13" fill="#2563eb" text-anchor="start" font-weight="700">检查一：本 quota 上限</text>
+<text x="42.0" y="217.6" font-size="12" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">Used+nominatedInEQ+req &gt; Max</text>
+<rect x="345.0" y="176.0" width="140.0" height="56.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="357.0" y="199.8" font-size="13" fill="#ea580c" text-anchor="start" font-weight="700">Unschedulable</text>
+<text x="357.0" y="217.6" font-size="12" fill="#64748b" text-anchor="start">…more than Max</text>
+<line x1="320.0" y1="204.0" x2="343.0" y2="204.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="331.0" y="198.0" font-size="12" fill="#64748b" text-anchor="middle">是</text>
+<rect x="30.0" y="260.0" width="290.0" height="64.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="42.0" y="287.8" font-size="13" fill="#2563eb" text-anchor="start" font-weight="700">检查二：全局 min 之和</text>
+<text x="42.0" y="305.6" font-size="12" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">ΣUsed+nominatedAll+req &gt; ΣMin</text>
+<rect x="345.0" y="264.0" width="140.0" height="56.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="357.0" y="287.8" font-size="13" fill="#ea580c" text-anchor="start" font-weight="700">Unschedulable</text>
+<text x="357.0" y="305.6" font-size="12" fill="#64748b" text-anchor="start">…more than min</text>
+<line x1="320.0" y1="292.0" x2="343.0" y2="292.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="331.0" y="286.0" font-size="12" fill="#64748b" text-anchor="middle">是</text>
+<line x1="175.0" y1="148.0" x2="175.0" y2="170.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="182.0" y="163.0" font-size="12" fill="#64748b" text-anchor="start">是</text>
+<line x1="175.0" y1="236.0" x2="175.0" y2="258.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="182.0" y="251.0" font-size="12" fill="#64748b" text-anchor="start">否</text>
+<rect x="30.0" y="348.0" width="290.0" height="44.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="42.0" y="374.5" font-size="13" fill="#059669" text-anchor="start" font-weight="700">Success → 继续 Filter</text>
+<line x1="175.0" y1="324.0" x2="175.0" y2="346.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="182.0" y="339.0" font-size="12" fill="#64748b" text-anchor="start">否</text>
+<rect x="30.0" y="420.0" width="455.0" height="112.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="42.0" y="444.2" font-size="13" fill="#1e293b" text-anchor="start" font-weight="700">PreFilter 返回 Unschedulable 之后</text>
+<text x="42.0" y="462.6" font-size="12.5" fill="#334155" text-anchor="start">其余 PreFilter 插件照常执行（状态仍要写进 CycleState）</text>
+<text x="42.0" y="480.7" font-size="12.5" fill="#334155" text-anchor="start">SetAbsentNodesStatus：所有节点都记为 Unschedulable</text>
+<text x="42.0" y="498.8" font-size="12.5" fill="#334155" text-anchor="start">PostFilter 的候选节点 = 全部节点</text>
+<text x="42.0" y="516.9" font-size="12.5" fill="#334155" text-anchor="start">GetOffsetAndNumCandidates 返回 (0, n)：全部试一遍</text>
+<path d="M 485 204 L 495 204 L 495 404 L 400 404 L 400 418" fill="none" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<path d="M 485 292 L 495 292" fill="none" stroke="#94a3b8" stroke-width="1.4"/>
+<rect x="510.0" y="108.0" width="146.0" height="140.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="522.0" y="146.6" font-size="13" fill="#7c3aed" text-anchor="start" font-weight="700">有 EQ，且</text>
+<text x="522.0" y="164.4" font-size="12" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">Used+req &gt; Min</text>
+<text x="522.0" y="182.3" font-size="12.5" fill="#334155" text-anchor="start">已在借用</text>
+<text x="522.0" y="200.4" font-size="12.5" fill="#334155" text-anchor="start">同 Namespace 中</text>
+<text x="522.0" y="218.6" font-size="12.5" fill="#334155" text-anchor="start">优先级更低的 Pod</text>
+<rect x="662.0" y="108.0" width="146.0" height="140.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="674.0" y="137.5" font-size="13" fill="#7c3aed" text-anchor="start" font-weight="700">有 EQ，且</text>
+<text x="674.0" y="155.3" font-size="12" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">Used+req ≤ Min</text>
+<text x="674.0" y="173.2" font-size="12.5" fill="#334155" text-anchor="start">min 被别人占着</text>
+<text x="674.0" y="191.4" font-size="12.5" fill="#334155" text-anchor="start">其他 Namespace 中</text>
+<text x="674.0" y="209.5" font-size="12.5" fill="#334155" text-anchor="start">Used&gt;Min 的 Pod</text>
+<text x="674.0" y="227.6" font-size="12.5" fill="#334155" text-anchor="start">不比较优先级</text>
+<rect x="814.0" y="108.0" width="146.0" height="140.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="826.0" y="155.3" font-size="13" fill="#7c3aed" text-anchor="start" font-weight="700">没有 EQ</text>
+<text x="826.0" y="173.6" font-size="12.5" fill="#334155" text-anchor="start">无 EQ 的 Namespace</text>
+<text x="826.0" y="191.7" font-size="12.5" fill="#334155" text-anchor="start">中优先级更低的</text>
+<text x="826.0" y="209.9" font-size="12.5" fill="#334155" text-anchor="start">Pod</text>
+<text x="737.0" y="268.0" font-size="12" fill="#64748b" text-anchor="middle">三组互不跨越：有 EQ 的抢占者碰不到无 EQ 的 Pod，反之亦然</text>
+<line x1="735.0" y1="276.0" x2="735.0" y2="300.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<rect x="510.0" y="302.0" width="450.0" height="44.0" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="522.0" y="328.5" font-size="13" fill="#dc2626" text-anchor="start" font-weight="700">候选为空 → UnschedulableAndUnresolvable，该节点出局</text>
+<line x1="735.0" y1="346.0" x2="735.0" y2="366.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<rect x="510.0" y="368.0" width="300.0" height="70.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="522.0" y="389.7" font-size="13" fill="#2563eb" text-anchor="start" font-weight="700">移除全部候选后</text>
+<text x="522.0" y="407.5" font-size="12" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunFilterPluginsWithNominatedPods</text>
+<text x="522.0" y="425.4" font-size="12.5" fill="#334155" text-anchor="start">再用 podReq 做两道配额检查</text>
+<rect x="830.0" y="372.0" width="130.0" height="62.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="842.0" y="390.1" font-size="13" fill="#ea580c" text-anchor="start" font-weight="700">失败</text>
+<text x="842.0" y="407.9" font-size="12" fill="#334155" text-anchor="start">Unschedulable</text>
+<text x="842.0" y="425.3" font-size="12" fill="#334155" text-anchor="start">或 Filter 的状态</text>
+<line x1="810.0" y1="403.0" x2="828.0" y2="403.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<line x1="660.0" y1="438.0" x2="660.0" y2="458.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<rect x="510.0" y="460.0" width="450.0" height="92.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="522.0" y="483.3" font-size="13" fill="#059669" text-anchor="start" font-weight="700">赦免：先违反 PDB 的，再其余；各按优先级从高到低</text>
+<text x="522.0" y="501.6" font-size="12.5" fill="#334155" text-anchor="start">把受害者加回：Filter 不通过 → 仍是受害者</text>
+<text x="522.0" y="519.7" font-size="12.5" fill="#334155" text-anchor="start">Filter 通过但配额检查（含 nominated）超限 → 仍是受害者</text>
+<text x="522.0" y="537.9" font-size="12.5" fill="#334155" text-anchor="start">都通过 → 赦免，留在节点上</text>
+<line x1="735.0" y1="552.0" x2="735.0" y2="572.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<rect x="510.0" y="574.0" width="450.0" height="44.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="735.0" y="600.5" font-size="13" fill="#334155" text-anchor="middle">返回 victims 与违反 PDB 的数量，交回 Evaluator 选节点</text>
+</svg>

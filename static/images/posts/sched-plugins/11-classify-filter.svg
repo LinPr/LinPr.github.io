@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 770" width="1000" height="770" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+  <rect width="1000" height="770" fill="#ffffff"/>
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker>
+    <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#059669"/></marker>
+    <marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#ea580c"/></marker>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#dc2626"/></marker>
+  </defs>
+  <text x="500.0" y="32.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">VolumeBinding：PreFilter 给 PVC 分类，Filter 为每个节点设计绑定方案</text>
+  <text x="500.0" y="54.0" font-size="12.5" fill="#64748b" text-anchor="middle">左：GetPodVolumeClaims（每个 Pod 一次）；右：FindPodVolumes（每个节点一次，并行）。红色均为 UnschedulableAndUnresolvable</text>
+  <rect x="20.0" y="72.0" width="330.0" height="676.0" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="5 4"/>
+  <text x="36.0" y="94.0" font-size="14" fill="#1e293b" font-weight="700">PreFilter</text>
+  <rect x="40.0" y="108.0" width="290.0" height="50.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="185.0" y="137.7" font-size="13" fill="#1e293b" text-anchor="middle" font-weight="700">Pod 的每个 PVC / ephemeral 卷</text>
+  <line x1="185.0" y1="158.0" x2="185.0" y2="178.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="40.0" y="180.0" width="290.0" height="64.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="52.0" y="203.0" font-size="13" fill="#2563eb" font-weight="700">isPVCFullyBound？</text>
+  <text x="52.0" y="223.0" font-size="12" fill="#334155">volumeName ≠ "" 且有 bind-completed 注解</text>
+  <text x="46.0" y="264.0" font-size="12.5" fill="#059669" font-weight="700">是</text>
+  <line x1="70.0" y1="244.0" x2="70.0" y2="290.0" stroke="#059669" stroke-width="1.6" marker-end="url(#ag)"/>
+  <rect x="40.0" y="292.0" width="120.0" height="56.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="49.0" y="312.0" font-size="13" fill="#059669" font-weight="700" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" xml:space="preserve">boundClaims</text>
+  <text x="49.0" y="332.0" font-size="11.5" fill="#334155">查 PV nodeAffinity</text>
+  <text x="222.0" y="264.0" font-size="12.5" fill="#ea580c" font-weight="700">否</text>
+  <line x1="250.0" y1="244.0" x2="250.0" y2="290.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="168.0" y="292.0" width="162.0" height="92.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="176.0" y="311.0" font-size="12.5" fill="#7c3aed" font-weight="700">StorageClass 为</text>
+  <text x="176.0" y="330.5" font-size="11.5" fill="#7c3aed" font-weight="700" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" xml:space="preserve">WaitForFirstConsumer</text>
+  <text x="176.0" y="349.0" font-size="12.5" fill="#7c3aed" font-weight="700">且 volumeName 为空？</text>
+  <text x="182.0" y="404.0" font-size="12.5" fill="#059669" font-weight="700">是</text>
+  <line x1="200.0" y1="384.0" x2="200.0" y2="432.0" stroke="#059669" stroke-width="1.6" marker-end="url(#ag)"/>
+  <rect x="40.0" y="434.0" width="290.0" height="84.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+  <text x="52.0" y="457.0" font-size="13" fill="#0d9488" font-weight="700" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" xml:space="preserve">unboundClaimsDelayBinding</text>
+  <text x="52.0" y="477.0" font-size="12" fill="#334155">调度器接手；同时按 StorageClass</text>
+  <text x="52.0" y="496.0" font-size="12" fill="#334155">从 pvCache 按 class 索引取候选 PV</text>
+  <text x="312.0" y="424.0" font-size="12.5" fill="#dc2626" font-weight="700">否</text>
+  <path d="M330,338 C346,338 346,560 330,560" fill="none" stroke="#dc2626" stroke-width="1.6" marker-end="url(#ar)"/>
+  <rect x="40.0" y="540.0" width="290.0" height="110.0" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+  <text x="52.0" y="563.0" font-size="13" fill="#dc2626" font-weight="700" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" xml:space="preserve">unboundClaimsImmediate</text>
+  <text x="52.0" y="583.0" font-size="12" fill="#334155">Immediate 模式未绑定；预绑定（volumeName</text>
+  <text x="52.0" y="602.0" font-size="12" fill="#334155">已填、未 bind-completed）；SC 不存在</text>
+  <text x="52.0" y="621.0" font-size="12" fill="#dc2626" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" xml:space="preserve">→ pod has unbound immediate</text>
+  <text x="52.0" y="640.0" font-size="12" fill="#dc2626" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" xml:space="preserve">  PersistentVolumeClaims</text>
+  <rect x="40.0" y="666.0" width="290.0" height="62.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="52.0" y="689.0" font-size="12.5" fill="#64748b" font-weight="700">没有任何 PVC：写入空 stateData，Skip</text>
+  <text x="52.0" y="708.5" font-size="12" fill="#334155">Reserve 读到空状态 → allBound = true</text>
+  <rect x="372.0" y="72.0" width="608.0" height="676.0" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="5 4"/>
+  <text x="388.0" y="94.0" font-size="14" fill="#1e293b" font-weight="700">Filter：FindPodVolumes(pod, claims, node)</text>
+  <rect x="392.0" y="108.0" width="568.0" height="98.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="404.0" y="131.0" font-size="13.5" fill="#059669" font-weight="700">1. boundClaims：checkBoundClaims</text>
+  <text x="404.0" y="151.5" font-size="12.5" fill="#334155">pvCache.Get(volumeName) 失败 → boundPVsFound = false</text>
+  <text x="404.0" y="171.0" font-size="12.5" fill="#334155">tryTranslatePVToCSI（插件在 CSINode migrated-plugins 注解中才翻译）</text>
+  <text x="404.0" y="190.5" font-size="12.5" fill="#334155">volume.CheckNodeAffinity(pv, node.Labels) 失败 → boundVolumesSatisfied = false</text>
+  <rect x="392.0" y="220.0" width="568.0" height="74.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+  <text x="404.0" y="243.0" font-size="13.5" fill="#0d9488" font-weight="700">2. unboundClaimsDelayBinding：先看 selected-node 注解</text>
+  <text x="404.0" y="263.5" font-size="12.5" fill="#334155">有注解且 ≠ 本节点 → 快速失败，直接 return（unboundVolumesSatisfied = false）</text>
+  <text x="404.0" y="283.0" font-size="12.5" fill="#334155">有注解且 = 本节点 → claimsToProvision；没有注解 → claimsToFindMatching</text>
+  <line x1="676.0" y1="294.0" x2="676.0" y2="308.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="392.0" y="310.0" width="568.0" height="92.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="404.0" y="333.0" font-size="13.5" fill="#2563eb" font-weight="700">3. findMatchingVolumes：静态 PV</text>
+  <text x="404.0" y="353.5" font-size="12.5" fill="#334155">PVC 按请求容量升序；对每个 PVC 调 FindMatchingVolume 取最小合适 PV</text>
+  <text x="404.0" y="373.0" font-size="12.5" fill="#334155">匹配上 → StaticBindings（chosenPVs 防止同一 Pod 两个 PVC 选同一块）</text>
+  <text x="404.0" y="392.5" font-size="12.5" fill="#334155">没匹配上 → 不失败，转入 claimsToProvision</text>
+  <line x1="676.0" y1="402.0" x2="676.0" y2="416.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="392.0" y="418.0" width="568.0" height="128.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="404.0" y="441.0" font-size="13.5" fill="#7c3aed" font-weight="700">4. checkVolumeProvisions：动态供给</text>
+  <text x="404.0" y="461.5" font-size="12.5" fill="#334155">StorageClass 无 provisioner 或为 kubernetes.io/no-provisioner → 不可供给</text>
+  <text x="404.0" y="481.0" font-size="12.5" fill="#334155">节点标签不满足 allowedTopologies → 不可供给</text>
+  <text x="404.0" y="500.5" font-size="12.5" fill="#334155">hasEnoughCapacity：CSIDriver.storageCapacity = true 时，找 storageClassName</text>
+  <text x="404.0" y="520.0" font-size="12.5" fill="#334155">相同、maximumVolumeSize（否则 capacity）≥ 请求、nodeTopology 匹配的</text>
+  <text x="404.0" y="539.5" font-size="12.5" fill="#334155">CSIStorageCapacity；找不到 → sufficientStorage = false</text>
+  <line x1="676.0" y1="546.0" x2="676.0" y2="560.0" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#a)"/>
+  <rect x="392.0" y="562.0" width="568.0" height="100.0" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+  <text x="404.0" y="585.0" font-size="13" fill="#dc2626" font-weight="700">defer 中把布尔值翻译成原因（可叠加）</text>
+  <text x="404.0" y="602.0" font-size="11.5" fill="#334155" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" xml:space="preserve">boundVolumesSatisfied   → didn't match PersistentVolume's node affinity</text>
+  <text x="404.0" y="619.0" font-size="11.5" fill="#334155" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" xml:space="preserve">unboundVolumesSatisfied → didn't find available persistent volumes to bind</text>
+  <text x="404.0" y="636.0" font-size="11.5" fill="#334155" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" xml:space="preserve">sufficientStorage       → did not have enough free storage</text>
+  <text x="404.0" y="653.0" font-size="11.5" fill="#334155" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" xml:space="preserve">boundPVsFound           → bound to non-existent pv(s)</text>
+  <line x1="676.0" y1="662.0" x2="676.0" y2="676.0" stroke="#059669" stroke-width="1.6" marker-end="url(#ag)"/>
+  <rect x="392.0" y="678.0" width="568.0" height="56.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+  <text x="400.0" y="697.0" font-size="13" fill="#059669" font-weight="700">无原因 → 加锁写入 podVolumesByNode[node]</text>
+  <text x="400.0" y="717.0" font-size="12.5" fill="#334155">值为 PodVolumes{StaticBindings, DynamicProvisions}，供 Score、Reserve 使用</text>
+</svg>

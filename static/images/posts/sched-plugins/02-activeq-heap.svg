@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 620" width="980" height="620" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#94a3b8"/></marker><marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#059669"/></marker><marker id="ao" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#ea580c"/></marker><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#dc2626"/></marker><marker id="ab" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#2563eb"/></marker></defs>
+<rect width="980" height="620" fill="#ffffff"/>
+<text x="490.0" y="34.0" font-size="19" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">activeQ 是一个以 PrioritySort.Less 为比较函数的二叉堆</text>
+<text x="490.0" y="58.0" font-size="12.5" fill="#64748b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">先比 priority（大的在前），相等再比 Timestamp（早的在前）；Timestamp 是入队时间，不是创建时间，调度失败回队时会刷新</text>
+<text x="20.0" y="100.0" font-size="14" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">队列中的 5 个 Pod</text>
+<rect x="20.0" y="118.0" width="450.0" height="30.0" rx="4" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="28.0" y="138.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Pod</text>
+<text x="98.0" y="138.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">priorityClassName</text>
+<text x="268.0" y="138.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">priority</text>
+<text x="378.0" y="138.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Timestamp</text>
+<rect x="20.0" y="148.0" width="450.0" height="34.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="28.0" y="170.0" font-size="13.5" fill="#2563eb" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">a</text>
+<text x="98.0" y="170.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">（无，默认 0）</text>
+<text x="268.0" y="170.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">0</text>
+<text x="378.0" y="170.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">10:00:01</text>
+<rect x="20.0" y="182.0" width="450.0" height="34.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="28.0" y="204.0" font-size="13.5" fill="#2563eb" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">b</text>
+<text x="98.0" y="204.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">batch-high</text>
+<text x="268.0" y="204.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">1000</text>
+<text x="378.0" y="204.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">10:00:03</text>
+<rect x="20.0" y="216.0" width="450.0" height="34.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="28.0" y="238.0" font-size="13.5" fill="#2563eb" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">c</text>
+<text x="98.0" y="238.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">batch-high</text>
+<text x="268.0" y="238.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">1000</text>
+<text x="378.0" y="238.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">10:00:02</text>
+<rect x="20.0" y="250.0" width="450.0" height="34.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="28.0" y="272.0" font-size="13.5" fill="#2563eb" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">d</text>
+<text x="98.0" y="272.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">system-node-critical</text>
+<text x="268.0" y="272.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">2000001000</text>
+<text x="378.0" y="272.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">10:00:05</text>
+<rect x="20.0" y="284.0" width="450.0" height="34.0" rx="0" fill="#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+<text x="28.0" y="306.0" font-size="13.5" fill="#2563eb" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">e</text>
+<text x="98.0" y="306.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">（无，默认 0）</text>
+<text x="268.0" y="306.0" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">0</text>
+<text x="378.0" y="306.0" font-size="12.5" fill="#ea580c" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">10:00:06</text>
+<text x="20.0" y="340.0" font-size="12" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">e 原本最早入队（10:00:00），调度失败后 AddUnschedulablePodIfNotPresent</text>
+<text x="20.0" y="358.0" font-size="12" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">把 Timestamp 刷新为当前时间，于是排到了同优先级的 a 后面。</text>
+<rect x="20.0" y="370.0" width="450.0" height="128.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="32.0" y="394.6" font-size="11.5" fill="#64748b" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">// plugins/queuesort/priority_sort.go</text>
+<text x="32.0" y="411.9" font-size="12" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">func (pl *PrioritySort) Less(e1, e2) bool {</text>
+<text x="32.0" y="429.3" font-size="12" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">  p1, p2 := e1.GetPriority(), e2.GetPriority()</text>
+<text x="32.0" y="446.7" font-size="12" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">  return (p1 &gt; p2) || (p1 == p2 &amp;&amp;</text>
+<text x="32.0" y="464.1" font-size="12" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">    e1.GetTimestamp().Before(e2.GetTimestamp()))</text>
+<text x="32.0" y="481.5" font-size="12" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">}</text>
+<text x="720.0" y="100.0" font-size="14" fill="#1e293b" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">堆的数组布局与树形（Less 为真者在上）</text>
+<polyline points="720.0,189.0 610.0,241.0" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+<polyline points="720.0,189.0 830.0,241.0" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+<polyline points="610.0,299.0 530.0,351.0" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+<polyline points="610.0,299.0 690.0,351.0" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+<rect x="655.0" y="131.0" width="130.0" height="58.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="720.0" y="148.4" font-size="14" fill="#7c3aed" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">d</text>
+<text x="720.0" y="166.0" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">prio 2000001000</text>
+<text x="720.0" y="182.6" font-size="11.5" fill="#64748b" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">10:00:05</text>
+<text x="791.0" y="141.0" font-size="11" fill="#64748b" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">[0]</text>
+<rect x="545.0" y="241.0" width="130.0" height="58.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="610.0" y="258.4" font-size="14" fill="#2563eb" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">c</text>
+<text x="610.0" y="276.0" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">prio 1000</text>
+<text x="610.0" y="292.6" font-size="11.5" fill="#64748b" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">10:00:02</text>
+<text x="681.0" y="251.0" font-size="11" fill="#64748b" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">[1]</text>
+<rect x="765.0" y="241.0" width="130.0" height="58.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="830.0" y="258.4" font-size="14" fill="#2563eb" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">a</text>
+<text x="830.0" y="276.0" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">prio 0</text>
+<text x="830.0" y="292.6" font-size="11.5" fill="#64748b" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">10:00:01</text>
+<text x="901.0" y="251.0" font-size="11" fill="#64748b" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">[2]</text>
+<rect x="465.0" y="351.0" width="130.0" height="58.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="530.0" y="368.4" font-size="14" fill="#2563eb" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">b</text>
+<text x="530.0" y="386.0" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">prio 1000</text>
+<text x="530.0" y="402.6" font-size="11.5" fill="#64748b" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">10:00:03</text>
+<text x="601.0" y="361.0" font-size="11" fill="#64748b" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">[3]</text>
+<rect x="625.0" y="351.0" width="130.0" height="58.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="690.0" y="368.4" font-size="14" fill="#ea580c" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">e</text>
+<text x="690.0" y="386.0" font-size="11.5" fill="#334155" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">prio 0</text>
+<text x="690.0" y="402.6" font-size="11.5" fill="#64748b" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">10:00:06</text>
+<text x="761.0" y="361.0" font-size="11" fill="#64748b" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">[4]</text>
+<rect x="488.3" y="211.6" width="127.7" height="14.9" fill="#ffffff" opacity="0.92"/>
+<text x="612.0" y="222.0" font-size="11" fill="#64748b" text-anchor="end" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Less(d,c)：优先级更高</text>
+<rect x="824.0" y="211.6" width="61.7" height="14.9" fill="#ffffff" opacity="0.92"/>
+<text x="828.0" y="222.0" font-size="11" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Less(d,a)</text>
+<rect x="521.1" y="317.6" width="48.9" height="14.9" fill="#ffffff" opacity="0.92"/>
+<text x="566.0" y="328.0" font-size="11" fill="#64748b" text-anchor="end" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">c 早于 b</text>
+<rect x="652.0" y="317.6" width="51.6" height="14.9" fill="#ffffff" opacity="0.92"/>
+<text x="656.0" y="328.0" font-size="11" fill="#64748b" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">1000 &gt; 0</text>
+<rect x="500.0" y="440.0" width="460.0" height="58.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="730.0" y="465.3" font-size="14" fill="#059669" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">Pop 顺序：d → c → b → a → e</text>
+<text x="730.0" y="483.5" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">每次 Pop 取 [0]，再用 Less 做 O(log n) 的下沉</text>
+<rect x="20.0" y="520.0" width="940.0" height="84.0" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.2"/>
+<text x="490.0" y="548.9" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Timestamp 何时变化：新 Pod 入队（newQueuedPodInfo）设为当前时间；调度失败回队（AddUnschedulablePodIfNotPresent）刷新；</text>
+<text x="490.0" y="566.3" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">在 unschedulableEntities / backoffQ / activeQ 之间移动、Pod 被更新、gate 被删除时都不变。</text>
+<text x="490.0" y="583.7" font-size="12" fill="#334155" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">backoffQ 先按退避到期时间（对齐到 1s 窗口）排序，同一窗口内也调用这个 Less，所以 PrioritySort 同时影响 backoffQ 的出队顺序。</text>
+</svg>

@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 480" width="940" height="480" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<rect width="940" height="480" fill="#ffffff"/>
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker></defs>
+<text x="470.0" y="32.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">三种 ScoringStrategy：同一个利用率，三条打分曲线</text>
+<text x="470.0" y="54.0" font-size="13" fill="#64748b" text-anchor="middle">横轴是「放上这个 Pod 之后」某种资源的 requested / allocatable，纵轴是这种资源的得分；多种资源再按权重平均</text>
+<rect x="90.0" y="96.0" width="410.0" height="324.0" rx="4" fill="#fbfdff" stroke="#cbd5e1" stroke-width="1.2"/>
+<path d="M90.0,420.0 L500.0,420.0" stroke="#e2e8f0" stroke-width="1" fill="none"/>
+<text x="82.0" y="424.0" font-size="11" fill="#64748b" text-anchor="end">0</text>
+<path d="M90.0,96.0 L90.0,420.0" stroke="#e2e8f0" stroke-width="1" fill="none"/>
+<text x="90.0" y="438.0" font-size="11" fill="#64748b" text-anchor="middle">0%</text>
+<path d="M90.0,339.0 L500.0,339.0" stroke="#e2e8f0" stroke-width="1" fill="none"/>
+<text x="82.0" y="343.0" font-size="11" fill="#64748b" text-anchor="end">25</text>
+<path d="M192.5,96.0 L192.5,420.0" stroke="#e2e8f0" stroke-width="1" fill="none"/>
+<text x="192.5" y="438.0" font-size="11" fill="#64748b" text-anchor="middle">25%</text>
+<path d="M90.0,258.0 L500.0,258.0" stroke="#e2e8f0" stroke-width="1" fill="none"/>
+<text x="82.0" y="262.0" font-size="11" fill="#64748b" text-anchor="end">50</text>
+<path d="M295.0,96.0 L295.0,420.0" stroke="#e2e8f0" stroke-width="1" fill="none"/>
+<text x="295.0" y="438.0" font-size="11" fill="#64748b" text-anchor="middle">50%</text>
+<path d="M90.0,177.0 L500.0,177.0" stroke="#e2e8f0" stroke-width="1" fill="none"/>
+<text x="82.0" y="181.0" font-size="11" fill="#64748b" text-anchor="end">75</text>
+<path d="M397.5,96.0 L397.5,420.0" stroke="#e2e8f0" stroke-width="1" fill="none"/>
+<text x="397.5" y="438.0" font-size="11" fill="#64748b" text-anchor="middle">75%</text>
+<path d="M90.0,96.0 L500.0,96.0" stroke="#e2e8f0" stroke-width="1" fill="none"/>
+<text x="82.0" y="100.0" font-size="11" fill="#64748b" text-anchor="end">100</text>
+<path d="M500.0,96.0 L500.0,420.0" stroke="#e2e8f0" stroke-width="1" fill="none"/>
+<text x="500.0" y="438.0" font-size="11" fill="#64748b" text-anchor="middle">100%</text>
+<text x="295.0" y="460.0" font-size="12" fill="#64748b" text-anchor="middle">利用率（含待调度 Pod）</text>
+<text x="50.0" y="258.0" font-size="12" fill="#64748b" text-anchor="middle">分</text>
+<polyline points="90.0,96.0 500.0,420.0" stroke="#2563eb" stroke-width="2.2" fill="none"/>
+<polyline points="90.0,420.0 500.0,96.0" stroke="#7c3aed" stroke-width="2.2" fill="none"/>
+<polyline points="90.0,420.0 377.0,96.0 500.0,322.8" stroke="#0d9488" stroke-width="2.2" fill="none" stroke-dasharray="6 4"/>
+<path d="M241.7,96.0 L241.7,420.0" stroke="#94a3b8" stroke-width="1" fill="none" stroke-dasharray="4 4"/>
+<text x="245.7" y="110.0" font-size="11" fill="#1e293b" text-anchor="start">节点 A CPU 37%</text>
+<circle cx="241.7" cy="215.9" r="4" fill="#2563eb" stroke="none" stroke-width="1.5"/>
+<circle cx="241.7" cy="300.1" r="4" fill="#7c3aed" stroke="none" stroke-width="1.5"/>
+<circle cx="241.7" cy="251.5" r="4" fill="#0d9488" stroke="none" stroke-width="1.5"/>
+<path d="M422.1,96.0 L422.1,420.0" stroke="#94a3b8" stroke-width="1" fill="none" stroke-dasharray="4 4"/>
+<text x="426.1" y="110.0" font-size="11" fill="#1e293b" text-anchor="start">节点 B CPU 81%</text>
+<circle cx="422.1" cy="358.4" r="4" fill="#2563eb" stroke="none" stroke-width="1.5"/>
+<circle cx="422.1" cy="157.6" r="4" fill="#7c3aed" stroke="none" stroke-width="1.5"/>
+<circle cx="422.1" cy="177.0" r="4" fill="#0d9488" stroke="none" stroke-width="1.5"/>
+<rect x="530.0" y="96.0" width="380.0" height="150.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<polyline points="544.0,114.0 574.0,114.0" stroke="#2563eb" stroke-width="2.2" fill="none"/>
+<text x="584.0" y="118.0" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">LeastAllocated（默认）</text>
+<text x="584.0" y="136.0" font-size="11.5" fill="#64748b" text-anchor="start">(alloc − req) × 100 / alloc</text>
+<polyline points="544.0,158.0 574.0,158.0" stroke="#7c3aed" stroke-width="2.2" fill="none"/>
+<text x="584.0" y="162.0" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">MostAllocated</text>
+<text x="584.0" y="180.0" font-size="11.5" fill="#64748b" text-anchor="start">req × 100 / alloc，超过 alloc 按满算</text>
+<polyline points="544.0,202.0 574.0,202.0" stroke="#0d9488" stroke-width="2.2" fill="none" stroke-dasharray="6 4"/>
+<text x="584.0" y="206.0" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">RequestedToCapacityRatio</text>
+<text x="584.0" y="224.0" font-size="11.5" fill="#64748b" text-anchor="start">shape：0%→0、70%→10、100%→3，分值再 ×10</text>
+<text x="530.0" y="272.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="700">算例：Pod 请求 500m / 1Gi（数字见正文）</text>
+<text x="534.0" y="298.0" font-size="12" fill="#1e293b" text-anchor="start" font-weight="700"></text>
+<text x="574.0" y="298.0" font-size="12" fill="#1e293b" text-anchor="start" font-weight="700">CPU 利用率</text>
+<text x="664.0" y="298.0" font-size="12" fill="#1e293b" text-anchor="start" font-weight="700">内存利用率</text>
+<text x="754.0" y="298.0" font-size="12" fill="#1e293b" text-anchor="start" font-weight="700">Least</text>
+<text x="806.0" y="298.0" font-size="12" fill="#1e293b" text-anchor="start" font-weight="700">Most</text>
+<text x="858.0" y="298.0" font-size="12" fill="#1e293b" text-anchor="start" font-weight="700">RTCR</text>
+<path d="M530.0,305.0 L910.0,305.0" stroke="#cbd5e1" stroke-width="1" fill="none"/>
+<text x="534.0" y="326.0" font-size="12" fill="#1e293b" text-anchor="start">A</text>
+<text x="574.0" y="326.0" font-size="12" fill="#1e293b" text-anchor="start">1500/4000</text>
+<text x="664.0" y="326.0" font-size="12" fill="#1e293b" text-anchor="start">3/8 Gi</text>
+<text x="754.0" y="326.0" font-size="12" fill="#1e293b" text-anchor="start">62</text>
+<text x="806.0" y="326.0" font-size="12" fill="#1e293b" text-anchor="start">37</text>
+<text x="858.0" y="326.0" font-size="12" fill="#1e293b" text-anchor="start">52</text>
+<text x="534.0" y="352.0" font-size="12" fill="#1e293b" text-anchor="start">B</text>
+<text x="574.0" y="352.0" font-size="12" fill="#1e293b" text-anchor="start">6500/8000</text>
+<text x="664.0" y="352.0" font-size="12" fill="#1e293b" text-anchor="start">5/16 Gi</text>
+<text x="754.0" y="352.0" font-size="12" fill="#1e293b" text-anchor="start">43</text>
+<text x="806.0" y="352.0" font-size="12" fill="#1e293b" text-anchor="start">56</text>
+<text x="858.0" y="352.0" font-size="12" fill="#1e293b" text-anchor="start">60</text>
+<path d="M530.0,362.0 L910.0,362.0" stroke="#cbd5e1" stroke-width="1" fill="none"/>
+<text x="530.0" y="386.0" font-size="11.5" fill="#64748b" text-anchor="start">A：CPU 37%，内存 37%；B：CPU 81%，内存 31%</text>
+<text x="530.0" y="407.0" font-size="11.5" fill="#64748b" text-anchor="start">Least 选 A（打散），Most 与 RTCR 选 B（装箱）</text>
+<text x="530.0" y="428.0" font-size="11.5" fill="#64748b" text-anchor="start">单项分数整数除法向下取整；RTCR 的平均用 math.Round</text>
+<text x="530.0" y="449.0" font-size="11.5" fill="#64748b" text-anchor="start">RTCR 只把得分 &gt; 0 的资源计入加权平均</text>
+</svg>

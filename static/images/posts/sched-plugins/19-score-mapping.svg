@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 520" width="920" height="520" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<rect width="920" height="520" fill="#ffffff"/>
+<defs><marker id="a" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7,3.2 L0,6.4 z" fill="#94a3b8"/></marker></defs>
+<text x="460.0" y="32.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">balancedResourceScorer：先各算一次均衡分，再把「改善量」压回 50~100</text>
+<text x="460.0" y="54.0" font-size="13" fill="#64748b" text-anchor="middle">scoreWithPod 与 scoreWithoutPod 都落在 [50, 100]，差值 Δ ∈ [−50, 50]，最终分 = 50 + (50 + Δ) / 2（整数除法）</text>
+<rect x="24.0" y="84.0" width="400.0" height="76.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="38.0" y="108.0" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">① 每种资源一个占比</text>
+<text x="38.0" y="130.0" font-size="12" fill="#1e293b" text-anchor="start">fraction = requested / allocatable，超过 1 按 1</text>
+<text x="38.0" y="150.0" font-size="11.5" fill="#64748b" text-anchor="start">allocatable 为 0、或 Pod 不请求的标量资源跳过</text>
+<path d="M224.0,160.0 L224.0,176.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="24.0" y="178.0" width="400.0" height="76.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
+<text x="38.0" y="202.0" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">② 标准差</text>
+<text x="38.0" y="224.0" font-size="12" fill="#1e293b" text-anchor="start">2 种资源：|f₁ − f₂| / 2；≥3 种：√(Σ(fᵢ − mean)² / n)</text>
+<text x="38.0" y="244.0" font-size="11.5" fill="#64748b" text-anchor="start">只有 1 种资源时 std = 0</text>
+<path d="M224.0,254.0 L224.0,270.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="24.0" y="272.0" width="400.0" height="76.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="38.0" y="296.0" font-size="13.5" fill="#7c3aed" text-anchor="start" font-weight="700">③ 均衡分</text>
+<text x="38.0" y="318.0" font-size="12" fill="#1e293b" text-anchor="start">score = int((1 − std) × 100)，范围 [50, 100]</text>
+<text x="38.0" y="338.0" font-size="11.5" fill="#64748b" text-anchor="start">对 allocated 与 requested 各算一次</text>
+<path d="M224.0,348.0 L224.0,364.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="24.0" y="366.0" width="400.0" height="76.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="38.0" y="390.0" font-size="13.5" fill="#059669" text-anchor="start" font-weight="700">④ 改善量映射</text>
+<text x="38.0" y="412.0" font-size="12" fill="#1e293b" text-anchor="start">50 + (50 + withPod − withoutPod) / 2</text>
+<text x="38.0" y="432.0" font-size="11.5" fill="#64748b" text-anchor="start">不变 75，变好趋向 100，变差趋向 50</text>
+<rect x="500.0" y="96.0" width="380.0" height="284.0" rx="4" fill="#fbfdff" stroke="#cbd5e1" stroke-width="1.2"/>
+<path d="M500.0,96.0 L500.0,380.0" stroke="#eef2f7" stroke-width="1" fill="none"/>
+<text x="500.0" y="398.0" font-size="11" fill="#64748b" text-anchor="middle">-50</text>
+<path d="M595.0,96.0 L595.0,380.0" stroke="#eef2f7" stroke-width="1" fill="none"/>
+<text x="595.0" y="398.0" font-size="11" fill="#64748b" text-anchor="middle">-25</text>
+<path d="M690.0,96.0 L690.0,380.0" stroke="#eef2f7" stroke-width="1" fill="none"/>
+<text x="690.0" y="398.0" font-size="11" fill="#64748b" text-anchor="middle">0</text>
+<path d="M785.0,96.0 L785.0,380.0" stroke="#eef2f7" stroke-width="1" fill="none"/>
+<text x="785.0" y="398.0" font-size="11" fill="#64748b" text-anchor="middle">+25</text>
+<path d="M880.0,96.0 L880.0,380.0" stroke="#eef2f7" stroke-width="1" fill="none"/>
+<text x="880.0" y="398.0" font-size="11" fill="#64748b" text-anchor="middle">+50</text>
+<path d="M500.0,380.0 L880.0,380.0" stroke="#eef2f7" stroke-width="1" fill="none"/>
+<text x="492.0" y="384.0" font-size="11" fill="#64748b" text-anchor="end">50</text>
+<path d="M500.0,311.8 L880.0,311.8" stroke="#eef2f7" stroke-width="1" fill="none"/>
+<text x="492.0" y="315.8" font-size="11" fill="#64748b" text-anchor="end">62</text>
+<path d="M500.0,238.0 L880.0,238.0" stroke="#eef2f7" stroke-width="1" fill="none"/>
+<text x="492.0" y="242.0" font-size="11" fill="#64748b" text-anchor="end">75</text>
+<path d="M500.0,169.8 L880.0,169.8" stroke="#eef2f7" stroke-width="1" fill="none"/>
+<text x="492.0" y="173.8" font-size="11" fill="#64748b" text-anchor="end">87</text>
+<path d="M500.0,96.0 L880.0,96.0" stroke="#eef2f7" stroke-width="1" fill="none"/>
+<text x="492.0" y="100.0" font-size="11" fill="#64748b" text-anchor="end">100</text>
+<text x="690.0" y="420.0" font-size="12" fill="#64748b" text-anchor="middle">Δ = scoreWithPod − scoreWithoutPod</text>
+<polyline points="500.0,380.0 880.0,96.0" stroke="#059669" stroke-width="2.2" fill="none"/>
+<circle cx="747.0" cy="198.2" r="5" fill="#2563eb" stroke="none" stroke-width="1.5"/>
+<text x="737.0" y="188.2" font-size="11.5" fill="#2563eb" text-anchor="end" font-weight="700">节点 X：Δ = +15 → 82</text>
+<circle cx="659.6" cy="260.7" r="5" fill="#7c3aed" stroke="none" stroke-width="1.5"/>
+<text x="667.6" y="282.7" font-size="11.5" fill="#7c3aed" text-anchor="start" font-weight="700">节点 Y：Δ = −8 → 71</text>
+<circle cx="690.0" cy="238.0" r="5" fill="#64748b" stroke="none" stroke-width="1.5"/>
+<text x="680.0" y="228.0" font-size="11.5" fill="#64748b" text-anchor="end" font-weight="700">Δ = 0 → 75</text>
+<rect x="500.0" y="430.0" width="396.0" height="70.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="514.0" y="452.0" font-size="12" fill="#1e293b" text-anchor="start">三种资源（单测用例）：CPU 85.7%、内存 12.5%</text>
+<text x="514.0" y="472.0" font-size="12" fill="#1e293b" text-anchor="start">GPU 3/8 → 4/8：std 0.3039 → 0.2989，69 → 70</text>
+<text x="514.0" y="492.0" font-size="12" fill="#059669" text-anchor="start" font-weight="700">最终 50 + (50 + 70 − 69) / 2 = 75</text>
+</svg>

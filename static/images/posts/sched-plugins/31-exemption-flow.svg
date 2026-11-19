@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 740" width="960" height="740" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<rect width="960" height="740" fill="#ffffff"/>
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 z" fill="#94a3b8"/></marker></defs>
+<text x="480.0" y="34.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">PreemptionToleration 对节点上每个 Pod 的判定</text>
+<text x="480.0" y="58.0" font-size="13" fill="#64748b" text-anchor="middle">前两步与 DefaultPreemption 相同；ExemptedFromPreemption 只会把候选「变少」，不会变多</text>
+<rect x="40.0" y="84.0" width="440.0" height="44.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="52.0" y="110.7" font-size="13.5" fill="#334155" text-anchor="start">优先级 ≥ 抢占者？</text>
+<line x1="480.0" y1="106.0" x2="548.0" y2="106.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="514.0" y="100.0" font-size="12" fill="#64748b" text-anchor="middle">是</text>
+<rect x="550.0" y="82.0" width="370.0" height="48.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="562.0" y="101.8" font-size="13" fill="#1e293b" text-anchor="start" font-weight="700">不是候选</text>
+<text x="562.0" y="119.6" font-size="12" fill="#64748b" text-anchor="start">与 DefaultPreemption 一致</text>
+<line x1="260.0" y1="128.0" x2="260.0" y2="146.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="268.0" y="141.0" font-size="12" fill="#64748b" text-anchor="start">否</text>
+<rect x="40.0" y="148.0" width="440.0" height="44.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="52.0" y="174.7" font-size="13.5" fill="#334155" text-anchor="start">受害者没有 priorityClassName？</text>
+<line x1="480.0" y1="170.0" x2="548.0" y2="170.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="514.0" y="164.0" font-size="12" fill="#64748b" text-anchor="middle">是</text>
+<rect x="550.0" y="146.0" width="370.0" height="48.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="562.0" y="165.8" font-size="13" fill="#ea580c" text-anchor="start" font-weight="700">不豁免：成为候选受害者</text>
+<text x="562.0" y="183.6" font-size="12" fill="#64748b" text-anchor="start">无从读取策略</text>
+<line x1="260.0" y1="192.0" x2="260.0" y2="210.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="268.0" y="205.0" font-size="12" fill="#64748b" text-anchor="start">否</text>
+<rect x="40.0" y="212.0" width="440.0" height="44.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="52.0" y="238.7" font-size="13.5" fill="#334155" text-anchor="start">PriorityClass Lister 查询失败？</text>
+<line x1="480.0" y1="234.0" x2="548.0" y2="234.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="514.0" y="228.0" font-size="12" fill="#64748b" text-anchor="middle">是</text>
+<rect x="550.0" y="210.0" width="370.0" height="48.0" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="562.0" y="229.8" font-size="13" fill="#dc2626" text-anchor="start" font-weight="700">返回 Error</text>
+<text x="562.0" y="247.6" font-size="12" fill="#64748b" text-anchor="start">整个节点的模拟失败</text>
+<line x1="260.0" y1="256.0" x2="260.0" y2="274.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="268.0" y="269.0" font-size="12" fill="#64748b" text-anchor="start">否</text>
+<rect x="40.0" y="276.0" width="440.0" height="44.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="52.0" y="302.7" font-size="13.5" fill="#334155" text-anchor="start">抢占者 preemptionPolicy = Never？</text>
+<line x1="480.0" y1="298.0" x2="548.0" y2="298.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="514.0" y="292.0" font-size="12" fill="#64748b" text-anchor="middle">是</text>
+<rect x="550.0" y="274.0" width="370.0" height="48.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="562.0" y="293.8" font-size="13" fill="#059669" text-anchor="start" font-weight="700">豁免</text>
+<text x="562.0" y="311.6" font-size="12" fill="#64748b" text-anchor="start">实际到不了：资格检查已拦下</text>
+<line x1="260.0" y1="320.0" x2="260.0" y2="338.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="268.0" y="333.0" font-size="12" fill="#64748b" text-anchor="start">否</text>
+<rect x="40.0" y="340.0" width="440.0" height="44.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="52.0" y="366.7" font-size="13.5" fill="#334155" text-anchor="start">annotation 解析失败？</text>
+<line x1="480.0" y1="362.0" x2="548.0" y2="362.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="514.0" y="356.0" font-size="12" fill="#64748b" text-anchor="middle">是</text>
+<rect x="550.0" y="338.0" width="370.0" height="48.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="562.0" y="357.8" font-size="13" fill="#ea580c" text-anchor="start" font-weight="700">不豁免：成为候选受害者</text>
+<text x="562.0" y="375.6" font-size="12" fill="#64748b" text-anchor="start">只打一条错误日志</text>
+<line x1="260.0" y1="384.0" x2="260.0" y2="402.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="268.0" y="397.0" font-size="12" fill="#64748b" text-anchor="start">否</text>
+<rect x="40.0" y="404.0" width="440.0" height="44.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="52.0" y="430.7" font-size="13.5" fill="#334155" text-anchor="start">抢占者优先级 ≥ minimum-preemptable-priority？</text>
+<line x1="480.0" y1="426.0" x2="548.0" y2="426.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="514.0" y="420.0" font-size="12" fill="#64748b" text-anchor="middle">是</text>
+<rect x="550.0" y="402.0" width="370.0" height="48.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="562.0" y="421.8" font-size="13" fill="#ea580c" text-anchor="start" font-weight="700">不豁免：成为候选受害者</text>
+<text x="562.0" y="439.6" font-size="12" fill="#64748b" text-anchor="start">默认值是 value+1，总成立</text>
+<line x1="260.0" y1="448.0" x2="260.0" y2="466.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="268.0" y="461.0" font-size="12" fill="#64748b" text-anchor="start">否</text>
+<rect x="40.0" y="468.0" width="440.0" height="44.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="52.0" y="494.7" font-size="13.5" fill="#334155" text-anchor="start">toleration-seconds &lt; 0？</text>
+<line x1="480.0" y1="490.0" x2="548.0" y2="490.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="514.0" y="484.0" font-size="12" fill="#64748b" text-anchor="middle">是</text>
+<rect x="550.0" y="466.0" width="370.0" height="48.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="562.0" y="485.8" font-size="13" fill="#059669" text-anchor="start" font-weight="700">豁免（永久）</text>
+<text x="562.0" y="503.6" font-size="12" fill="#64748b" text-anchor="start">低于门槛的抢占者永远抢不动</text>
+<line x1="260.0" y1="512.0" x2="260.0" y2="530.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="268.0" y="525.0" font-size="12" fill="#64748b" text-anchor="start">否</text>
+<rect x="40.0" y="532.0" width="440.0" height="44.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="52.0" y="558.7" font-size="13.5" fill="#334155" text-anchor="start">没有 PodScheduled=True 条件？</text>
+<line x1="480.0" y1="554.0" x2="548.0" y2="554.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="514.0" y="548.0" font-size="12" fill="#64748b" text-anchor="middle">是</text>
+<rect x="550.0" y="530.0" width="370.0" height="48.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="562.0" y="549.8" font-size="13" fill="#059669" text-anchor="start" font-weight="700">豁免</text>
+<text x="562.0" y="567.6" font-size="12" fill="#64748b" text-anchor="start">例如 assume 后尚未绑定的 Pod</text>
+<line x1="260.0" y1="576.0" x2="260.0" y2="594.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="268.0" y="589.0" font-size="12" fill="#64748b" text-anchor="start">否</text>
+<rect x="40.0" y="596.0" width="440.0" height="44.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="52.0" y="622.7" font-size="13.5" fill="#334155" text-anchor="start">scheduledAt + toleration-seconds &gt; now？</text>
+<line x1="480.0" y1="618.0" x2="548.0" y2="618.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="514.0" y="612.0" font-size="12" fill="#64748b" text-anchor="middle">是</text>
+<rect x="550.0" y="594.0" width="370.0" height="48.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="562.0" y="613.8" font-size="13" fill="#059669" text-anchor="start" font-weight="700">豁免（容忍期内）</text>
+<text x="562.0" y="631.6" font-size="12" fill="#64748b" text-anchor="start">now 取自 PostFilter 开始时刻</text>
+<line x1="260.0" y1="640.0" x2="260.0" y2="658.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
+<text x="268.0" y="653.0" font-size="12" fill="#64748b" text-anchor="start">否</text>
+<rect x="40.0" y="660.0" width="440.0" height="46.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="52.0" y="687.5" font-size="13" fill="#ea580c" text-anchor="start" font-weight="700">不豁免：toleration 已过期，成为候选受害者</text>
+<rect x="550.0" y="658.0" width="370.0" height="50.0" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+<text x="562.0" y="678.2" font-size="12.5" fill="#334155" text-anchor="start">之后与 DefaultPreemption 完全相同：</text>
+<text x="562.0" y="696.4" font-size="12.5" fill="#334155" text-anchor="start">全部移除 → Filter → 按 PDB 分组赦免</text>
+</svg>
