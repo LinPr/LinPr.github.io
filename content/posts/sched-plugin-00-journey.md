@@ -1,5 +1,5 @@
 ---
-title: '调度插件逐个读（00）：一个 Pod 的调度旅程'
+title: 'scheduler-plugins 开篇：一个 Pod 的调度旅程'
 date: 2026-11-19T08:00:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "kube-scheduler", "scheduler-plugins"]

@@ -1,5 +1,5 @@
 ---
-title: '调度插件逐个读（03）：NodeName，一个几乎从不生效的过滤器'
+title: 'scheduler-plugins NodeName：一个几乎从不生效的过滤器'
 date: 2026-11-19T08:30:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "NodeName", "PreFilterResult"]

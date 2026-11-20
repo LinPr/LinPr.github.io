@@ -1,5 +1,5 @@
 ---
-title: 调度插件逐个读
+title: scheduler-plugins 逐个拆解
 description: 跟着一个 Pod 的调度旅程，按执行顺序逐个读完 kube-scheduler 的 24 个 in-tree 插件和 scheduler-plugins 的 16 个 out-of-tree 插件。
 ---
 

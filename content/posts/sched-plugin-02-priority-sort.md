@@ -1,5 +1,5 @@
 ---
-title: '调度插件逐个读（02）：PrioritySort，一行比较函数决定谁先出队'
+title: 'scheduler-plugins PrioritySort：一行比较函数决定谁先出队'
 date: 2026-11-19T08:20:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "PrioritySort", "QueueSort", "PriorityClass"]

@@ -10,7 +10,7 @@ author: "LinPr"
 description: "配额、gang、实时负载、NUMA、网络代价、seccomp……sigs.k8s.io/scheduler-plugins 把 in-tree 装不下的调度能力做成了插件。本文从源码出发，拆解每个插件的状态放在哪、公式怎么算、失败返回什么，以及那些只有读代码才看得到的边界情况。"
 ---
 
-> 本文是总览。每个插件更深入的源码拆解（CycleState、失败码、打分算例、QueueingHint、边界情况）见系列[《调度插件逐个读》](/series/scheduler-plugins/)，从[开篇](/posts/sched-plugin-00-journey/)读起；out-of-tree 部分从第 25 篇 [QOSSort](/posts/sched-plugin-25-qos-sort/) 开始。文中各插件小节也链接到了对应的单篇。
+> 本文是总览。每个插件更深入的源码拆解（CycleState、失败码、打分算例、QueueingHint、边界情况）见系列[《scheduler-plugins 逐个拆解》](/series/scheduler-plugins/)，从[开篇](/posts/sched-plugin-00-journey/)读起；out-of-tree 部分从第 25 篇 [QOSSort](/posts/sched-plugin-25-qos-sort/) 开始。文中各插件小节也链接到了对应的单篇。
 
 上一篇[《kube-scheduler 的 in-tree 插件》](/posts/kubernetes-scheduler-in-tree-plugins/)读的是随 Kubernetes 发布的内置插件。它们有一个共同点：判定所需的数据全部来自 API 对象，Pod、Node、PV、PVC，调度器自己的 informer 就能拿到。
 

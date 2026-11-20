@@ -1,5 +1,5 @@
 ---
-title: '调度插件逐个读（20）：ImageLocality，镜像越大越值得就近，但不能扎堆'
+title: 'scheduler-plugins ImageLocality：镜像越大越值得就近，但不能扎堆'
 date: 2026-11-19T11:20:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "ImageLocality", "镜像", "源码分析"]

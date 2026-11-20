@@ -1,5 +1,5 @@
 ---
-title: '调度插件逐个读（19）：NodeResourcesBalancedAllocation，看的是放上去之后均衡度变好还是变坏'
+title: 'scheduler-plugins NodeResourcesBalancedAllocation：看的是放上去之后均衡度变好还是变坏'
 date: 2026-11-19T11:10:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "NodeResourcesBalancedAllocation", "打分", "源码分析"]

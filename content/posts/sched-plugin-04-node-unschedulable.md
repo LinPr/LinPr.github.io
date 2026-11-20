@@ -1,5 +1,5 @@
 ---
-title: '调度插件逐个读（04）：NodeUnschedulable，cordon 在调度器里的样子'
+title: 'scheduler-plugins NodeUnschedulable：cordon 在调度器里的样子'
 date: 2026-11-19T08:40:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "NodeUnschedulable", "cordon", "污点"]

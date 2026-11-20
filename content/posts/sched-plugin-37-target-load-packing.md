@@ -1,5 +1,5 @@
 ---
-title: '调度插件逐个读（37）：TargetLoadPacking，按真实 CPU 负载把节点装到目标水位'
+title: 'scheduler-plugins TargetLoadPacking：按真实 CPU 负载把节点装到目标水位'
 date: 2026-11-19T14:10:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "trimaran", "load-aware"]

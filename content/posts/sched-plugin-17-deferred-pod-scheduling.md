@@ -1,5 +1,5 @@
 ---
-title: '调度插件逐个读（17）：DeferredPodScheduling，已经在跑的 Pod 为什么又回到调度队列'
+title: 'scheduler-plugins DeferredPodScheduling：已经在跑的 Pod 为什么又回到调度队列'
 date: 2026-11-19T10:50:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "DeferredPodScheduling", "原地扩缩容", "抢占"]

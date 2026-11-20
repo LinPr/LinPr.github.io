@@ -1,5 +1,5 @@
 ---
-title: '调度插件逐个读（24）：DefaultBinder，一次 POST 收尾整条调度链'
+title: 'scheduler-plugins DefaultBinder：一次 POST 收尾整条调度链'
 date: 2026-11-19T12:00:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "binding", "assume cache"]

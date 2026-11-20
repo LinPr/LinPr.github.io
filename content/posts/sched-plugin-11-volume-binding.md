@@ -1,5 +1,5 @@
 ---
-title: '调度插件逐个读（11）：VolumeBinding，把选 PV 推迟到选节点之后'
+title: 'scheduler-plugins VolumeBinding：把选 PV 推迟到选节点之后'
 date: 2026-11-19T09:50:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "存储", "csi", "WaitForFirstConsumer"]

@@ -1,5 +1,5 @@
 ---
-title: '调度插件逐个读（12）：VolumeZone，PV 标签上的可用区约束'
+title: 'scheduler-plugins VolumeZone：PV 标签上的可用区约束'
 date: 2026-11-19T10:00:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "存储", "topology"]

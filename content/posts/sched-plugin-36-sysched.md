@@ -1,5 +1,5 @@
 ---
-title: '调度插件逐个读（36）：SySched，按系统调用画像把 Pod 放到一起'
+title: 'scheduler-plugins SySched：按系统调用画像把 Pod 放到一起'
 date: 2026-11-19T14:00:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "seccomp", "security"]

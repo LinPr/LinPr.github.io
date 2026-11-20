@@ -1,5 +1,5 @@
 ---
-title: '调度插件逐个读（22）：TopologyPlacementGenerator，让整组 Pod 只在一个拓扑域里试放'
+title: 'scheduler-plugins TopologyPlacementGenerator：让整组 Pod 只在一个拓扑域里试放'
 date: 2026-11-19T11:40:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "topology-aware-scheduling", "podgroup", "placement"]

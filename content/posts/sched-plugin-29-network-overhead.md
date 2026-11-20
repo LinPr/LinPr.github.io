@@ -1,5 +1,5 @@
 ---
-title: '调度插件逐个读（29）：NetworkOverhead，按依赖的网络代价过滤与打分'
+title: 'scheduler-plugins NetworkOverhead：按依赖的网络代价过滤与打分'
 date: 2026-11-19T12:50:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "network-aware", "score"]

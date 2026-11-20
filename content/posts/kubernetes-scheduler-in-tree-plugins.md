@@ -10,7 +10,7 @@ author: "LinPr"
 description: "kube-scheduler 的调度语义全部写在插件里。本文从 NewInTreeRegistry 出发，先讲框架调用插件的四条规则，再逐个拆解 24 个 in-tree 插件：CycleState 里存了什么、Filter 返回哪种失败码、分数怎么算、什么事件会让 Pod 重新入队。"
 ---
 
-> 本文是总览。每个插件更深入的源码拆解（CycleState、失败码、打分算例、QueueingHint、边界情况）见系列[《调度插件逐个读》](/series/scheduler-plugins/)，从[开篇](/posts/sched-plugin-00-journey/)读起；文中各插件小节也链接到了对应的单篇。
+> 本文是总览。每个插件更深入的源码拆解（CycleState、失败码、打分算例、QueueingHint、边界情况）见系列[《scheduler-plugins 逐个拆解》](/series/scheduler-plugins/)，从[开篇](/posts/sched-plugin-00-journey/)读起；文中各插件小节也链接到了对应的单篇。
 
 上一篇[《从 OpenResty phase engine 到 scheduler framework》](/posts/scheduler-framework/)讲的是框架：扩展点怎么定义，插件按什么顺序被调用，失败之后怎么补偿。框架本身不包含任何调度语义，它不知道什么是资源不足，也不知道什么是污点。这些判断全部写在 `pkg/scheduler/framework/plugins/` 下的插件里。
 
@@ -275,7 +275,7 @@ func (pl *NodeName) PreFilter(ctx context.Context, state fwk.CycleState, pod *v1
 
 不过这样的 Pod 平时并不进调度队列：调度器的事件处理把 `spec.nodeName` 非空的 Pod 视为已调度（`assignedPod`），只加进缓存用于记账，交给 kubelet 准入把关。这段 PreFilter 真正生效的场景，是 `InPlacePodVerticalScalingSchedulerPreemption` 下原地扩容被推迟、重新交给调度器的 Pod（5.5 节）。Filter 也不能省：`evaluateNominatedNode` 直接在提名节点上跑 Filter，不看 `PreFilterResult`，提名节点与 `spec.nodeName` 不一致时，只有 `NodeName.Filter` 能拦住。
 
-注意它没有返回 `Skip`：普通 Pod 的 PreFilter 返回 `nil, nil`，Filter 仍会对每个节点调用一次，只是立刻返回成功。Filter 失败时返回 `UnschedulableAndUnresolvable`，原因是 `node(s) didn't match the requested node name`。详见[《调度插件逐个读（03）：NodeName》](/posts/sched-plugin-03-node-name/)。
+注意它没有返回 `Skip`：普通 Pod 的 PreFilter 返回 `nil, nil`，Filter 仍会对每个节点调用一次，只是立刻返回成功。Filter 失败时返回 `UnschedulableAndUnresolvable`，原因是 `node(s) didn't match the requested node name`。详见[《scheduler-plugins 逐个拆解（03）：NodeName》](/posts/sched-plugin-03-node-name/)。
 
 ### 3.2 `NodeUnschedulable`：cordon 也是一种污点
 
@@ -287,7 +287,7 @@ func (pl *NodeName) PreFilter(ctx context.Context, state fwk.CycleState, pod *v1
 
 DaemonSet 的 Pod 能被调度到 cordon 掉的节点上，就是因为 DaemonSet controller 自动给它们加了这个容忍。
 
-它注册了两个事件：节点从不可调度变为可调度（或者新增一个可调度节点）；Pod 的容忍被修改为能容忍这个污点。两种情况都返回 `Queue`，其他节点变化一律 `QueueSkip`。详见[《调度插件逐个读（04）：NodeUnschedulable》](/posts/sched-plugin-04-node-unschedulable/)。
+它注册了两个事件：节点从不可调度变为可调度（或者新增一个可调度节点）；Pod 的容忍被修改为能容忍这个污点。两种情况都返回 `Queue`，其他节点变化一律 `QueueSkip`。详见[《scheduler-plugins 逐个拆解（04）：NodeUnschedulable》](/posts/sched-plugin-04-node-unschedulable/)。
 
 ### 3.3 `NodePorts`：端口冲突可以触发抢占
 
@@ -302,7 +302,7 @@ type preFilterState []v1.ContainerPort
 
 Filter 用 `(HostIP, Protocol, HostPort)` 三元组和节点已用端口比较。`0.0.0.0` 表示绑定所有地址，它与同协议同端口的任何 IP 都冲突。冲突时返回 **`Unschedulable`**，因为驱逐占用端口的 Pod 确实能解决问题，所以端口冲突可以触发抢占。
 
-它注册了两个事件。已调度 Pod 删除时，QueueingHint 写得很精确：被删除的 Pod 必须已经调度或带有 `nominatedNodeName`，并且确实占用了当前 Pod 需要的端口，才返回 `Queue`；别的 Pod 删除，不会唤醒等端口的 Pod。另一个是节点新增（`Node/Add`），没有设置 hint，等同于总是 `Queue`，因为新节点上的端口全部空闲。详见[《调度插件逐个读（07）：NodePorts》](/posts/sched-plugin-07-node-ports/)。
+它注册了两个事件。已调度 Pod 删除时，QueueingHint 写得很精确：被删除的 Pod 必须已经调度或带有 `nominatedNodeName`，并且确实占用了当前 Pod 需要的端口，才返回 `Queue`；别的 Pod 删除，不会唤醒等端口的 Pod。另一个是节点新增（`Node/Add`），没有设置 hint，等同于总是 `Queue`，因为新节点上的端口全部空闲。详见[《scheduler-plugins 逐个拆解（07）：NodePorts》](/posts/sched-plugin-07-node-ports/)。
 
 ### 3.4 `TaintToleration`：Filter 管硬污点，Score 管软污点
 
@@ -346,7 +346,7 @@ func DefaultNormalizeScore(maxPriority int64, reverse bool, scores fwk.NodeScore
 
 这个辅助函数被很多插件复用。它的含义是「按最大值等比缩放到 0 到 100」，`reverse` 再翻转方向。注意它不是 min-max 归一化：所有节点都有 1 个软污点时，大家都得 0 分，而不是都得 100 分。
 
-`TaintToleration` 的默认权重是 3，在默认插件里最高。详见[《调度插件逐个读（05）：TaintToleration》](/posts/sched-plugin-05-taint-toleration/)。
+`TaintToleration` 的默认权重是 3，在默认插件里最高。详见[《scheduler-plugins 逐个拆解（05）：TaintToleration》](/posts/sched-plugin-05-taint-toleration/)。
 
 ### 3.5 `NodeAffinity`：能缩小范围的亲和
 
@@ -361,7 +361,7 @@ Filter 区分两种失败，都是 `UnschedulableAndUnresolvable`：
 
 Score 是匹配上的 preferred term 的权重之和，再用 `DefaultNormalizeScore` 正向归一化。
 
-QueueingHint 只在节点标签从「不匹配」变为「匹配」时返回 `Queue`。给节点打一个无关的 label，不会唤醒任何 Pod。详见[《调度插件逐个读（06）：NodeAffinity》](/posts/sched-plugin-06-node-affinity/)。
+QueueingHint 只在节点标签从「不匹配」变为「匹配」时返回 `Queue`。给节点打一个无关的 label，不会唤醒任何 Pod。详见[《scheduler-plugins 逐个拆解（06）：NodeAffinity》](/posts/sched-plugin-06-node-affinity/)。
 
 ### 3.6 `NodeResourcesFit`：资源检查与三种打分策略
 
@@ -407,7 +407,7 @@ for i := range insufficientResources {
 - 节点 allocatable 变化：当前 Pod 放得进，并且 Pod 请求的某项资源在节点上确实增加了，才返回 `Queue`；
 - 开启原地扩缩容后，已调度 Pod 缩容（且缩小的正是当前 Pod 请求的资源）也会触发重新入队；`InPlacePodVerticalScalingSchedulerPreemption` 下还有针对被推迟扩容 Pod 的扩容事件，并且只关心同一个节点上的变化。
 
-详见[《调度插件逐个读（08）：NodeResourcesFit》](/posts/sched-plugin-08-node-resources-fit/)。
+详见[《scheduler-plugins 逐个拆解（08）：NodeResourcesFit》](/posts/sched-plugin-08-node-resources-fit/)。
 
 ### 3.7 存储：四个插件各管一段
 
@@ -434,13 +434,13 @@ Filter 检查两类问题，都返回 **`Unschedulable`**：
 
 另有一种失败发生在 PreFilter：Pod 引用的 PVC 不存在时，直接返回 `UnschedulableAndUnresolvable`，等 PVC 创建后再试，抢占帮不上忙。
 
-RWOP 冲突可以通过抢占解决，关键在于它实现了 `PreFilterExtensions`。抢占模拟时，框架每「移除」一个受害者，就调用 `RemovePod`，把计数减一；计数归零，Filter 就通过了。这是 PreFilterExtensions 存在的意义：**让 PreFilter 预计算的状态能够跟随抢占模拟增量更新**，不必重新计算。详见[《调度插件逐个读（09）：VolumeRestrictions》](/posts/sched-plugin-09-volume-restrictions/)。
+RWOP 冲突可以通过抢占解决，关键在于它实现了 `PreFilterExtensions`。抢占模拟时，框架每「移除」一个受害者，就调用 `RemovePod`，把计数减一；计数归零，Filter 就通过了。这是 PreFilterExtensions 存在的意义：**让 PreFilter 预计算的状态能够跟随抢占模拟增量更新**，不必重新计算。详见[《scheduler-plugins 逐个拆解（09）：VolumeRestrictions》](/posts/sched-plugin-09-volume-restrictions/)。
 
 #### `NodeVolumeLimits`：CSI 卷数量上限
 
 读取 `CSINode.spec.drivers[].allocatable.count` 作为每个驱动的上限，统计节点上已有 Pod 的卷与 `VolumeAttachment`，去重后加上新 Pod 的卷。超出时返回 `Unschedulable`，原因 `node(s) exceed max volume count`。新 Pod 与已有 Pod 共享的卷不重复计数。新 Pod 引用的 PVC 不存在时则返回 `UnschedulableAndUnresolvable`。
 
-它的事件注册比较完整：`CSINode` 新增或上限增加、`VolumeAttachment` 删除、挂卷的 Pod 删除、PVC 创建，都可能唤醒等待中的 Pod。详见[《调度插件逐个读（10）：NodeVolumeLimits》](/posts/sched-plugin-10-node-volume-limits/)。
+它的事件注册比较完整：`CSINode` 新增或上限增加、`VolumeAttachment` 删除、挂卷的 Pod 删除、PVC 创建，都可能唤醒等待中的 Pod。详见[《scheduler-plugins 逐个拆解（10）：NodeVolumeLimits》](/posts/sched-plugin-10-node-volume-limits/)。
 
 #### `VolumeBinding`：横跨调度周期与绑定周期
 
@@ -480,11 +480,11 @@ Filter 的所有失败都是 `UnschedulableAndUnresolvable`：
 - `node(s) did not have enough free storage`
 - `node(s) unavailable due to one or more pvc(s) bound to non-existent pv(s)`
 
-`WaitForFirstConsumer` 模式下，PV 的选择推迟到 Pod 选定节点之后。这正是它必须横跨 Filter、Reserve、PreBind 的原因：Filter 为每个节点算方案，Reserve 选定方案，PreBind 落地。详见[《调度插件逐个读（11）：VolumeBinding》](/posts/sched-plugin-11-volume-binding/)。
+`WaitForFirstConsumer` 模式下，PV 的选择推迟到 Pod 选定节点之后。这正是它必须横跨 Filter、Reserve、PreBind 的原因：Filter 为每个节点算方案，Reserve 选定方案，PreBind 落地。详见[《scheduler-plugins 逐个拆解（11）：VolumeBinding》](/posts/sched-plugin-11-volume-binding/)。
 
 #### `VolumeZone`：已绑定 PV 的区域约束
 
-PreFilter 只收集 Pod 所用的**已绑定** PV 的 zone/region 标签。`WaitForFirstConsumer` 模式下尚未绑定的 PVC 直接跳过，交给 `VolumeBinding` 处理；非 `WaitForFirstConsumer` 却还没绑定的 PVC，以及 PVC、PV、StorageClass 查不到的情况，返回 `UnschedulableAndUnresolvable`。Filter 要求节点的 zone/region 标签与 PV 一致，同时兼容 beta 和 GA 两套标签名。节点没有任何区域标签时直接通过。不匹配返回 `UnschedulableAndUnresolvable`，原因 `node(s) had no available volume zone`。详见[《调度插件逐个读（12）：VolumeZone》](/posts/sched-plugin-12-volume-zone/)。
+PreFilter 只收集 Pod 所用的**已绑定** PV 的 zone/region 标签。`WaitForFirstConsumer` 模式下尚未绑定的 PVC 直接跳过，交给 `VolumeBinding` 处理；非 `WaitForFirstConsumer` 却还没绑定的 PVC，以及 PVC、PV、StorageClass 查不到的情况，返回 `UnschedulableAndUnresolvable`。Filter 要求节点的 zone/region 标签与 PV 一致，同时兼容 beta 和 GA 两套标签名。节点没有任何区域标签时直接通过。不匹配返回 `UnschedulableAndUnresolvable`，原因 `node(s) had no available volume zone`。详见[《scheduler-plugins 逐个拆解（12）：VolumeZone》](/posts/sched-plugin-12-volume-zone/)。
 
 ### 3.8 `InterPodAffinity`：亲和不可抢占，反亲和可以
 
@@ -524,7 +524,7 @@ Filter 时只需要查表：取节点的拓扑标签值，看对应域的计数�
 
 打分阶段的 PreScore 汇总四种贡献：当前 Pod 的 preferred 亲和（加分）与反亲和（减分），已有 Pod 的 preferred 亲和与反亲和，以及已有 Pod 的 required 亲和（加 `hardPodAffinityWeight`，默认 1）。结果是一个按拓扑域的分数表，Score 只需查表，`NormalizeScore` 做 min-max 归一化。
 
-这个插件在大集群里开销最大，PreFilter 的扫描范围分两半：「已有 Pod 的反亲和」这一半只扫描上面有 required 反亲和 Pod 的节点（快照里单独维护了这份节点列表）；但只要新 Pod 自己带有 required 亲和或反亲和规则，就要遍历**全集群所有节点上的所有 Pod**，逐个匹配它的 term。两者都没有时 PreFilter 返回 `Skip`。新增的 `InterPodAffinityHostnameFastPath`（1.37 Alpha，默认关闭）让以 `kubernetes.io/hostname` 为拓扑键的规则不再构建全局表，改为在 Filter 中按节点就地检查。详见[《调度插件逐个读（14）：InterPodAffinity》](/posts/sched-plugin-14-inter-pod-affinity/)。
+这个插件在大集群里开销最大，PreFilter 的扫描范围分两半：「已有 Pod 的反亲和」这一半只扫描上面有 required 反亲和 Pod 的节点（快照里单独维护了这份节点列表）；但只要新 Pod 自己带有 required 亲和或反亲和规则，就要遍历**全集群所有节点上的所有 Pod**，逐个匹配它的 term。两者都没有时 PreFilter 返回 `Skip`。新增的 `InterPodAffinityHostnameFastPath`（1.37 Alpha，默认关闭）让以 `kubernetes.io/hostname` 为拓扑键的规则不再构建全局表，改为在 Filter 中按节点就地检查。详见[《scheduler-plugins 逐个拆解（14）：InterPodAffinity》](/posts/sched-plugin-14-inter-pod-affinity/)。
 
 ### 3.9 `PodTopologySpread`：偏差的计算方式
 
@@ -595,7 +595,7 @@ var systemDefaultConstraints = []v1.TopologySpreadConstraint{
 
 selector 从 Pod 所属的 Service、ReplicaSet、StatefulSet 推导。所以同一个 Deployment 的副本，即使没配任何打散规则，打分时也会倾向于分散到不同节点和 zone。都是 `ScheduleAnyway`，只影响打分，不会导致调度失败。
 
-默认约束还有一个副作用：`PodTopologySpread` 的 `SignPod` 在 Pod 自带约束、或插件的默认约束非空时都拒绝签名。默认配置下 `defaultingType: System` 让默认约束总是非空，所以每个 Pod 都签不出名，`OpportunisticBatching` 的批量调度优化在默认 Profile 里实际不会生效（第六节末尾）。详见[《调度插件逐个读（13）：PodTopologySpread》](/posts/sched-plugin-13-pod-topology-spread/)。
+默认约束还有一个副作用：`PodTopologySpread` 的 `SignPod` 在 Pod 自带约束、或插件的默认约束非空时都拒绝签名。默认配置下 `defaultingType: System` 让默认约束总是非空，所以每个 Pod 都签不出名，`OpportunisticBatching` 的批量调度优化在默认 Profile 里实际不会生效（第六节末尾）。详见[《scheduler-plugins 逐个拆解（13）：PodTopologySpread》](/posts/sched-plugin-13-pod-topology-spread/)。
 
 ### 3.10 `DynamicResources`：失败几乎都不可抢占
 
@@ -615,13 +615,13 @@ DRA 的调度侧实现。Pod 通过 `ResourceClaim` 申请设备，插件负责�
 
 它的失败码有一个特点：内部的 `statusUnschedulable()` 总是返回 **`UnschedulableAndUnresolvable`**。设备分配失败，驱逐普通 Pod 一般腾不出设备，所以默认不走 Pod 抢占，而是走自己的 PostFilter，释放闲置 claim。
 
-另一个特殊处理：分配器计算超时（`filterTimeout`，默认 10 秒，由 `DRASchedulerFilterTimeout` 控制，1.34 起 Beta 默认开启）时返回 `Error`，而不是不可调度。`Error` 会让整个调度周期中止，Pod 进入退避，不会因为一次计算超时就被判定为「放不下」。按本提交的默认 gate，实际使用的分配器实现是 `incubating`，而不是 `stable`。详见[《调度插件逐个读（15）：DynamicResources》](/posts/sched-plugin-15-dynamic-resources/)。
+另一个特殊处理：分配器计算超时（`filterTimeout`，默认 10 秒，由 `DRASchedulerFilterTimeout` 控制，1.34 起 Beta 默认开启）时返回 `Error`，而不是不可调度。`Error` 会让整个调度周期中止，Pod 进入退避，不会因为一次计算超时就被判定为「放不下」。按本提交的默认 gate，实际使用的分配器实现是 `incubating`，而不是 `stable`。详见[《scheduler-plugins 逐个拆解（15）：DynamicResources》](/posts/sched-plugin-15-dynamic-resources/)。
 
 ### 3.11 `NodeDeclaredFeatures`：资源之外的兼容性
 
 节点在 `status` 中声明自己支持的特性，插件从 Pod spec 推断出它需要的特性集合，Filter 检查子集关系。不满足返回 `UnschedulableAndUnresolvable`，原因 `node(s) didn't match Pod's required features`。
 
-它解决的是 requests 表达不了的兼容性问题。某些 Pod 字段只有新版 kubelet 才支持，混合版本集群在升级期间，可以用它避免把 Pod 调度到旧节点。同名 feature gate 在 1.37 GA 并锁定开启，所以它实际上总在默认 Profile 里（1.3 节）。详见[《调度插件逐个读（16）：NodeDeclaredFeatures》](/posts/sched-plugin-16-node-declared-features/)。
+它解决的是 requests 表达不了的兼容性问题。某些 Pod 字段只有新版 kubelet 才支持，混合版本集群在升级期间，可以用它避免把 Pod 调度到旧节点。同名 feature gate 在 1.37 GA 并锁定开启，所以它实际上总在默认 Profile 里（1.3 节）。详见[《scheduler-plugins 逐个拆解（16）：NodeDeclaredFeatures》](/posts/sched-plugin-16-node-declared-features/)。
 
 ---
 
@@ -666,7 +666,7 @@ return fwk.MaxNodeScore/2 + (fwk.MaxNodeScore/2+scoreWithPod-scoreWithoutPod)/2
 
 旧公式只看放上去之后的绝对均衡度。差别在于：一个本来就很失衡的节点，旧公式下永远低分；新公式下，如果这个 Pod 恰好能补齐短板，它会得到高分。
 
-另外几个细节：它用的是 Pod 的**真实** requests，而不是 `NodeResourcesFit` 那样的默认值替代；参与计算的资源请求全为 0（例如 BestEffort Pod）时，PreScore 直接 `Skip`；参数里每种资源的权重必须为 1，校验会拒绝其他值。详见[《调度插件逐个读（19）：NodeResourcesBalancedAllocation》](/posts/sched-plugin-19-balanced-allocation/)。
+另外几个细节：它用的是 Pod 的**真实** requests，而不是 `NodeResourcesFit` 那样的默认值替代；参与计算的资源请求全为 0（例如 BestEffort Pod）时，PreScore 直接 `Skip`；参数里每种资源的权重必须为 1，校验会拒绝其他值。详见[《scheduler-plugins 逐个拆解（19）：NodeResourcesBalancedAllocation》](/posts/sched-plugin-19-balanced-allocation/)。
 
 ### 4.3 `ImageLocality`：镜像越大，本地缓存越值钱
 
@@ -697,7 +697,7 @@ func calculatePriority(sumScores int64, imageCount int) int64 {
 
 分母是调度器快照里的全部节点，而不是通过 Filter 的节点。这个系数用来防止「热点」：如果一个镜像只在一个节点上，不乘系数的话，所有用这个镜像的 Pod 都会挤到那个节点。乘上系数后，只有在较多节点上都存在的镜像，才会产生明显的加分。
 
-23MB 以下不加分，每个镜像来源 1000MB 封顶，中间线性。镜像来源包括普通容器、init 容器和镜像卷（`volume.image`）。节点上有哪些镜像来自 `node.status.images`，kubelet 默认只上报最大的 50 个（`nodeStatusMaxImages`），小镜像往往不在其中。详见[《调度插件逐个读（20）：ImageLocality》](/posts/sched-plugin-20-image-locality/)。
+23MB 以下不加分，每个镜像来源 1000MB 封顶，中间线性。镜像来源包括普通容器、init 容器和镜像卷（`volume.image`）。节点上有哪些镜像来自 `node.status.images`，kubelet 默认只上报最大的 50 个（`nodeStatusMaxImages`），小镜像往往不在其中。详见[《scheduler-plugins 逐个拆解（20）：ImageLocality》](/posts/sched-plugin-20-image-locality/)。
 
 ---
 
@@ -722,7 +722,7 @@ PreEnqueue 在 Pod 进入活跃队列之前调用。带有 `schedulingGates` 的
 
 这是一个「队列侧」插件。它和 Filter 的区别在于：Filter 失败的 Pod 每次被唤醒都要完整地跑一遍调度周期，PreEnqueue 拦住的 Pod 一次都不会跑。
 
-PreEnqueue 扩展点上不止它一个。默认 Profile 里还有 `DynamicResources`（Pod 引用的 claim 还不存在时拦住）和 `DefaultPreemption`（异步抢占进行中时拦住抢占者，`SchedulerAsyncPreemption` 1.33 起 Beta 默认开启），`GenericWorkload` 开启后还有 `GangScheduling`（PodGroup 未创建或成员未凑够时拦住）。这些插件在队列里存放于以插件名为键的 map 中，执行顺序不固定，任意一个拒绝即不入队；唯一的例外是上一次拦住这个 Pod 的插件（`GatingPlugin`）会被最先调用，它仍然拒绝就不必再问其他插件。详见[《调度插件逐个读（01）：SchedulingGates》](/posts/sched-plugin-01-scheduling-gates/)。
+PreEnqueue 扩展点上不止它一个。默认 Profile 里还有 `DynamicResources`（Pod 引用的 claim 还不存在时拦住）和 `DefaultPreemption`（异步抢占进行中时拦住抢占者，`SchedulerAsyncPreemption` 1.33 起 Beta 默认开启），`GenericWorkload` 开启后还有 `GangScheduling`（PodGroup 未创建或成员未凑够时拦住）。这些插件在队列里存放于以插件名为键的 map 中，执行顺序不固定，任意一个拒绝即不入队；唯一的例外是上一次拦住这个 Pod 的插件（`GatingPlugin`）会被最先调用，它仍然拒绝就不必再问其他插件。详见[《scheduler-plugins 逐个拆解（01）：SchedulingGates》](/posts/sched-plugin-01-scheduling-gates/)。
 
 ### 5.2 `PrioritySort`：唯一的 QueueSort
 
@@ -736,13 +736,13 @@ func (pl *PrioritySort) Less(entity1, entity2 fwk.QueuedEntityInfo) bool {
 
 优先级高的先出队，相同时入队早的先出队。参数类型是 `QueuedEntityInfo` 而不是 `QueuedPodInfo`，因为队列里的元素现在可以是单个 Pod，也可以是一个 PodGroup。
 
-一个 Profile 只能有一个 QueueSort 插件，而且**所有 Profile 的 QueueSort 插件及其参数必须完全相同**：配置校验 `validateCommonQueueSort` 以第一个 Profile 为准逐个比较，因为调度队列是全局共享的，构造队列时用的也是 `profiles[0]` 的比较函数。详见[《调度插件逐个读（02）：PrioritySort》](/posts/sched-plugin-02-priority-sort/)。
+一个 Profile 只能有一个 QueueSort 插件，而且**所有 Profile 的 QueueSort 插件及其参数必须完全相同**：配置校验 `validateCommonQueueSort` 以第一个 Profile 为准逐个比较，因为调度队列是全局共享的，构造队列时用的也是 `profiles[0]` 的比较函数。详见[《scheduler-plugins 逐个拆解（02）：PrioritySort》](/posts/sched-plugin-02-priority-sort/)。
 
 ### 5.3 `DefaultBinder`：最后一步写 API
 
 构造一个 `v1.Binding` 对象（目标为 `Kind: Node`），调用 API Server 的 binding 子资源。Bind 扩展点上的插件按顺序调用，第一个不返回 `Skip` 的插件负责绑定。`DefaultBinder` 从不返回 `Skip`，而只在 `bind.enabled` 里追加的自定义 Bind 插件会排在 MultiPoint 带进来的 `DefaultBinder` 之后，永远轮不到；要让自定义 Bind 插件生效，需要先在 `multiPoint.disabled` 里关掉 `DefaultBinder`，再在 Bind 扩展点上显式排序（需要兜底时把 `DefaultBinder` 放在最后）。
 
-调度器 cache 里 assumed Pod 的过期机制已经从代码中移除：assumed 状态只会被 informer 送来的 Pod 事件确认，或在绑定失败时被 `ForgetPod` 撤销。详见[《调度插件逐个读（24）：DefaultBinder》](/posts/sched-plugin-24-default-binder/)。
+调度器 cache 里 assumed Pod 的过期机制已经从代码中移除：assumed 状态只会被 informer 送来的 Pod 事件确认，或在绑定失败时被 `ForgetPod` 撤销。详见[《scheduler-plugins 逐个拆解（24）：DefaultBinder》](/posts/sched-plugin-24-default-binder/)。
 
 ### 5.4 `DefaultPreemption`：抢占的完整流程
 
@@ -797,7 +797,7 @@ numCandidates = min(max(N × percentage / 100, absolute), N)
 
 开启异步抢占（`SchedulerAsyncPreemption`，1.33 起 Beta，默认开启）后，驱逐在后台 goroutine 中执行，调度器不必等 API 调用完成就能处理下一个 Pod。此时 `DefaultPreemption` 的 PreEnqueue 会拦住这个抢占者，在驱逐完成之前不让它再次进入调度。它为此注册了已调度 Pod 删除事件，但 hint 恒为 `QueueSkip`：注册只是为了让队列对被拦住的 Pod 做事件过滤，何时重新入队交给真正拒绝它的那些插件决定。
 
-`GenericWorkload` 开启后，它还实现了 `PodGroupPostFilter`：PodGroup 调度周期失败时，以整个组为单位寻找受害者。详见[《调度插件逐个读（18）：DefaultPreemption》](/posts/sched-plugin-18-default-preemption/)。
+`GenericWorkload` 开启后，它还实现了 `PodGroupPostFilter`：PodGroup 调度周期失败时，以整个组为单位寻找受害者。详见[《scheduler-plugins 逐个拆解（18）：DefaultPreemption》](/posts/sched-plugin-18-default-preemption/)。
 
 ### 5.5 `DeferredPodScheduling`：调度器参与原地扩缩容
 
@@ -815,7 +815,7 @@ numCandidates = min(max(N × percentage / 100, absolute), N)
 
 最后一步看起来反直觉：能放下为什么要拒绝？因为这个 Pod 已经在节点上了，不需要也不能再 Bind。调度器在这里的作用只是「借用抢占机制腾出空间」，空间够了，剩下的事交给 kubelet。按设计，Permit 返回 `UnschedulableAndUnresolvable`，Pod 留在不可调度队列，等 kubelet 完成 resize。
 
-但在当前提交上，「放得下」的分支其实走不到 Permit：Reserve 之前的 `AssumePod` 发现这个 Pod 已经在调度器 cache 里（它本来就运行在节点上），报错 `pod ... is in the cache, so can't be assumed`，Pod 作为调度错误进入退避队列，反复重试，直到 kubelet 完成 resize。最终效果与设计一致（不驱逐、不绑定、等待 kubelet），只是路径和重试节奏不同，日志里会周期性出现 `AssumePod failed`。另外它没有实现 `SignPlugin`，开启这个 gate 会关闭整个 Profile 的批量签名。详见[《调度插件逐个读（17）：DeferredPodScheduling》](/posts/sched-plugin-17-deferred-pod-scheduling/)。
+但在当前提交上，「放得下」的分支其实走不到 Permit：Reserve 之前的 `AssumePod` 发现这个 Pod 已经在调度器 cache 里（它本来就运行在节点上），报错 `pod ... is in the cache, so can't be assumed`，Pod 作为调度错误进入退避队列，反复重试，直到 kubelet 完成 resize。最终效果与设计一致（不驱逐、不绑定、等待 kubelet），只是路径和重试节奏不同，日志里会周期性出现 `AssumePod failed`。另外它没有实现 `SignPlugin`，开启这个 gate 会关闭整个 Profile 的批量签名。详见[《scheduler-plugins 逐个拆解（17）：DeferredPodScheduling》](/posts/sched-plugin-17-deferred-pod-scheduling/)。
 
 ### 5.6 PodGroup 链路：`GangScheduling` 与拓扑放置
 
@@ -856,12 +856,12 @@ PlacementFeasible 在 PodGroup 调度周期里每试放一个 Pod 调用一次�
 	return nil
 ```
 
-三种结果：剩余加已调度也凑不够 `minCount`，不可行，提前结束这个周期；够但还没调度完，返回 `Wait`，继续试放下一个 Pod；已满足，通过。这里的 `Wait` 只是周期内「继续」的意思，与 Permit 的等待无关。详见[《调度插件逐个读（21）：GangScheduling》](/posts/sched-plugin-21-gang-scheduling/)。
+三种结果：剩余加已调度也凑不够 `minCount`，不可行，提前结束这个周期；够但还没调度完，返回 `Wait`，继续试放下一个 Pod；已满足，通过。这里的 `Wait` 只是周期内「继续」的意思，与 Permit 的等待无关。详见[《scheduler-plugins 逐个拆解（21）：GangScheduling》](/posts/sched-plugin-21-gang-scheduling/)。
 
 #### `TopologyPlacementGenerator` 与 `PodGroupPodsCount`
 
-- `TopologyPlacementGenerator`（PlacementGenerate）：读取 PodGroup 的拓扑约束键（如 `topology.kubernetes.io/zone`），按标签值把候选节点分组，每组是一个候选方案（placement）。如果组内已有 Pod 被调度，只保留它们所在的那个域。详见[《调度插件逐个读（22）：TopologyPlacementGenerator》](/posts/sched-plugin-22-topology-placement/)。
-- `PodGroupPodsCount`（PlacementScore）：方案的原始分是「已调度数 + 该方案能放下的数量」，按最大值归一化。能装下更多组员的方案得分更高。详见[《调度插件逐个读（23）：PodGroupPodsCount》](/posts/sched-plugin-23-podgroup-pods-count/)。
+- `TopologyPlacementGenerator`（PlacementGenerate）：读取 PodGroup 的拓扑约束键（如 `topology.kubernetes.io/zone`），按标签值把候选节点分组，每组是一个候选方案（placement）。如果组内已有 Pod 被调度，只保留它们所在的那个域。详见[《scheduler-plugins 逐个拆解（22）：TopologyPlacementGenerator》](/posts/sched-plugin-22-topology-placement/)。
+- `PodGroupPodsCount`（PlacementScore）：方案的原始分是「已调度数 + 该方案能放下的数量」，按最大值归一化。能装下更多组员的方案得分更高。详见[《scheduler-plugins 逐个拆解（23）：PodGroupPodsCount》](/posts/sched-plugin-23-podgroup-pods-count/)。
 - `NodeResourcesFit` 的 PlacementScore 也参与这一步，以 MostAllocated 语义倾向于更满的节点集合。
 
 这两个插件都由 `TopologyAwareWorkloadScheduling`（1.36 Alpha，1.38 Beta，默认关闭）控制。它们的方法签名和传统扩展点不同，参数是 `PodGroupInfo` 和 `Placement`，而不是 `*v1.Pod` 和 `NodeInfo`。这部分 API 仍在演进。

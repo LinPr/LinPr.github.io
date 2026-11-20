@@ -1,5 +1,5 @@
 ---
-title: '调度插件逐个读（26）：TopologicalSort，按应用依赖的拓扑序出队'
+title: 'scheduler-plugins TopologicalSort：按应用依赖的拓扑序出队'
 date: 2026-11-19T12:20:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "queuesort", "network-aware"]

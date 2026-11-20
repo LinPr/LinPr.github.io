@@ -1,5 +1,5 @@
 ---
-title: '调度插件逐个读（33）：NodeResourcesAllocatable，按节点规格而不是按余量打分'
+title: 'scheduler-plugins NodeResourcesAllocatable：按节点规格而不是按余量打分'
 date: 2026-11-19T13:30:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "scoring"]

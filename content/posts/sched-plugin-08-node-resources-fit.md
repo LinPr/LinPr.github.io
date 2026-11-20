@@ -1,5 +1,5 @@
 ---
-title: '调度插件逐个读（08）：NodeResourcesFit，资源够不够与该往哪儿放'
+title: 'scheduler-plugins NodeResourcesFit：资源够不够与该往哪儿放'
 date: 2026-11-19T09:20:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "NodeResourcesFit", "资源管理", "源码分析"]

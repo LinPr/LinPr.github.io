@@ -1,5 +1,5 @@
 ---
-title: '调度插件逐个读（01）：SchedulingGates，在排队之前拦住 Pod'
+title: 'scheduler-plugins SchedulingGates：在排队之前拦住 Pod'
 date: 2026-11-19T08:10:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "SchedulingGates", "PreEnqueue", "调度队列"]
