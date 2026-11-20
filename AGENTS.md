@@ -78,5 +78,5 @@ python3 tools/diagrams/example.py /tmp/diagram-example.svg /tmp/diagram-example.
 ## 摄影板块
 
 - 页面 `/photography/`：模板 `layouts/photography/list.html`，样式 `assets/css/extended/photography.css`，灯箱脚本 `assets/js/photo-gallery.js`。
-- 图片不进仓库，存放在阿里云 OSS（bucket `learning-photography`，杭州）。`hugo.yaml` 的 `params.photography` 配置访问域名和缩略图/大图的 OSS 图片处理参数。
-- 照片清单在 `data/photos.yaml`，每张一项，只有 `src`（OSS 对象路径）必填；`tools/photos/photos_yaml.py` 可从本地照片的 EXIF 批量生成条目。
+- 图片不进仓库，存放在阿里云 OSS（bucket `linpr-github-io` 的 `photography/` 目录，杭州）。`hugo.yaml` 的 `params.photography` 配置访问域名和缩略图/大图的 OSS 图片处理参数。
+- 照片清单在 `data/photos.yaml`，每张一项，只有 `src`（OSS 对象路径）必填；上传用 `tools/photos/upload.sh <目录> -p 2026/ -a 相册`（aws CLI + `~/.aws/credentials` 的 `[oss]` profile，对象以 public-read 上传，bucket 私有不可列目录，已设防盗链白名单），它会读取 EXIF 打印 YAML 条目。

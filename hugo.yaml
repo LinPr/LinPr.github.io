@@ -66,9 +66,10 @@ params:
     icon: /images/avatar-96.png
     iconHeight: 34
 
-  # 摄影板块：图片在阿里云 OSS，页面用 OSS 图片处理参数实时生成缩略图和大图
+  # 摄影板块：图片在阿里云 OSS（bucket linpr-github-io，目录 photography/），
+  # 页面用 OSS 图片处理参数实时生成缩略图和大图。上传用 tools/photos/upload.sh
   photography:
-    baseURL: "https://learning-photography.oss-cn-hangzhou.aliyuncs.com/"
+    baseURL: "https://linpr-github-io.oss-cn-hangzhou.aliyuncs.com/photography/"
     thumb: "?x-oss-process=image/resize,w_900/quality,q_82/format,webp"
     large: "?x-oss-process=image/resize,w_2400,limit_1/quality,q_88/format,webp"
 
