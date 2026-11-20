@@ -1,0 +1,93 @@
+{{- define "main" }}
+{{- /* 摄影板块：照片清单在 data/photos.yaml，图片在阿里云 OSS。
+       缩略图和大图都由 OSS 图片处理参数实时生成（params.photography.thumb / large），
+       仓库里不放任何图片。点击缩略图由 assets/js/photo-gallery.js 打开灯箱。 */ -}}
+{{- $cfg := site.Params.photography }}
+{{- $base := $cfg.baseURL | default "" }}
+{{- $photos := site.Data.photos.photos | default slice }}
+{{- $photos = sort $photos "date" "desc" }}
+
+<header class="page-header photo-header">
+  {{- partial "breadcrumbs.html" . }}
+  <h1>{{ .Title }}</h1>
+  {{- with .Description }}
+  <div class="post-description">{{ . | markdownify }}</div>
+  {{- end }}
+  {{- if $photos }}
+  <p class="photo-count">共 {{ len $photos }} 张</p>
+  {{- end }}
+</header>
+
+{{- if $photos }}
+{{- $albums := slice }}
+{{- range $photos }}{{ with .album }}{{ if not (in $albums .) }}{{ $albums = $albums | append . }}{{ end }}{{ end }}{{ end }}
+{{- if gt (len $albums) 1 }}
+<nav class="photo-filter" aria-label="按相册筛选">
+  <button type="button" class="is-active" data-album="">全部</button>
+  {{- range $albums }}
+  <button type="button" data-album="{{ . }}">{{ . }}</button>
+  {{- end }}
+</nav>
+{{- end }}
+
+<div class="photo-grid" data-photo-gallery>
+  {{- range $i, $p := $photos }}
+  {{- $src := $p.src }}
+  {{- $url := cond (hasPrefix $src "http") $src (printf "%s%s" $base (strings.TrimPrefix "/" $src)) }}
+  {{- $raw := cond (hasPrefix $src "http") false true }}
+  {{- $thumb := cond $raw (printf "%s%s" $url $cfg.thumb) $url }}
+  {{- $large := cond $raw (printf "%s%s" $url $cfg.large) $url }}
+  {{- $meta := slice }}
+  {{- with $p.date }}{{ $meta = $meta | append (time.Format "2006-01-02" .) }}{{ end }}
+  {{- with $p.location }}{{ $meta = $meta | append . }}{{ end }}
+  <figure class="photo-item"{{ with $p.album }} data-album="{{ . }}"{{ end }}>
+    <a href="{{ $large }}" data-index="{{ $i }}"
+       data-original="{{ $url }}"
+       data-title="{{ $p.title }}"
+       data-meta="{{ delimit $meta " · " }}"
+       data-camera="{{ $p.camera }}"
+       data-exif="{{ $p.exif }}"
+       data-desc="{{ $p.desc }}">
+      <img src="{{ $thumb }}" alt="{{ $p.title | default "摄影作品" }}" loading="lazy" decoding="async"
+           {{- if and $p.width $p.height }} width="{{ $p.width }}" height="{{ $p.height }}"{{ end }}>
+    </a>
+    {{- if or $p.title $meta }}
+    <figcaption>
+      {{- with $p.title }}<span class="photo-title">{{ . }}</span>{{ end }}
+      {{- with $meta }}<span class="photo-meta">{{ delimit . " · " }}</span>{{ end }}
+    </figcaption>
+    {{- end }}
+  </figure>
+  {{- end }}
+</div>
+
+<div class="photo-lightbox" hidden role="dialog" aria-modal="true" aria-label="查看照片">
+  <button type="button" class="pl-btn pl-close" aria-label="关闭">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+  </button>
+  <button type="button" class="pl-btn pl-prev" aria-label="上一张">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+  </button>
+  <button type="button" class="pl-btn pl-next" aria-label="下一张">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+  </button>
+  <div class="pl-stage"><img class="pl-img" alt=""><span class="pl-spinner" aria-hidden="true"></span></div>
+  <div class="pl-caption">
+    <div class="pl-title"></div>
+    <div class="pl-meta"></div>
+    <div class="pl-desc"></div>
+    <div class="pl-foot"><span class="pl-count"></span><a class="pl-original" target="_blank" rel="noopener">查看原图</a></div>
+  </div>
+</div>
+{{- with resources.Get "js/photo-gallery.js" }}
+{{- $js := . | minify | fingerprint "sha256" }}
+<script defer src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}" crossorigin="anonymous"></script>
+{{- end }}
+
+{{- else }}
+<div class="photo-empty">
+  <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7.5 6.5H5a2 2 0 0 0-2 2V18a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5a2 2 0 0 0-2-2h-2.5z"/><circle cx="12" cy="13" r="3.5"/></svg>
+  <p>作品整理中，很快就来。</p>
+</div>
+{{- end }}
+{{- end }}

@@ -66,6 +66,12 @@ params:
     icon: /images/avatar-96.png
     iconHeight: 34
 
+  # 摄影板块：图片在阿里云 OSS，页面用 OSS 图片处理参数实时生成缩略图和大图
+  photography:
+    baseURL: "https://learning-photography.oss-cn-hangzhou.aliyuncs.com/"
+    thumb: "?x-oss-process=image/resize,w_900/quality,q_82/format,webp"
+    large: "?x-oss-process=image/resize,w_2400,limit_1/quality,q_88/format,webp"
+
   homeInfoParams:
     Title: "Hi, I'm LinPr"
     Content: |
@@ -107,6 +113,11 @@ menu:
       name: 系列
       url: /series/
       weight: 25
+    - identifier: photography
+      pre: '<svg class="menu-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7.5 6.5H5a2 2 0 0 0-2 2V18a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5a2 2 0 0 0-2-2h-2.5z"/><circle cx="12" cy="13" r="3.5"/></svg>'
+      name: 摄影
+      url: /photography/
+      weight: 30
     - identifier: search
       pre: '<svg class="menu-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>'
       name: 搜索

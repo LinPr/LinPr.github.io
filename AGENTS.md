@@ -74,3 +74,9 @@ python3 tools/diagrams/example.py /tmp/diagram-example.svg /tmp/diagram-example.
 - **箭头压住文字**：折线绕开文字区域（`arrow` 支持多点折线），或把标签放在连线旁的空白处、必要时旋转（`text(..., rotate=90)`）。
 - **XML 报错**：文字里的 `&`、`<`、`>` 要转义，`Canvas.text` 已自动处理；手写 `raw()` 时要自己注意。
 - **深色模式下看不清**：别省略白底矩形，也不要用接近白色的浅灰文字。
+
+## 摄影板块
+
+- 页面 `/photography/`：模板 `layouts/photography/list.html`，样式 `assets/css/extended/photography.css`，灯箱脚本 `assets/js/photo-gallery.js`。
+- 图片不进仓库，存放在阿里云 OSS（bucket `learning-photography`，杭州）。`hugo.yaml` 的 `params.photography` 配置访问域名和缩略图/大图的 OSS 图片处理参数。
+- 照片清单在 `data/photos.yaml`，每张一项，只有 `src`（OSS 对象路径）必填；`tools/photos/photos_yaml.py` 可从本地照片的 EXIF 批量生成条目。

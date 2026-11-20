@@ -1,0 +1,27 @@
+# 摄影作品清单。图片存放在阿里云 OSS（bucket: learning-photography，杭州），
+# 这里只记录对象路径和说明，页面会自动拼出缩略图和大图地址（见 hugo.yaml 的 params.photography）。
+#
+# 每张照片一项，字段都可选，只有 src 必填：
+#   src:      OSS 中的对象路径（不带开头的 /），也可以直接写完整的 https 链接
+#   title:    标题
+#   date:     拍摄日期，YYYY-MM-DD
+#   album:    相册/主题，页面顶部会按它生成筛选标签
+#   location: 地点
+#   camera:   相机与镜头
+#   exif:     拍摄参数，如 "35mm · f/2.8 · 1/250s · ISO 100"
+#   desc:     一两句说明
+#   width/height: 原图像素尺寸，用来预留缩略图的高宽比，避免加载时页面跳动
+#
+# 可以用 tools/photos/photos_yaml.py 从本地导出的照片读取 EXIF，批量生成这些条目。
+#
+# 示例：
+# - src: 2026/hangzhou-west-lake.jpg
+#   title: 西湖的傍晚
+#   date: 2026-10-03
+#   album: 城市
+#   location: 杭州 · 西湖
+#   camera: Fujifilm X-T5 · XF 35mm F1.4
+#   exif: 35mm · f/2.8 · 1/250s · ISO 200
+#   width: 6240
+#   height: 4160
+photos: []
