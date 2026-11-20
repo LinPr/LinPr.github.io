@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins [out-of-tree] LoadVariationRiskBalancing：把均值和波动一起算进风险'
+title: 'scheduler-plugins 38 [out-of-tree] LoadVariationRiskBalancing：把均值和波动一起算进风险'
 date: 2026-11-19T14:20:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "trimaran", "load-aware"]

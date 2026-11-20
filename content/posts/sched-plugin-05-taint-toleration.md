@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins [in-tree] TaintToleration：三种污点效果的分工'
+title: 'scheduler-plugins 05 [in-tree] TaintToleration：三种污点效果的分工'
 date: 2026-11-19T08:50:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "TaintToleration", "污点", "NoExecute"]

@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins [out-of-tree] CrossNodePreemption：一份被注释掉的跨节点抢占示例'
+title: 'scheduler-plugins 32 [out-of-tree] CrossNodePreemption：一份被注释掉的跨节点抢占示例'
 date: 2026-11-19T13:20:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "preemption", "PodTopologySpread"]

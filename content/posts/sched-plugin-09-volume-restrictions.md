@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins [in-tree] VolumeRestrictions：同一块盘不能被两个 Pod 抢着写'
+title: 'scheduler-plugins 09 [in-tree] VolumeRestrictions：同一块盘不能被两个 Pod 抢着写'
 date: 2026-11-19T09:30:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "存储", "ReadWriteOncePod", "抢占"]

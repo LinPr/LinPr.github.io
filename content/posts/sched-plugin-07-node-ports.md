@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins [in-tree] NodePorts：一张端口表和一个可以抢占的失败'
+title: 'scheduler-plugins 07 [in-tree] NodePorts：一张端口表和一个可以抢占的失败'
 date: 2026-11-19T09:10:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "NodePorts", "hostPort", "源码分析"]

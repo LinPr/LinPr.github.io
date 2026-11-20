@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins [out-of-tree] Peaks：按功耗模型选边际功耗最小的节点'
+title: 'scheduler-plugins 40 [out-of-tree] Peaks：按功耗模型选边际功耗最小的节点'
 date: 2026-11-19T14:40:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "trimaran", "energy"]

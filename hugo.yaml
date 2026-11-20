@@ -69,11 +69,7 @@ params:
   homeInfoParams:
     Title: "Hi, I'm LinPr"
     Content: |
-      Go 开发者，也读一点 C++ 和 Unix。平时喜欢做两件事：把重复的运维操作写成命令行工具，把看不明白的系统拆开来看清楚。
-
-      这里主要放读源码和读书的笔记，大多是自己留的备忘，写得不严谨的地方欢迎指正。
-
-      近期在做 [s6cmd](https://github.com/LinPr/s6cmd)（S3 命令行）、[sqltui](https://github.com/LinPr/sqltui)（数据库 TUI）、[grafana-openobserve-datasource](https://github.com/LinPr/grafana-openobserve-datasource)（OpenObserve 数据源插件）。
+      技术爱好者，摄影爱好者。
 
   socialIcons:
     - name: github

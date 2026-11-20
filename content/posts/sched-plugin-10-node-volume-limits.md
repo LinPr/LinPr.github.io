@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins [in-tree] NodeVolumeLimits：一个节点还能再挂几块盘'
+title: 'scheduler-plugins 10 [in-tree] NodeVolumeLimits：一个节点还能再挂几块盘'
 date: 2026-11-19T09:40:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "存储", "csi"]

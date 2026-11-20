@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins [in-tree] PodTopologySpread：按拓扑域数数的打散器'
+title: 'scheduler-plugins 13 [in-tree] PodTopologySpread：按拓扑域数数的打散器'
 date: 2026-11-19T10:10:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "PodTopologySpread", "拓扑分布", "调度插件"]

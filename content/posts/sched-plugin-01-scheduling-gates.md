@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins [in-tree] SchedulingGates：在排队之前拦住 Pod'
+title: 'scheduler-plugins 01 [in-tree] SchedulingGates：在排队之前拦住 Pod'
 date: 2026-11-19T08:10:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "SchedulingGates", "PreEnqueue", "调度队列"]

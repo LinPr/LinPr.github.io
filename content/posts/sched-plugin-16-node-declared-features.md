@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins [in-tree] NodeDeclaredFeatures：让调度器知道节点「会什么」'
+title: 'scheduler-plugins 16 [in-tree] NodeDeclaredFeatures：让调度器知道节点「会什么」'
 date: 2026-11-19T10:40:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "NodeDeclaredFeatures", "版本偏差", "调度插件"]

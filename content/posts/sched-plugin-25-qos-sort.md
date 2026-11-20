@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins [out-of-tree] QOSSort：优先级打平时让 Guaranteed 先出队'
+title: 'scheduler-plugins 25 [out-of-tree] QOSSort：优先级打平时让 Guaranteed 先出队'
 date: 2026-11-19T12:10:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "queuesort", "qos"]

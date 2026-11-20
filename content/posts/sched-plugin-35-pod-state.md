@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins [out-of-tree] PodState：用终止中和被提名的 Pod 数给节点打分'
+title: 'scheduler-plugins 35 [out-of-tree] PodState：用终止中和被提名的 Pod 数给节点打分'
 date: 2026-11-19T13:50:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "preemption"]

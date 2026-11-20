@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins [out-of-tree] TargetLoadPacking：按真实 CPU 负载把节点装到目标水位'
+title: 'scheduler-plugins 37 [out-of-tree] TargetLoadPacking：按真实 CPU 负载把节点装到目标水位'
 date: 2026-11-19T14:10:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "trimaran", "load-aware"]
