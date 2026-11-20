@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins PreemptionToleration：让受害者也能为抢占设条件'
+title: 'scheduler-plugins [out-of-tree] PreemptionToleration：让受害者也能为抢占设条件'
 date: 2026-11-19T13:10:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "preemption", "PriorityClass"]

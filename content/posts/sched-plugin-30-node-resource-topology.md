@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins NodeResourceTopologyMatch：让调度器提前做一次 kubelet 的 NUMA 准入'
+title: 'scheduler-plugins [out-of-tree] NodeResourceTopologyMatch：让调度器提前做一次 kubelet 的 NUMA 准入'
 date: 2026-11-19T13:00:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "numa", "topology-manager"]

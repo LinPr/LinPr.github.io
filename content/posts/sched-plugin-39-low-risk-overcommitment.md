@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins LowRiskOverCommitment：用 limit 和 Beta 分布估计超卖风险'
+title: 'scheduler-plugins [out-of-tree] LowRiskOverCommitment：用 limit 和 Beta 分布估计超卖风险'
 date: 2026-11-19T14:30:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "trimaran", "overcommitment"]

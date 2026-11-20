@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins GangScheduling：整组调度的门禁与计数器'
+title: 'scheduler-plugins [in-tree] GangScheduling：整组调度的门禁与计数器'
 date: 2026-11-19T11:30:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "gang-scheduling", "podgroup", "workload"]

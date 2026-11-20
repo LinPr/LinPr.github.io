@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins NodeAffinity：三段 AND 与一个能缩小候选集的 PreFilter'
+title: 'scheduler-plugins [in-tree] NodeAffinity：三段 AND 与一个能缩小候选集的 PreFilter'
 date: 2026-11-19T09:00:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "NodeAffinity", "nodeSelector", "源码分析"]

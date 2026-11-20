@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins NodeMetadata：把一个节点 label 变成打分依据'
+title: 'scheduler-plugins [out-of-tree] NodeMetadata：把一个节点 label 变成打分依据'
 date: 2026-11-19T13:40:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "scoring"]

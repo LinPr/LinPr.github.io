@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins Coscheduling：用 Permit 把一组 Pod 攒齐再放行'
+title: 'scheduler-plugins [out-of-tree] Coscheduling：用 Permit 把一组 Pod 攒齐再放行'
 date: 2026-11-19T12:30:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "gang-scheduling", "podgroup"]

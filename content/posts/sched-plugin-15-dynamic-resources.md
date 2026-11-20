@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins DynamicResources：把设备分配搬进调度周期'
+title: 'scheduler-plugins [in-tree] DynamicResources：把设备分配搬进调度周期'
 date: 2026-11-19T10:30:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "DRA", "ResourceClaim", "设备分配"]

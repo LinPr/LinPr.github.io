@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins DefaultPreemption：用模拟换一个提名节点'
+title: 'scheduler-plugins [in-tree] DefaultPreemption：用模拟换一个提名节点'
 date: 2026-11-19T11:00:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "preemption", "PodDisruptionBudget", "优先级"]

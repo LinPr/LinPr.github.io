@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins InterPodAffinity：三张拓扑计数表与一条快速路径'
+title: 'scheduler-plugins [in-tree] InterPodAffinity：三张拓扑计数表与一条快速路径'
 date: 2026-11-19T10:20:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "InterPodAffinity", "Pod亲和", "调度插件"]

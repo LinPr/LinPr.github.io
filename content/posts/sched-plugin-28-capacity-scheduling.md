@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins CapacityScheduling：调度器自己记账的弹性配额'
+title: 'scheduler-plugins [out-of-tree] CapacityScheduling：调度器自己记账的弹性配额'
 date: 2026-11-19T12:40:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "ElasticQuota", "preemption"]

@@ -1,5 +1,5 @@
 ---
-title: 'scheduler-plugins PodGroupPodsCount：在可行的 placement 里挑能放下更多 Pod 的那个'
+title: 'scheduler-plugins [in-tree] PodGroupPodsCount：在可行的 placement 里挑能放下更多 Pod 的那个'
 date: 2026-11-19T11:50:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "podgroup", "placement", "scoring"]
