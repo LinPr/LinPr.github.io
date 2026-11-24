@@ -181,11 +181,7 @@
        等 DOMContentLoaded 才执行，长文章上要多等好几秒；async 下载完就跑。
        两者的先后由 pet-peekling.js 自己等待 runtime 的 load 事件保证。 */ -}}
 <script async id="peekling-runtime" src="/vendor/peekling/peekling.min.js"></script>
-{{- /* 点击烟花：全屏 canvas 粒子，仅鼠标设备启用 */ -}}
-{{- with resources.Get "js/click-firework.js" }}
-    {{- $fw := . | minify | fingerprint "sha256" }}
-<script defer src="{{ $fw.RelPermalink }}" integrity="{{ $fw.Data.Integrity }}" crossorigin="anonymous"></script>
-{{- end }}
+
 
 {{- with resources.Get "js/pet-peekling.js" }}
     {{- $js := . | minify | fingerprint "sha256" }}

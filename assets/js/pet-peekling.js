@@ -1,5 +1,5 @@
 /* 桌宠：Peekling（https://peekling.com/，Apache-2.0）
-   自托管运行时与角色包，角色是 Pip（暖金色柯基），行为跟随鼠标。
+   自托管运行时与角色包，角色是 Pip（暖金色柯基），固定蹲在页面左下角。
 
    参考官方文档 docs/configuration.md：
    - interaction 默认开启（可拖动/抛掷，按下切换内容气泡），
@@ -34,63 +34,16 @@
     const noPointer = window.matchMedia("(pointer: coarse)").matches;
     if (noPointer) return;
 
-    /* 关于「大小一致」：
-       运行时的 sprite 尺寸是固定的（永远是一个 64px 格子），
-       但角色包里不同动作的美术占格比例不一样 —— scroll / scroll:fall /
-       scroll:fly 这几个动作画得更小（高度只有 39-43，idle 是 51），
-       所以一旦进入滚动动作，视觉上狗会"缩一下"。
-       为了始终保持同一体型，这里不挂滚动反应，滚动时它继续走路或待机。
-       另外 sleep 也是蜷缩的小体型，同样不使用。
-
-       跟随鼠标的关键：运行时的 follow-pointer 只在「有 pointer.move 订阅」时
-       才会拿到指针坐标（world.pointer），光在 baseline 里写 follow-pointer
-       是不够的 —— 那样宠物只会原地待机。所以下面有一条 pointer.move 规则。
-       arrivalRadius 是"停在离指针多远的地方"，太小会贴着光标抖，
-       56px 差不多是一只柯基的半个身子距离，看起来自然。 */
-    const FOLLOW = {
-        motion: { type: "follow-pointer", speed: 132, arrivalRadius: 64 },
-        state: { capability: "locomotion" },
-    };
-
+    /* 宠物固定待在页面左下角，不再跟随鼠标：
+       baseline 只设置 idle 状态、不给 motion，运行时就不会移动它；
+       也不订阅 pointer.move / 页面级 pointer.click，鼠标在页面上怎么动都与它无关。
+       只有点到宠物本身时，interaction.press 会切换下面的问候气泡。 */
     const PLAN = {
         baseline: {
-            channels: ["motion", "state"],
-            ...FOLLOW,
+            channels: ["state"],
+            state: { state: "idle" },
         },
-        rules: [
-            {
-                // 这条规则既负责订阅 pointer.move，也负责持续把宠物朝指针挪。
-                // 注意：pointer.move 是 continuous effect，不能带 surfaces / until。
-                id: "follow-pointer",
-                when: { source: "browser", event: "pointer.move" },
-                effect: {
-                    channels: ["motion", "state"],
-                    ...FOLLOW,
-                },
-            },
-            {
-                id: "click-hello",
-                when: { source: "browser", event: "pointer.click" },
-                effect: {
-                    channels: ["state"],
-                    state: { state: "click" },
-                    until: { type: "duration", ms: 700 },
-                },
-            },
-            {
-                // 点击宠物时冒个泡：内容由 content.hello 提供。
-                // 注意 channel 名是 "surface:<id>"，不是 "surfaces"。
-                id: "say-hello",
-                when: { source: "browser", event: "pointer.click" },
-                effect: {
-                    channels: ["state", "surface:hello"],
-                    state: { state: "happy" },
-                    surfaces: [{ id: "hello", contentId: "hello" }],
-                    // surface 自带开关语义，这里不能再配 until
-                    // （配了会 invalid-plan），气泡由再次点击收起。
-                },
-            },
-        ],
+        rules: [],
     };
 
     // 点开气泡时说的话。引擎按 content id 取，这里只放一条常驻的。
@@ -98,7 +51,7 @@
         hello: {
             bottom: {
                 title: "Pip",
-                text: "我会跟着你的鼠标跑。也可以拎起我、丢出去。",
+                text: "我在这里陪你看文章。",
             },
         },
     };
@@ -121,8 +74,8 @@
                     press: "toggle-content",
                     contentInitiallyHidden: true,
                     label: "和 Pip 打个招呼",
-                    drag: true,
-                    throw: true,
+                    drag: false,
+                    throw: false,
                 },
                 // 用我们自己的样式表：给气泡套上站点的液态玻璃外观
                 styles: { url: "/vendor/peekling/peekling-lite.css" },
