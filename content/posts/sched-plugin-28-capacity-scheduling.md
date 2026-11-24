@@ -21,7 +21,7 @@ description: "CapacityScheduling 用 ElasticQuota 的 min/max 实现租户间的
 
 它不在任何默认 Profile 里，也没有 feature gate，只能在 scheduler-plugins 编译出的调度器里通过配置启用。仓库自带的配置是这样的：
 
-```yaml
+```yaml {linenos=inline}
 # manifests/capacityscheduling/scheduler-config.yaml
 profiles:
 - schedulerName: default-scheduler
@@ -46,7 +46,7 @@ Kubernetes 自带的 `ResourceQuota` 是准入阶段的硬上限：Namespace 里
 
 `CapacityScheduling` 借用了 Yarn capacity scheduler 的思路，把额度拆成两个数：
 
-```go
+```go {linenos=inline}
 // apis/scheduling/v1alpha1/types.go
 type ElasticQuotaSpec struct {
 	// Min is the set of desired guaranteed limits for each named resource.
@@ -71,7 +71,7 @@ type ElasticQuotaStatus struct {
 
 一个典型的对象：
 
-```yaml
+```yaml {linenos=inline}
 # manifests/capacityscheduling/elasticquota-example.yaml
 apiVersion: scheduling.x-k8s.io/v1alpha1
 kind: ElasticQuota
@@ -101,7 +101,7 @@ spec:
 
 插件读的这份用量记录挂在结构体上，先看它的形状。
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/capacity_scheduling.go
 type CapacityScheduling struct {
 	sync.RWMutex
@@ -114,7 +114,7 @@ type CapacityScheduling struct {
 }
 ```
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/elasticquota.go
 type ElasticQuotaInfos map[string]*ElasticQuotaInfo
 
@@ -133,7 +133,7 @@ map 的 key 是 Namespace 名，不是 `ElasticQuota` 的名字。`Min`、`Max`�
 
 `pods` 是这个结构里最关键的字段。它记录已经计入 `Used` 的 Pod 的 `namespace/name`，让「加一个 Pod」和「减一个 Pod」都是幂等的：
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/elasticquota.go
 func (e *ElasticQuotaInfo) addPodIfNotPresent(pod *v1.Pod) error {
 	key, err := framework.GetPodKey(pod)
@@ -153,11 +153,11 @@ func (e *ElasticQuotaInfo) addPodIfNotPresent(pod *v1.Pod) error {
 }
 ```
 
-需要幂等，是因为同一个 Pod 会从两条路径写进用量记录：调度周期里的 `Reserve`，以及绑定成功后 Pod informer 发来的事件。两条路径的先后顺序不确定，有了 `pods` 集合，谁先到都只记一次。
+需要幂等，是因为同一个 Pod 会从两条路径写进用量记录：调度周期里的 `Reserve`，以及绑定成功后 Pod informer 发来的事件。两条路径的先后顺序不确定，有了 `pods` 集合，谁先到都只记一次（第 8–10 行的 `pods.Has` 判断）。
 
 `New` 里注册了两组事件处理函数。`ElasticQuota` 的 informer 来自 controller-runtime 的缓存（`util.NewClientWithCachedReader`），Pod 的 informer 直接复用调度器的 `SharedInformerFactory`，并且只接收已绑定节点的 Pod：
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/capacity_scheduling.go
 	podInformer := handle.SharedInformerFactory().Core().V1().Pods().Informer()
 	podInformer.AddEventHandler(
@@ -182,7 +182,7 @@ func (e *ElasticQuotaInfo) addPodIfNotPresent(pod *v1.Pod) error {
 
 `addPod` 还有一段懒加载：
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/capacity_scheduling.go
 func (c *CapacityScheduling) addPod(obj interface{}) {
 	// ...
@@ -216,7 +216,7 @@ func (c *CapacityScheduling) addPod(obj interface{}) {
 
 两个 informer 启动时谁先同步完是不确定的。如果 Pod 的 Add 先到，用量记录里还没有这个 Namespace 的条目，就主动去 `ElasticQuota` 缓存里查一次，查到就建条目。对应地，`addElasticQuota` 发现条目已存在时直接返回，不覆盖：
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/capacity_scheduling.go
 func (c *CapacityScheduling) addElasticQuota(obj interface{}) {
 	eq := obj.(*v1alpha1.ElasticQuota)
@@ -247,7 +247,7 @@ func (c *CapacityScheduling) updateElasticQuota(oldObj, newObj interface{}) {
 
 Pod 离开用量记录有两条路：`deletePod`，以及 `updatePod` 里新状态既不是 `Running` 也不是 `Pending` 的情况。实际上第二条很少走到。调度器的 Pod informer 建立时带了字段选择器：
 
-```go
+```go {linenos=inline}
 // k8s.io/kubernetes@v1.36.4/pkg/scheduler/scheduler.go
 func newPodInformer(cs clientset.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
 	selector := fmt.Sprintf("status.phase!=%v,status.phase!=%v", v1.PodSucceeded, v1.PodFailed)
@@ -261,7 +261,7 @@ Pod 进入 `Succeeded` 或 `Failed` 时就不再匹配这个选择器，informer
 
 PreFilter 一开始就把全部用量记录深拷贝一份写进 CycleState：
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/capacity_scheduling.go
 func (c *CapacityScheduling) snapshotElasticQuota() *ElasticQuotaSnapshotState {
 	c.RLock()
@@ -276,7 +276,7 @@ func (c *CapacityScheduling) snapshotElasticQuota() *ElasticQuotaSnapshotState {
 
 CycleState 里一共两个 key：
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/capacity_scheduling.go
 	preFilterStateKey       = "PreFilter" + Name
 	ElasticQuotaSnapshotKey = "ElasticQuotaSnapshot"
@@ -284,7 +284,7 @@ CycleState 里一共两个 key：
 
 两者的 `Clone` 实现截然不同：
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/capacity_scheduling.go
 // Clone the preFilter state.
 func (s *PreFilterState) Clone() fwk.StateData {
@@ -299,7 +299,7 @@ func (s *ElasticQuotaSnapshotState) Clone() fwk.StateData {
 }
 ```
 
-`PreFilterState` 写入后不再被修改，返回自身就够了。快照则不同：抢占模拟时，`Evaluator.DryRunPreemption` 会为每个候选节点调用一次 `state.Clone()`，然后在副本上反复「移除受害者、加回受害者」。每一次移除和加回都会经过 `RunPreFilterExtensionRemovePod`/`AddPod` 回调到插件，改动快照里对应 Namespace 的 `Used`。
+`PreFilterState` 写入后不再被修改，返回自身就够了（第 3–5 行）。快照则不同：抢占模拟时，`Evaluator.DryRunPreemption` 会为每个候选节点调用一次 `state.Clone()`，然后在副本上反复「移除受害者、加回受害者」。每一次移除和加回都会经过 `RunPreFilterExtensionRemovePod`/`AddPod` 回调到插件，改动快照里对应 Namespace 的 `Used`。
 
 不同节点的模拟是并行的，快照必须深拷贝，否则节点之间会相互污染。
 
@@ -311,7 +311,7 @@ func (s *ElasticQuotaSnapshotState) Clone() fwk.StateData {
 
 `ElasticQuota` 的 `status.used` 不是调度器写的，而是 scheduler-plugins 的 controller 进程（`cmd/controller`）里的 `ElasticQuotaReconciler`：
 
-```go
+```go {linenos=inline}
 // pkg/controllers/elasticquota_controller.go
 func (r *ElasticQuotaReconciler) computeElasticQuotaUsed(ctx context.Context, namespace string, eq *schedv1alpha1.ElasticQuota) (v1.ResourceList, error) {
 	used := newZeroUsed(eq)
@@ -337,7 +337,7 @@ func (r *ElasticQuotaReconciler) computeElasticQuotaUsed(ctx context.Context, na
 
 controller 计算请求量的函数还有一个实现问题：
 
-```go
+```go {linenos=inline}
 // pkg/controllers/elasticquota_controller.go
 	// If Overhead is being utilized, add to the total requests for the pod
 	if pod.Spec.Overhead != nil {
@@ -353,7 +353,7 @@ controller 计算请求量的函数还有一个实现问题：
 
 配额检查最终都落到一个函数上：
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/elasticquota.go
 func cmp2(x1, x2, y *framework.Resource, bound int64) bool {
 	if x1.MilliCPU+x2.MilliCPU > y.MilliCPU {
@@ -386,9 +386,9 @@ func cmp2(x1, x2, y *framework.Resource, bound int64) bool {
 }
 ```
 
-语义是「`x1 + x2` 在任一维度上超过 `y`，就返回 true」。四个固定维度总是参与比较；扩展资源（GPU 之类）只比较 `x1` 里出现的，`y` 里没有定义时用 `bound` 兜底。调用方传入的 `bound` 是：
+语义是「`x1 + x2` 在任一维度上超过 `y`，就返回 true」。四个固定维度总是参与比较（第 3–17 行）；扩展资源（GPU 之类）只比较 `x1` 里出现的（第 19–27 行），`y` 里没有定义时用 `bound` 兜底。调用方传入的 `bound` 是：
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/elasticquota.go
 const (
 	UpperBoundOfMax = math.MaxInt64
@@ -400,7 +400,7 @@ const (
 
 固定维度的情况不一样。`newElasticQuotaInfo` 只在 `min` 或 `max` **整体为 nil** 时才填默认值：
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/elasticquota.go
 func newElasticQuotaInfo(namespace string, min, max, used v1.ResourceList) *ElasticQuotaInfo {
 	if min == nil {
@@ -428,7 +428,7 @@ func newElasticQuotaInfo(namespace string, min, max, used v1.ResourceList) *Elas
 
 前面几节把三份用量记录分清了，这一节看它们怎么用在调度入口。
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/capacity_scheduling.go
 // PreFilter performs the following validations.
 // 1. Check if the (pod.request + eq.allocated) is less than eq.max.
@@ -452,13 +452,13 @@ func (c *CapacityScheduling) PreFilter(ctx context.Context, state fwk.CycleState
 	// ...
 ```
 
-没有 `ElasticQuota` 的 Namespace 直接放行，返回 `Success`，但仍然写入了快照和 `podReq`，因为后面的抢占逻辑需要它们。
+没有 `ElasticQuota` 的 Namespace 直接放行（第 14–20 行），返回 `Success`，但仍然写入了快照和 `podReq`，因为后面的抢占逻辑需要它们。
 
 ### 4.1 nominated Pod 的两种求和
 
 接下来遍历所有节点上的 nominated Pod，也就是已经抢占成功、等待受害者退出的 Pod：
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/capacity_scheduling.go
 	for _, node := range nodeList {
 		nominatedPods := c.fh.NominatedPodsForNode(node.Node().Name)
@@ -490,7 +490,7 @@ func (c *CapacityScheduling) PreFilter(ctx context.Context, state fwk.CycleState
 
 得到两个和：
 
-- `nominatedPodsReqInEQWithPodReq`：本 Pod 请求 + 同 Namespace 中优先级不低于本 Pod 的 nominated Pod；
+- `nominatedPodsReqInEQWithPodReq`：本 Pod 请求 + 同 Namespace 中优先级不低于本 Pod 的 nominated Pod（第 16–18 行）；
 - `nominatedPodsReqWithPodReq`：上面那部分 + 其他 Namespace 中、所属 quota 尚未超过 `min` 的 nominated Pod。
 
 nominated Pod 还没有经过 `Reserve`，用量记录里没有它们。如果不把它们算进来，就会出现这样的情况：B 抢占了 A 的 Pod 准备回收自己的 `min`，A 的 Pod 还在优雅退出，此时 C 的 Pod 进来，看到配额还有余量，把这份额度又占了。
@@ -503,7 +503,7 @@ nominated Pod 还没有经过 `Reserve`，用量记录里没有它们。如果�
 
 两个和都算好之后，检查本身只有两行。
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/capacity_scheduling.go
 	if eq.usedOverMaxWith(nominatedPodsReqInEQWithPodReq) {
 		return nil, fwk.NewStatus(fwk.Unschedulable, fmt.Sprintf("Pod %v/%v is rejected in PreFilter because ElasticQuota %v is more than Max", pod.Namespace, pod.Name, eq.Namespace))
@@ -518,14 +518,14 @@ nominated Pod 还没有经过 `Reserve`，用量记录里没有它们。如果�
 
 写成不等式：
 
-```text
+```text {linenos=inline}
 检查一：Used(ns)  + nominatedInEQ + req > Max(ns)   → Unschedulable
 检查二：ΣUsed(全部) + nominatedAll + req > ΣMin(全部) → Unschedulable
 ```
 
 `aggregatedUsedOverMinWith` 把所有 quota 的 `Used` 和 `Min` 各自加总再比较：
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/elasticquota.go
 func (e ElasticQuotaInfos) aggregatedUsedOverMinWith(podRequest framework.Resource) bool {
 	used := framework.NewResource(nil)
@@ -541,7 +541,7 @@ func (e ElasticQuotaInfos) aggregatedUsedOverMinWith(podRequest framework.Resour
 }
 ```
 
-第一道是常规的单租户上限。第二道决定了这个插件的整体形态：**所有配额内 Pod 的用量总和，永远不能超过所有 `min` 之和**。「借用」借的只是其他租户暂时没用上的 `min`，借不到 `min` 总池子之外的资源。
+第一道是常规的单租户上限（第 2–4 行）。第二道决定了这个插件的整体形态（第 6–8 行）：**所有配额内 Pod 的用量总和，永远不能超过所有 `min` 之和**。「借用」借的只是其他租户暂时没用上的 `min`，借不到 `min` 总池子之外的资源。
 
 假如所有 `min` 加起来只有集群容量的一半，另一半对配额内的 Pod 不可见，即便 `max` 写得很大也没用；只有没有 `ElasticQuota` 的 Namespace 能用到这部分。
 
@@ -549,7 +549,7 @@ func (e ElasticQuotaInfos) aggregatedUsedOverMinWith(podRequest framework.Resour
 
 两道检查都返回 `Unschedulable`，而不是 `UnschedulableAndUnresolvable`。这个选择决定了后面的流程。在 v1.36.4 的框架里：
 
-```go
+```go {linenos=inline}
 // k8s.io/kubernetes@v1.36.4/pkg/scheduler/framework/runtime/framework.go
 		if !s.IsSuccess() {
 			s.SetPlugin(pl.Name())
@@ -570,7 +570,7 @@ func (e ElasticQuotaInfos) aggregatedUsedOverMinWith(podRequest framework.Resour
 
 `Unschedulable` 时其余 PreFilter 插件照常执行，它们的状态都会写进 CycleState。抢占模拟需要运行 Filter，而 Filter 依赖 PreFilter 写的状态，这一步必不可少。随后 `schedule_one.go` 把同一个状态设给所有节点：
 
-```go
+```go {linenos=inline}
 // k8s.io/kubernetes@v1.36.4/pkg/scheduler/schedule_one.go
 	preRes, s, unscheduledPlugins := schedFramework.RunPreFilterPlugins(ctx, state, pod)
 	diagnosis.UnschedulablePlugins = unscheduledPlugins
@@ -591,7 +591,7 @@ func (e ElasticQuotaInfos) aggregatedUsedOverMinWith(podRequest framework.Resour
 
 PreFilter 只是在判断，真正改动这份用量记录的是 Reserve。
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/capacity_scheduling.go
 func (c *CapacityScheduling) Reserve(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeName string) *fwk.Status {
 	c.Lock()
@@ -620,11 +620,11 @@ func (c *CapacityScheduling) Unreserve(ctx context.Context, state fwk.CycleState
 }
 ```
 
-`Reserve` 改的是插件的实时用量记录，不是快照。调度器的调度周期是串行的，但绑定周期是异步的：Pod 1 在 `Reserve` 之后进入异步绑定，调度器马上开始调度 Pod 2。
+`Reserve` 改的是插件的实时用量记录（第 8 行），不是快照。调度器的调度周期是串行的，但绑定周期是异步的：Pod 1 在 `Reserve` 之后进入异步绑定，调度器马上开始调度 Pod 2。
 
 如果不在 `Reserve` 时记录用量，Pod 2 的 PreFilter 拍快照时看不到 Pod 1，两者会共用同一份配额。这和调度器缓存的 assume 机制同理：在 API 层面确认之前，先在本地「假定」它已经成功。
 
-绑定失败、Permit 拒绝或超时时，框架调用 `Unreserve`，用量记录回滚。之后如果绑定成功，informer 的 Add 事件再到，`pods` 集合里已有这个 key，不会重复计量。
+绑定失败、Permit 拒绝或超时时，框架调用 `Unreserve`，用量记录回滚（第 23 行的 `deletePodIfPresent`）。之后如果绑定成功，informer 的 Add 事件再到，`pods` 集合里已有这个 key，不会重复计量。
 
 ## 六、PostFilter：借用 Evaluator，换掉受害者选择
 
@@ -632,7 +632,7 @@ func (c *CapacityScheduling) Unreserve(ctx context.Context, state fwk.CycleState
 
 in-tree 的抢占流程分两层。`preemption.Evaluator` 承担了主要工作：检查抢占资格、找候选节点、并行模拟、调用 extender、选最优节点、执行驱逐。随抢占策略变化的部分，抽成了一个接口：
 
-```go
+```go {linenos=inline}
 // k8s.io/kubernetes@v1.36.4/pkg/scheduler/framework/preemption/preemption.go
 type Interface interface {
 	// GetOffsetAndNumCandidates chooses a random offset and calculates the number of candidates that should be
@@ -655,9 +655,9 @@ type Interface interface {
 }
 ```
 
-`DefaultPreemption` 是这个接口的一个实现（详见[DefaultPreemption 篇](/posts/sched-plugin-18-default-preemption/)）。`CapacityScheduling` 定义了一个内部类型 `preemptor` 作为另一个实现，在 PostFilter 里临时组装一个 Evaluator：
+`DefaultPreemption` 是这个接口的一个实现（详见[DefaultPreemption 篇](/posts/sched-plugin-18-default-preemption/)）。`CapacityScheduling` 定义了一个内部类型 `preemptor` 作为另一个实现，在 PostFilter 里临时组装一个 Evaluator（第 7–16 行）：
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/capacity_scheduling.go
 func (c *CapacityScheduling) PostFilter(ctx context.Context, state fwk.CycleState, pod *v1.Pod, m fwk.NodeToStatusReader) (*fwk.PostFilterResult, *fwk.Status) {
 	defer func() {
@@ -685,7 +685,7 @@ func (c *CapacityScheduling) PostFilter(ctx context.Context, state fwk.CycleStat
 
 五个方法里，三个是简单实现：
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/capacity_scheduling.go
 func (p *preemptor) OrderedScoreFuncs(ctx context.Context, nodesToVictims map[string]*extenderv1.Victims) []func(node string) int64 {
 	return nil
@@ -710,7 +710,7 @@ func (p *preemptor) GetOffsetAndNumCandidates(n int32) (int32, int32) {
 
 这个方法回答：抢占者上一轮已经抢过一次，受害者还在退出，这一轮还要不要再抢？`DefaultPreemption` 的答案是：提名节点上有正在被抢占而退出的低优先级 Pod，就不再抢。`CapacityScheduling` 把配额考虑了进去：
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/capacity_scheduling.go
 		podPriority := corev1helpers.PodPriority(pod)
 		preemptorEQInfo, preemptorWithEQ := elasticQuotaSnapshotState.elasticQuotaInfos[pod.Namespace]
@@ -747,7 +747,7 @@ func (p *preemptor) GetOffsetAndNumCandidates(n int32) (int32, int32) {
 
 这是插件改写的核心。函数在一个节点的副本上运行，先按抢占者的状态挑出候选受害者：
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/capacity_scheduling.go
 	var potentialVictims []fwk.PodInfo
 	if preemptorWithElasticQuota {
@@ -803,6 +803,8 @@ func (p *preemptor) GetOffsetAndNumCandidates(n int32) (int32, int32) {
 | 有 EQ，`Used + req ≤ Min` | 自己的 `min` 被别人占着 | 其他 Namespace 中、所属 quota `Used > Min` 的 Pod，**不比较优先级** |
 | 没有 EQ | 不参与配额 | 同样没有 EQ 的 Namespace 中、优先级更低的 Pod |
 
+三行分别对应上文代码块的第 13–21 行、第 23–33 行、第 35–45 行。
+
 第二行是弹性配额的语义所在：租户在自己 `min` 以内申请资源，是在拿回本属于自己的东西，所以不看优先级，正在借用的一方哪怕优先级更高也要让出来。
 
 第一行则是 KEP 里强调的「受限的单 Namespace 抢占」：已经在借了，就只能和自己人比优先级，不能为了多借而驱逐别的租户。
@@ -815,7 +817,7 @@ func (p *preemptor) GetOffsetAndNumCandidates(n int32) (int32, int32) {
 
 接下来的流程和 `DefaultPreemption` 同构，只是多了配额检查：
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/capacity_scheduling.go
 	// No potential victims are found, and so we don't need to evaluate the node again since its state didn't change.
 	if len(potentialVictims) == 0 {
@@ -846,7 +848,7 @@ func (p *preemptor) GetOffsetAndNumCandidates(n int32) (int32, int32) {
 
 最后是赦免，把候选受害者按优先级从高到低逐个加回，先处理加回会违反 PDB 的，再处理其余：
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/capacity_scheduling.go
 	reprievePod := func(pi fwk.PodInfo) (bool, error) {
 		if err := addPod(pi); err != nil {
@@ -874,7 +876,7 @@ func (p *preemptor) GetOffsetAndNumCandidates(n int32) (int32, int32) {
 	}
 ```
 
-加回后 Filter 不通过，这个 Pod 必须走；Filter 通过但配额检查不通过，也必须走。两者都通过，才赦免。和 `DefaultPreemption` 相比，多出来的正是第二个 `if`。
+加回后 Filter 不通过（第 8–14 行），这个 Pod 必须走；Filter 通过但配额检查不通过（第 16–22 行），也必须走。两者都通过，才赦免。和 `DefaultPreemption` 相比，多出来的正是第二个 `if`。
 
 第二个 `if` 里用的是含 nominated Pod 的两个和，而赦免前的那次检查只用了 `podReq`。这两个检查口径不一致会导致一个边角情况。
 
@@ -926,7 +928,7 @@ B 的判定：`2 + 2 = 4`，不大于 `min` 4，处于「`min` 被占用」状�
 
 `PreFilterExtensions` 的存在本身就是为了抢占：PreFilter 预先算好的状态（比如 PodTopologySpread 的拓扑计数）在模拟「移走一个 Pod」时需要同步更新，否则 Filter 看到的仍是旧计数。`CapacityScheduling` 的状态是配额用量，道理相同：
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/capacity_scheduling.go
 func (c *CapacityScheduling) RemovePod(ctx context.Context, cycleState fwk.CycleState, podToSchedule *v1.Pod, podToRemove fwk.PodInfo, nodeInfo fwk.NodeInfo) *fwk.Status {
 	// ...
@@ -942,13 +944,13 @@ func (c *CapacityScheduling) RemovePod(ctx context.Context, cycleState fwk.Cycle
 }
 ```
 
-改的是 CycleState 里快照的副本，不碰实时用量记录。另外，`RunFilterPluginsWithNominatedPods` 在评估时会把同节点上优先级不低于抢占者的 nominated Pod 临时加入，这也会触发 `AddPod`，于是这些 nominated Pod 的用量在快照里也会被计入。
+改的是 CycleState 里快照的副本（第 4–8 行），不碰实时用量记录。另外，`RunFilterPluginsWithNominatedPods` 在评估时会把同节点上优先级不低于抢占者的 nominated Pod 临时加入，这也会触发 `AddPod`，于是这些 nominated Pod 的用量在快照里也会被计入。
 
 ## 七、EventsToRegister：被拒之后什么时候重试
 
 配额的变化大多发生在调度周期之外，被拒的 Pod 只能靠事件回到队列。插件声明的事件决定了它多久重试一次。
 
-```go
+```go {linenos=inline}
 // pkg/capacityscheduling/capacity_scheduling.go
 func (c *CapacityScheduling) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWithHint, error) {
 	// To register a custom event, follow the naming convention at:
@@ -962,9 +964,9 @@ func (c *CapacityScheduling) EventsToRegister(_ context.Context) ([]fwk.ClusterE
 }
 ```
 
-两类事件，都没有 `QueueingHintFn`。框架对这种情况的处理是：
+两类事件（第 8–9 行），都没有 `QueueingHintFn`。框架对这种情况的处理是：
 
-```go
+```go {linenos=inline}
 // k8s.io/kubernetes@v1.36.4/pkg/scheduler/scheduler.go
 // defaultQueueingHintFn is the default queueing hint function.
 // It always returns Queue as the queueing hint.
@@ -983,7 +985,7 @@ var defaultQueueingHintFn = func(_ klog.Logger, _ *v1.Pod, _, _ interface{}) (fw
 
 **`elasticquotas.v1alpha1.scheduling.x-k8s.io` 的全部事件。** 调整 `min`/`max`、新建或删除配额，都可能让被拒的 Pod 变得可调度。这个字符串是框架约定的 `<resource>.<version>.<group>` 格式，调度器在 `addAllEventHandlers` 里检测到至少两个点的自定义资源名时，会用 dynamic informer 去 watch 它：
 
-```go
+```go {linenos=inline}
 // k8s.io/kubernetes@v1.36.4/pkg/scheduler/eventhandlers.go
 			// GVK is expected to be at least 3-folded, separated by dots.
 			// <kind in plural>.<version>.<group>
@@ -1054,12 +1056,12 @@ informer 驱动的那部分最终一致，`Reserve` 记的那部分各记各的�
 
 `CapacityScheduling` 能复用 Evaluator，前提是 `preemption.Interface` 足够稳定。实际上这个接口在 Kubernetes 主干上已经变了。master 提交 `aabdf5a2` 中：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/preemption/preemption.go（master）
 	SelectVictimsOnNode(ctx context.Context, cycleState fwk.CycleState, preemptor *v1.Pod, nodeInfo fwk.NodeInfo, allPossibleVictims []*DomainVictim, pdbs []*policy.PodDisruptionBudget) ([]*v1.Pod, int, *fwk.Status)
 ```
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/preemption/preemption.go（master）
 func NewEvaluator(pluginName string, fh fwk.Handle, i Interface, fts feature.Features) *Evaluator {
 ```

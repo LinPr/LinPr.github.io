@@ -21,9 +21,9 @@ AWS 上一台 Nitro 实例能挂的 EBS 卷数量有限，GCE、Azure 也都有�
 
 ## 一、名字的来历：插件叫 NodeVolumeLimits，结构体叫 CSILimits
 
-插件注册名是 `NodeVolumeLimits`，结构体却叫 `CSILimits`，常量名是 `CSIName`。这组名字是历史留下的，结构体本身则交代了它依赖的全部数据源：
+插件注册名是 `NodeVolumeLimits`，结构体却叫 `CSILimits`，常量名是 `CSIName`。这组名字是历史留下的，结构体本身则交代了它依赖的全部数据源（第 3–16 行，常量在第 19 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
 // CSILimits is a plugin that checks node volume limits.
 type CSILimits struct {
@@ -49,7 +49,7 @@ const CSIName = names.NodeVolumeLimits
 
 结构体名和常量名 `CSIName` 是那个年代留下的。代码里还有一句注释「If the volume is not migratable, it will be count in non_csi filter」，所说的 non-CSI filter 已经不存在了：不能迁移的 in-tree 卷现在根本不计数。
 
-字段里有三处与众不同：
+字段里有三处与众不同（`csiManager` 在第 4 行、`vaIndexer` 在第 10 行、`randomVolumeIDPrefix` 在第 12 行）：
 
 - `csiManager` 不是自己建的 lister，而是 `handle.SharedCSIManager()`。它在 `pkg/scheduler/framework_init.go` 里用 CSINode lister 构造，通过 `frameworkruntime.WithSharedCSIManager` 注入，接口定义在 fwk 包的 `CSIManager`，供所有插件共享 CSINode 视图。
 - `vaIndexer` 是给 VolumeAttachment informer 加的按 `spec.nodeName` 的索引，键名 `va.spec.nodename`。Filter 每个节点都要查「挂在这个节点上的 VA」，没有索引就得每次全量遍历。
@@ -61,7 +61,7 @@ const CSIName = names.NodeVolumeLimits
 
 上限只有一个来源：`CSINode.spec.drivers[].allocatable.count`。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
 func getVolumeLimits(csiNode *storagev1.CSINode) map[string]int64 {
 	nodeVolumeLimits := make(map[string]int64)
@@ -79,11 +79,11 @@ func getVolumeLimits(csiNode *storagev1.CSINode) map[string]int64 {
 
 这个值由 kubelet 写入。驱动通过 node-driver-registrar 注册时，kubelet 调用驱动的 `NodeGetInfo`，把响应里的 `max_volumes_per_node` 交给 `nodeInfoManager.InstallCSIDriver`，写进本节点 CSINode 对应驱动的 `allocatable.count`（`pkg/volume/csi/csi_plugin.go`）。
 
-驱动返回 0 表示不限制，此时 `allocatable` 不设，`getVolumeLimits` 结果里就没有这个驱动。注册流程本身可以参考 [CSI 工作流程](/posts/k8s-csi-workflow/) 一文的「注册」一节。
+驱动返回 0 表示不限制，此时 `allocatable` 不设，`getVolumeLimits` 结果里就没有这个驱动（第 8–9 行只在 `allocatable.count` 非 nil 时记一条）。注册流程本身可以参考 [CSI 工作流程](/posts/k8s-csi-workflow/) 一文的「注册」一节。
 
 一个典型的 CSINode：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: storage.k8s.io/v1
 kind: CSINode
 metadata:
@@ -111,7 +111,7 @@ spec:
 
 PreFilter 不计算任何数量，它只回答一个问题：这个 Pod 有没有需要计数的卷。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
 func (pl *CSILimits) PreFilter(ctx context.Context, _ fwk.CycleState, pod *v1.Pod, _ []fwk.NodeInfo) (*fwk.PreFilterResult, *fwk.Status) {
 	// ...
@@ -127,9 +127,9 @@ func (pl *CSILimits) PreFilter(ctx context.Context, _ fwk.CycleState, pod *v1.Po
 }
 ```
 
-只有三种卷会被计数：PVC、generic ephemeral 卷、可迁移的 in-tree 内联卷（`IsInlineMigratable` 由 csi-translation-lib 判断，比如内联的 `awsElasticBlockStore`）。
+只有三种卷会被计数：PVC、generic ephemeral 卷、可迁移的 in-tree 内联卷，就是第 7 行 `if` 里的三个条件（`IsInlineMigratable` 由 csi-translation-lib 判断，比如内联的 `awsElasticBlockStore`）。
 
-ConfigMap、Secret、emptyDir 这类不占挂载槽位的卷，或者 Pod 根本没有卷，PreFilter 就返回 `Skip`，Filter 不会被调用。
+ConfigMap、Secret、emptyDir 这类不占挂载槽位的卷，或者 Pod 根本没有卷，PreFilter 就返回 `Skip`（第 12 行），Filter 不会被调用。
 
 PreFilter 不写 CycleState，`PreFilterExtensions` 返回 nil。所有计算都放在 Filter 里按节点现算，原因后面讲。
 
@@ -139,9 +139,9 @@ PreFilter 不写 CycleState，`PreFilterExtensions` 返回 nil。所有计算都
 
 ### 4.1 主流程
 
-Filter 一次做完三件事：统计新 Pod 的卷、统计节点上已有 Pod 和 VolumeAttachment 的卷、按驱动与上限比较。代码略长，先通读一遍。
+Filter 一次做完三件事：统计新 Pod 的卷（第 11–18 行）、统计节点上已有 Pod（第 36–48 行）和 VolumeAttachment（第 51–61 行）的卷、按驱动与上限比较（第 69–78 行）。代码略长，先通读一遍。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
 func (pl *CSILimits) Filter(ctx context.Context, _ fwk.CycleState, pod *v1.Pod, nodeInfo fwk.NodeInfo) *fwk.Status {
 	// ...
@@ -227,10 +227,10 @@ func (pl *CSILimits) Filter(ctx context.Context, _ fwk.CycleState, pod *v1.Pod, 
 
 整个算法围绕一个 map：键是 `驱动名/volumeHandle`（`getVolumeUniqueName`），值是驱动名。新 Pod 的卷、节点上已有 Pod 的卷、节点上的 VolumeAttachment，三路来源都换算成这个键，靠 map 天然去重：
 
-1. 新 Pod 的卷进 `newVolumes`；
-2. 已有 Pod 的卷进 `attachedVolumes`，同时从 `newVolumes` 里删掉相同的键，**与已有 Pod 共享的卷不算新增**；
-3. VolumeAttachment 里不在 `attachedVolumes` 中的卷，额外计入已用数；
-4. 按驱动比较「已用 + 新增」与上限，超过则 `Unschedulable`，原因 `node(s) exceed max volume count`。
+1. 新 Pod 的卷进 `newVolumes`（第 12 行）；
+2. 已有 Pod 的卷进 `attachedVolumes`，同时从 `newVolumes` 里删掉相同的键（第 44–48 行），**与已有 Pod 共享的卷不算新增**；
+3. VolumeAttachment 里不在 `attachedVolumes` 中的卷，额外计入已用数（第 56–61 行）；
+4. 按驱动比较「已用 + 新增」与上限，超过则 `Unschedulable`（第 74–75 行），原因 `node(s) exceed max volume count`。
 
 {{< figure src="/images/posts/sched-plugins/10-volume-count.svg" caption="NodeVolumeLimits 的计数过程：三路来源统一成「驱动名/volumeHandle」键，去重后按驱动与 CSINode 上限比较（点击查看大图）" link="/images/posts/sched-plugins/10-volume-count.svg" >}}
 
@@ -257,9 +257,9 @@ func (pl *CSILimits) Filter(ctx context.Context, _ fwk.CycleState, pod *v1.Pod, 
 
 ### 4.3 filterAttachableVolumes：三种卷的入口
 
-三类卷在同一个函数里分叉，`switch` 只负责把它们各自换成 PVC 名或者直接处理：
+三类卷在同一个函数里分叉，`switch` 只负责把它们各自换成 PVC 名或者直接处理（`PersistentVolumeClaim` 在第 3–5 行，`Ephemeral` 在第 6–9 行，其余落在 `default` 里交给 `checkAttachableInlineVolume`，第 10–19 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
 		switch {
 		case vol.PersistentVolumeClaim != nil:
@@ -296,7 +296,7 @@ func (pl *CSILimits) Filter(ctx context.Context, _ fwk.CycleState, pod *v1.Pod, 
 		}
 ```
 
-新 Pod 和已有 Pod 的容错不对称。新 Pod 的 PVC 查不到，错误用 `%w` 包装后上抛，Filter 用 `apierrors.IsNotFound` 识别出来（`IsNotFound` 走 `errors.As`，能穿透包装），返回 `UnschedulableAndUnresolvable`；已有 Pod 的 PVC 查不到只是跳过不计。
+新 Pod 和已有 Pod 的容错不对称。新 Pod 的 PVC 查不到，错误用 `%w` 包装后上抛（第 28 行），Filter 用 `apierrors.IsNotFound` 识别出来（`IsNotFound` 走 `errors.As`，能穿透包装），返回 `UnschedulableAndUnresolvable`；已有 Pod 的 PVC 查不到只是跳过不计（第 30–33 行）。
 
 已有 Pod 已经在节点上，它的 PVC 被删了也不该阻止新 Pod 调度，宁可少算。
 
@@ -306,7 +306,7 @@ generic ephemeral 卷生成的 PVC 名是 `<pod名>-<卷名>`，还要用 `ephem
 
 这是整个插件最核心的一步。根据 PVC 的状态分三条路：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
 func (pl *CSILimits) getCSIDriverInfo(logger klog.Logger, csiNode *storagev1.CSINode, pvc *v1.PersistentVolumeClaim) (string, string) {
 	pvName := pvc.Spec.VolumeName
@@ -345,17 +345,17 @@ func (pl *CSILimits) getCSIDriverInfo(logger klog.Logger, csiNode *storagev1.CSI
 }
 ```
 
-**已绑定的 CSI PV**：直接取 `spec.csi.driver` 和 `spec.csi.volumeHandle`。
+**已绑定的 CSI PV**：直接取 `spec.csi.driver` 和 `spec.csi.volumeHandle`（第 35 行）。
 
-**已绑定的 in-tree PV**：比如 `spec.awsElasticBlockStore.volumeID: aws://us-east-1a/vol-0abc`。先确认可迁移，再用 csi-translation-lib 翻译。
+**已绑定的 in-tree PV**：比如 `spec.awsElasticBlockStore.volumeID: aws://us-east-1a/vol-0abc`。先确认可迁移（第 19–21 行），再确认迁移开关（第 25 行），然后用 csi-translation-lib 翻译（第 30 行）。
 
 翻译不只是改字段名，EBS 的 `KubernetesVolumeIDToEBSVolumeID` 会把 `aws://us-east-1a/vol-0abc` 这种 URL 形式规整成 `vol-0abc`，驱动名换成 `ebs.csi.aws.com`。
 
 这样同一块盘无论以 in-tree PV、内联卷还是原生 CSI PV 出现，算出来的键都是 `ebs.csi.aws.com/vol-0abc`，去重才成立。
 
-**未绑定的 PVC**：典型场景是 `WaitForFirstConsumer` 的 PVC，要等调度器选定节点后才会供给。此时没有 PV，只能看 StorageClass：
+**未绑定的 PVC**：典型场景是 `WaitForFirstConsumer` 的 PVC，要等调度器选定节点后才会供给。此时没有 PV，PV 名为空（第 5–8 行）或 PV 查不到（第 10–14 行）都转去 `getCSIDriverInfoFromSC`，只能看 StorageClass：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
 	// We use random prefix to avoid conflict with volume IDs. If PVC is bound during the execution of the
 	// predicate and there is another pod on the same node that uses same volume, then we will overcount
@@ -377,7 +377,7 @@ func (pl *CSILimits) getCSIDriverInfo(logger klog.Logger, csiNode *storagev1.CSI
 	return provisioner, volumeHandle
 ```
 
-驱动名取 StorageClass 的 `provisioner`（in-tree provisioner 如 `kubernetes.io/aws-ebs` 换算成 CSI 驱动名），句柄则是 `<随机前缀>-<命名空间>/<PVC名>`。这个设计有两层用意：
+驱动名取 StorageClass 的 `provisioner`（第 7 行；in-tree provisioner 如 `kubernetes.io/aws-ebs` 在第 8–17 行换算成 CSI 驱动名），句柄则是 `<随机前缀>-<命名空间>/<PVC名>`（第 5 行）。这个设计有两层用意：
 
 - 随机前缀保证假句柄不会与任何真实 volumeHandle 撞上；
 - 同一个未绑定 PVC 在同一个调度器实例里总是得到相同的假句柄。比如一个 assumed Pod 已经引用了 `pvc-new`、正在等待卷供给，第二个 Pod 也引用 `pvc-new`，两边的键一致，可以正确去重。
@@ -390,7 +390,7 @@ StorageClass 名为空或查不到时直接返回空，不计数。注释给出�
 
 判断迁移是否开启，这里用的是一张写死的白名单：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodevolumelimits/utils.go
 func isCSIMigrationOn(csiNode *storagev1.CSINode, pluginName string) bool {
 	if csiNode == nil || len(pluginName) == 0 {
@@ -416,7 +416,7 @@ func isCSIMigrationOn(csiNode *storagev1.CSINode, pluginName string) bool {
 }
 ```
 
-各插件的迁移 feature gate 早已 GA 并移除，这里写死了五个块存储插件，只要节点有 CSINode 就认为迁移已开启。而下一篇 `VolumeBinding` 的同名逻辑 `isPluginMigratedToCSIOnNode` 还会检查 CSINode 上的 `storage.alpha.kubernetes.io/migrated-plugins` 注解是否包含该插件。
+各插件的迁移 feature gate 早已 GA 并移除，这里写死了五个块存储插件（第 10–19 行的五个 `case`），只要节点有 CSINode 就认为迁移已开启。而下一篇 `VolumeBinding` 的同名逻辑 `isPluginMigratedToCSIOnNode` 还会检查 CSINode 上的 `storage.alpha.kubernetes.io/migrated-plugins` 注解是否包含该插件。
 
 两边判断标准不一致，在 CSINode 存在但注解未包含某插件的节点上，NodeVolumeLimits 会把 in-tree 卷按 CSI 计数，而 VolumeBinding 不会翻译它的拓扑。实际集群里 kubelet 会在启动时写好这个注解，两者结果通常一致。
 
@@ -426,7 +426,7 @@ func isCSIMigrationOn(csiNode *storagev1.CSINode, pluginName string) bool {
 
 Pod 之外还有一类占用者：已经创建、还没删除的 VolumeAttachment。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
 func (pl *CSILimits) getNodeVolumeAttachmentInfo(logger klog.Logger, nodeName string) (map[string]string, error) {
 	volumeAttachments := make(map[string]string)
@@ -452,7 +452,7 @@ func (pl *CSILimits) getNodeVolumeAttachmentInfo(logger klog.Logger, nodeName st
 }
 ```
 
-VA 只覆盖「指向原生 CSI PV」的那部分：内联卷的 VA（`source.inlineVolumeSpec`）和 in-tree PV 的 VA 都被跳过，它们只能靠 Pod 那一路计数。只有 `attachRequired: true` 的驱动才会产生 VA，NFS 这类不需要 attach 的驱动不受这一路影响。
+VA 只覆盖「指向原生 CSI PV」的那部分：没有 PV 名的 VA 被跳过（第 8–11 行），非 CSI PV 的 VA 也被跳过（第 14–17 行），内联卷的 VA（`source.inlineVolumeSpec`）和 in-tree PV 的 VA 因此都只能靠 Pod 那一路计数。只有 `attachRequired: true` 的驱动才会产生 VA，NFS 这类不需要 attach 的驱动不受这一路影响。
 
 数量数完了，还有一道不数数量、只查驱动是否就位的门槛。
 
@@ -460,7 +460,7 @@ VA 只覆盖「指向原生 CSI PV」的那部分：内联卷的 VA（`source.in
 
 这段逻辑检查的是驱动在不在节点上，而不是卷挂了几块：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
 	if pl.enableVolumeLimitScaling {
 		for _, driverName := range newVolumes {
@@ -484,14 +484,14 @@ VA 只覆盖「指向原生 CSI PV」的那部分：内联卷的 VA（`source.in
 
 两个值得注意的细节：
 
-- 返回的是 `Unschedulable` 而不是 `UnschedulableAndUnresolvable`。驱动没装好不可能通过驱逐 Pod 解决，DefaultPreemption 会对这些节点做一遍注定失败的模拟。
+- 返回的是 `Unschedulable` 而不是 `UnschedulableAndUnresolvable`（第 10 行）。驱动没装好不可能通过驱逐 Pod 解决，DefaultPreemption 会对这些节点做一遍注定失败的模拟。
 - 检查发生在 `getVolumeLimits` 之前，所以即使驱动没有声明上限，也会被这条拦住。
 
 ## 六、EventsToRegister 与 QueueingHint
 
-前面出现过的失败码各不相同，对应的可解条件也不同，所以插件一次订阅了五类事件：
+前面出现过的失败码各不相同，对应的可解条件也不同，所以插件一次订阅了五类事件（第 6–10 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
 func (pl *CSILimits) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWithHint, error) {
 	return []fwk.ClusterEventWithHint{

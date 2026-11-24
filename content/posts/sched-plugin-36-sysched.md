@@ -25,7 +25,7 @@ description: "SySched 从 Security Profiles Operator 的 SeccompProfile 中读�
 
 调度时关心的是节点级的 ExS：假设新 Pod 放到这个节点，算出节点上每个 Pod（含新 Pod）的 ExS 再求和。值越小，说明这个节点上的 Pod 画像越接近，放上去之后节点的「开放」系统调用增加得越少。KEP 还设想了给高危系统调用加权（参考 CVE 历史），代码里留了位置但没有实现：
 
-```go
+```go {linenos=inline}
 // pkg/sysched/sysched.go
 func (sc *SySched) calcScore(syscalls sets.Set[string]) int {
 	// ...
@@ -43,7 +43,7 @@ func (sc *SySched) calcScore(syscalls sets.Set[string]) int {
 }
 ```
 
-`totCrit` 恒为 0、`W` 恒为 1，`calcScore` 就是集合大小。
+`totCrit` 恒为 0、`W` 恒为 1（第 8–9 行），`calcScore` 就是集合大小（第 11 行）。
 
 指标的定义清楚了，接下来要回答的是：每个 Pod 的系统调用集合从哪里来。
 
@@ -55,7 +55,7 @@ ExS 依赖两份数据——单个 Pod 允许哪些系统调用，以及某节�
 
 Pod 的系统调用集合来自 Security Profiles Operator（SPO）管理的 `SeccompProfile` 对象：
 
-```yaml
+```yaml {linenos=inline}
 # manifests/sysched/examples/nginx.profile.yaml（节选）
 apiVersion: security-profiles-operator.x-k8s.io/v1beta1
 kind: SeccompProfile
@@ -75,7 +75,7 @@ spec:
 
 SPO 会把它落盘到节点 kubelet 的 seccomp 目录下（相对路径形如 `operator/<namespace>/<name>.json`），Pod 通过 `seccompProfile.type: Localhost` 引用这个相对路径；`ProfileBinding`（示例中的 `nginx.binding.yaml`）可以让 SPO 的 webhook 按镜像自动给 Pod 注入引用。插件反过来，从 Pod 的引用路径中解析出 CR 的 namespace 和名字：
 
-```go
+```go {linenos=inline}
 // pkg/sysched/sysched.go
 func parseNameNS(profilePath string) (string, string) {
 	if profilePath == "" {
@@ -96,9 +96,9 @@ func parseNameNS(profilePath string) (string, string) {
 }
 ```
 
-只看路径的最后两段：`localhost/operator/default/nginx-seccomp.json` 和 `operator/default/nginx-seccomp.json` 都解析为 `default/nginx-seccomp`。然后读 CR，只合并 `SCMP_ACT_ALLOW` 和 `SCMP_ACT_LOG` 两类动作的名字：
+只看路径的最后两段（`ns := parts[len(parts)-2]` 与 `name := ...`，第 12、15 行）：`localhost/operator/default/nginx-seccomp.json` 和 `operator/default/nginx-seccomp.json` 都解析为 `default/nginx-seccomp`。然后读 CR，只合并 `SCMP_ACT_ALLOW` 和 `SCMP_ACT_LOG` 两类动作的名字（第 9–10 行）：
 
-```go
+```go {linenos=inline}
 // pkg/sysched/sysched.go
 	syscallCategories := seccompProfile.Spec.Syscalls
 
@@ -119,7 +119,7 @@ func parseNameNS(profilePath string) (string, string) {
 
 一个 Pod 可能通过多个入口引用 profile，`getSyscalls` 把它们并成一个集合。
 
-```go
+```go {linenos=inline}
 // pkg/sysched/sysched.go
 func (sc *SySched) getSyscalls(pod *v1.Pod) sets.Set[string] {
 	// ...
@@ -163,17 +163,17 @@ func (sc *SySched) getSyscalls(pod *v1.Pod) sets.Set[string] {
 }
 ```
 
-三处来源：Pod 级 `securityContext`、每个 app 容器的 `securityContext`（不含 init 容器和临时容器）、键名包含 `seccomp.security.alpha.kubernetes.io` 的 annotation（早期 SPO 和已废弃的 seccomp annotation 用法）。
+三处来源：Pod 级 `securityContext`、每个 app 容器的 `securityContext`（不含 init 容器和临时容器，第 9–16 行）、键名包含 `seccomp.security.alpha.kubernetes.io` 的 annotation（早期 SPO 和已废弃的 seccomp annotation 用法）。
 
-annotation 这段的注释说「可能有多个，合并所有」，但循环在第一个匹配的 key 之后就 `break` 了。Go 的 map 遍历顺序是随机的，多容器 Pod 用 `container.seccomp.security.alpha.kubernetes.io/<容器名>` 形式标注时，每次只会随机读到其中一个容器的 profile。好在新版本 Kubernetes 用的是 `securityContext` 字段，这条路径主要影响老集群。
+annotation 这段的注释说「可能有多个，合并所有」（第 20–21 行），但循环在第一个匹配的 key 之后就 `break` 了（第 26 行）。Go 的 map 遍历顺序是随机的，多容器 Pod 用 `container.seccomp.security.alpha.kubernetes.io/<容器名>` 形式标注时，每次只会随机读到其中一个容器的 profile。好在新版本 Kubernetes 用的是 `securityContext` 字段，这条路径主要影响老集群。
 
-三处都没读到时，用参数指定的默认 profile，代表「不受限的 Pod 能调用所有系统调用」。
+三处都没读到时，用参数指定的默认 profile（第 32–38 行），代表「不受限的 Pod 能调用所有系统调用」。
 
 ### 2.3 参数
 
-默认 profile 由插件参数指定，一共只有两个字段。
+默认 profile 由插件参数指定，一共只有两个字段（第 6、9 行）。
 
-```go
+```go {linenos=inline}
 // apis/config/types.go
 type SySchedArgs struct {
 	metav1.TypeMeta
@@ -196,7 +196,7 @@ type SySchedArgs struct {
 
 这份缓存就是 `SySched` 结构体里的两个 map。
 
-```go
+```go {linenos=inline}
 // pkg/sysched/sysched.go
 type SySched struct {
 	logger klog.Logger
@@ -217,7 +217,7 @@ type SySched struct {
 }
 ```
 
-`HostToPods` 记录每个节点上的 Pod，`HostSyscalls` 是每个节点上所有 Pod 画像的并集。插件没有用 CycleState，这些都是跨调度周期的插件内部状态。`ExSAvg`、`ExSAvgCount` 在每次 Score 时更新一个滑动平均，但除了打日志之外没有任何地方读取它；`WeightedSyscallProfile` 从未被赋值。
+`HostToPods` 记录每个节点上的 Pod（第 9 行），`HostSyscalls` 是每个节点上所有 Pod 画像的并集（第 12 行）。插件没有用 CycleState，这些都是跨调度周期的插件内部状态。`ExSAvg`、`ExSAvgCount`（第 13–14 行）在每次 Score 时更新一个滑动平均，但除了打日志之外没有任何地方读取它；`WeightedSyscallProfile`（第 17 行）从未被赋值。
 
 `client` 由 `util.NewClientWithCachedReader` 创建，是带 controller-runtime 缓存的客户端，读 `SeccompProfile` 走本地缓存而不是每次请求 API Server。
 
@@ -225,7 +225,7 @@ type SySched struct {
 
 缓存的内容由 informer 事件维护。`New` 在调度器共享的 Pod informer 上注册了三个回调：
 
-```go
+```go {linenos=inline}
 // pkg/sysched/sysched.go
 func (sc *SySched) podAdded(obj interface{}) {
 	// ...
@@ -260,7 +260,7 @@ func (sc *SySched) podDeleted(obj interface{}) {
 
 注释说之所以不用 SharedLister，是因为它不包含其他调度器调度的 Pod。实际上调度器的 snapshot 包含节点上所有已绑定的 Pod，与调度器无关；自建映射真正的好处是能缓存每个节点的系统调用并集，不必每次重新计算。
 
-`podUpdated` 判断的是旧对象，条件有两个：旧对象处于 `Pending`，且已经带上 `HostIP`。一个新调度的 Pod 要依次经历：
+`podUpdated` 判断的是旧对象（第 16 行的 `pod := old.(*v1.Pod)`），条件有两个：旧对象处于 `Pending`，且已经带上 `HostIP`（第 19 行）。一个新调度的 Pod 要依次经历：
 
 1. 绑定：`nodeName` 被设置，`HostIP` 仍为空；
 2. kubelet 上报 `HostIP`：仍是 `Pending`；
@@ -270,7 +270,7 @@ func (sc *SySched) podDeleted(obj interface{}) {
 
 删除这一侧，调度器的 Pod informer 带有字段选择器 `status.phase!=Succeeded,status.phase!=Failed`（`kubernetes@v1.36.4/pkg/scheduler/scheduler.go` 的 `newPodInformer`），Pod 进入终态时对 informer 而言就是删除事件，会触发 `removePod`，节点并集按剩余 Pod 重新计算。
 
-`podDeleted` 直接做 `obj.(*v1.Pod)` 断言，没有处理 informer 在丢失删除事件时投递的 `DeletedFinalStateUnknown`，断言失败会 panic。
+`podDeleted` 直接做 `obj.(*v1.Pod)` 断言（第 27 行），没有处理 informer 在丢失删除事件时投递的 `DeletedFinalStateUnknown`，断言失败会 panic。
 
 `addPod` 和 `removePod` 都只按 `pod.Name` 比较，不看 namespace。两个 namespace 里同名的 Pod 落在同一个节点上时，后一个不会被加入；删除其中一个会把另一个也移除。
 
@@ -282,7 +282,7 @@ func (sc *SySched) podDeleted(obj interface{}) {
 
 两个 map 在 Score 里被读取。
 
-```go
+```go {linenos=inline}
 // pkg/sysched/sysched.go
 func (sc *SySched) Score(ctx context.Context, cs fwk.CycleState, pod *v1.Pod, nodeInfo fwk.NodeInfo) (int64, *fwk.Status) {
 	// ...
@@ -330,17 +330,17 @@ func (sc *SySched) Score(ctx context.Context, cs fwk.CycleState, pod *v1.Pod, no
 
 写成公式，设节点并集为 H、新 Pod 画像为 S，节点上已有 Pod 的画像为 S₁…Sₙ：
 
-```text
+```text {linenos=inline}
 raw = |H − S| + Σᵢ |(H ∪ S) − Sᵢ|
 ```
 
-第一项是新 Pod 的 ExS。严格地说新 Pod 的 ExS 应该是 `|(H ∪ S) − S|`，但这与 `|H − S|` 相等，代码用了更省的写法。第二项是已有 Pod 在新 Pod 到来后的 ExS 之和。注意第二项包含已有 Pod **原本就有**的 ExS，不只是增量，所以原始分会随节点上 Pod 数量增长：Pod 越多的节点，基数越大。
+第一项是新 Pod 的 ExS（4.1 节 Score 代码第 27–28 行）。严格地说新 Pod 的 ExS 应该是 `|(H ∪ S) − S|`，但这与 `|H − S|` 相等，代码用了更省的写法。第二项是已有 Pod 在新 Pod 到来后的 ExS 之和（4.1 节代码第 33–37 行）。注意第二项包含已有 Pod **原本就有**的 ExS，不只是增量，所以原始分会随节点上 Pod 数量增长：Pod 越多的节点，基数越大。
 
 ### 4.2 归一化
 
 原始分只是相对大小，框架要求每个插件给出 0~100 的分数，这一步交给 in-tree 的归一化函数。
 
-```go
+```go {linenos=inline}
 // pkg/sysched/sysched.go
 func (sc *SySched) NormalizeScore(ctx context.Context, state fwk.CycleState, pod *v1.Pod, scores fwk.NodeScoreList) *fwk.Status {
 	// ...
@@ -350,7 +350,7 @@ func (sc *SySched) NormalizeScore(ctx context.Context, state fwk.CycleState, pod
 }
 ```
 
-in-tree 的 `DefaultNormalizeScore` 在 `reverse=true` 时计算 `100 − 100 × score / max`，原始分越小越好；所有原始分都是 0 时全部 100。
+in-tree 的 `DefaultNormalizeScore` 在 `reverse=true` 时（第 4 行的第二个实参）计算 `100 − 100 × score / max`，原始分越小越好；所有原始分都是 0 时全部 100。
 
 当 Pod 画像为空（Pod 没有 profile，默认 profile 也读不到），所有节点都返回 `math.MaxInt64`。此时 `max` 也是 `MaxInt64`，`100 × MaxInt64` 在 int64 中溢出，结果恰好是 −100，除以 `MaxInt64` 得 0，反转后每个节点都是 100 分。
 

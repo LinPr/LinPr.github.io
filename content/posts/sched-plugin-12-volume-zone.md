@@ -21,7 +21,7 @@ description: "VolumeZone 读取已绑定 PV 上的 zone/region 标签，要求�
 
 判断依据只有一样东西：PV 上的 label。下面这块 PV 用两个拓扑标签声明了自己的位置：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -46,7 +46,7 @@ spec:
 
 参与比较的标签只有四个：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/volumezone/volume_zone.go
 var topologyLabels = []string{
 	v1.LabelFailureDomainBetaZone,
@@ -56,7 +56,7 @@ var topologyLabels = []string{
 }
 ```
 
-即 `failure-domain.beta.kubernetes.io/zone`、`failure-domain.beta.kubernetes.io/region` 两个旧标签（1.17 起废弃），和 `topology.kubernetes.io/zone`、`topology.kubernetes.io/region` 两个 GA 标签。PV 上的其它标签一律不管。
+即 `failure-domain.beta.kubernetes.io/zone`、`failure-domain.beta.kubernetes.io/region` 两个旧标签（1.17 起废弃，第 3–4 行），和 `topology.kubernetes.io/zone`、`topology.kubernetes.io/region` 两个 GA 标签。PV 上的其它标签一律不管。
 
 判定对象和判定规则都清楚了，剩下的就是几段很短的代码。
 
@@ -64,9 +64,9 @@ var topologyLabels = []string{
 
 ### 2.1 结构体与 CycleState
 
-结构体保存四个 lister 和一个 feature gate 开关，状态里只有展开后的 PV 拓扑：
+结构体保存四个 lister 和一个 feature gate 开关（第 2–7 行），状态里只有展开后的 PV 拓扑（`pvTopology` 在第 10–14 行，`stateData` 在第 16–20 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/volumezone/volume_zone.go
 type VolumeZone struct {
 	pvLister                                           corelisters.PersistentVolumeLister
@@ -97,9 +97,9 @@ PreFilter 把 Pod 所有 PV 的拓扑标签展开成一个扁平列表，每个�
 
 ### 2.2 PreFilter：从 Pod 走到 PV 的标签
 
-PreFilter 的目标是把 Pod 用到的每块 PV 的拓扑标签收集成一个列表。
+PreFilter 的目标是把 Pod 用到的每块 PV 的拓扑标签收集成一个列表：第 4 行调用 `getPVbyPod`，第 8–10 行发现没有拓扑就 `Skip`，第 11 行写进 CycleState。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/volumezone/volume_zone.go
 func (pl *VolumeZone) PreFilter(ctx context.Context, cs fwk.CycleState, pod *v1.Pod, nodes []fwk.NodeInfo) (*fwk.PreFilterResult, *fwk.Status) {
 	// ...
@@ -117,7 +117,7 @@ func (pl *VolumeZone) PreFilter(ctx context.Context, cs fwk.CycleState, pod *v1.
 
 `getPVbyPod` 遍历 Pod 的 `persistentVolumeClaim` 卷（不含 generic ephemeral 卷），每个 PVC 走一遍下面的判断：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/volumezone/volume_zone.go
 		pvName := pvc.Spec.VolumeName
 		if pvName == "" {
@@ -159,7 +159,7 @@ func (pl *VolumeZone) PreFilter(ctx context.Context, cs fwk.CycleState, pod *v1.
 | 未绑定，没有 StorageClass 名 | `UnschedulableAndUnresolvable` |
 | 未绑定，StorageClass 不存在 | `UnschedulableAndUnresolvable`，NotFound 信息 |
 
-延迟绑定的 PVC 被跳过，是因为它还没有 PV，没有标签可看；等 VolumeBinding 在 PreBind 里完成绑定后，供给出来的 PV 用 `nodeAffinity` 表达拓扑，由 VolumeBinding 自己在下次调度时检查。
+延迟绑定的 PVC 被跳过（第 16–19 行），是因为它还没有 PV，没有标签可看；等 VolumeBinding 在 PreBind 里完成绑定后，供给出来的 PV 用 `nodeAffinity` 表达拓扑，由 VolumeBinding 自己在下次调度时检查。
 
 表里后几种拒绝和 VolumeBinding 的 PreFilter 是重叠的。VolumeBinding 在 PreFilter 链上更靠前，遇到未绑定的 Immediate PVC 会先返回 `UnschedulableAndUnresolvable`，框架立即终止 PreFilter，所以实际很少看到 VolumeZone 报出这几条信息。它们在 VolumeBinding 被禁用的自定义 Profile 里才有意义。
 
@@ -169,7 +169,7 @@ func (pl *VolumeZone) PreFilter(ctx context.Context, cs fwk.CycleState, pod *v1.
 
 单个 PV 的标签在这里被展开成若干条 `pvTopology`：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/volumezone/volume_zone.go
 // getPVTopologies retrieves pvTopology from a given PV and returns the array
 // This function doesn't check spec.nodeAffinity
@@ -195,9 +195,9 @@ func (pl *VolumeZone) getPVTopologies(logger klog.Logger, pv *v1.PersistentVolum
 }
 ```
 
-`LabelZonesToSet`（`k8s.io/cloud-provider/volume/helpers`）按 `cloudvolume.LabelMultiZoneDelimiter`，也就是 `"__"` 切分标签值。
+`LabelZonesToSet`（`k8s.io/cloud-provider/volume/helpers`，第 10 行）按 `cloudvolume.LabelMultiZoneDelimiter`，也就是 `"__"` 切分标签值。
 
-为什么不用逗号？label 值的字符集只允许字母数字、`-`、`_`、`.`，逗号不合法，双下划线是能想到的最不容易与可用区名冲突的分隔符。解析失败的标签被忽略而不是报错，宁可少一条约束也不让 Pod 卡住。
+为什么不用逗号？label 值的字符集只允许字母数字、`-`、`_`、`.`，逗号不合法，双下划线是能想到的最不容易与可用区名冲突的分隔符。解析失败的标签被忽略而不是报错（第 11–14 行），宁可少一条约束也不让 Pod 卡住。
 
 函数注释的后半句不准确：PV 的 `nodeAffinity` 并不是由 NodeAffinity 插件处理的，NodeAffinity 插件只看 Pod 的 `spec.affinity.nodeAffinity` 和 `nodeSelector`；检查 PV `nodeAffinity` 的是 VolumeBinding 的 `checkBoundClaims`（见上一篇 5.1 节）。
 
@@ -207,7 +207,7 @@ func (pl *VolumeZone) getPVTopologies(logger klog.Logger, pv *v1.PersistentVolum
 
 Filter 拿 PreFilter 准备好的列表，逐条和节点标签比对。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/volumezone/volume_zone.go
 func (pl *VolumeZone) Filter(ctx context.Context, cs fwk.CycleState, pod *v1.Pod, nodeInfo fwk.NodeInfo) *fwk.Status {
 	// ...
@@ -260,9 +260,9 @@ func (pl *VolumeZone) Filter(ctx context.Context, cs fwk.CycleState, pod *v1.Pod
 
 逻辑分三步：
 
-1. 节点没有任何拓扑标签就放行。注释说这是为单可用区集群准备的：自建集群的节点往往没有 zone 标签，此时 PV 上的标签无从比较，强行比较只会让所有带标签的 PV 都无法使用。
-2. 节点有任意一个拓扑标签，就要求 PV 的每一条标签都满足。只要有一条不满足就失败。
-3. beta 到 GA 的单向兼容。节点上找不到 PV 的那个标签键时，若 PV 用的是 beta 标签，就用 `translateToGALabel` 换成 GA 标签再找一次。反过来不成立：PV 用 GA 标签、节点只有 beta 标签，直接判失败。
+1. 节点没有任何拓扑标签就放行（第 29–33 行）。注释说这是为单可用区集群准备的：自建集群的节点往往没有 zone 标签，此时 PV 上的标签无从比较，强行比较只会让所有带标签的 PV 都无法使用。
+2. 节点有任意一个拓扑标签，就要求 PV 的每一条标签都满足（第 35–45 行）。只要有一条不满足就失败。
+3. beta 到 GA 的单向兼容。节点上找不到 PV 的那个标签键时，若 PV 用的是 beta 标签，就用 `translateToGALabel` 换成 GA 标签再找一次（第 37–40 行）。反过来不成立：PV 用 GA 标签、节点只有 beta 标签，直接判失败。
 
 **概括起来是：节点没有拓扑标签就全部放行；有的话逐条匹配；回退方向只有 beta 到 GA。**
 
@@ -281,7 +281,7 @@ func (pl *VolumeZone) Filter(ctx context.Context, cs fwk.CycleState, pod *v1.Pod
 
 而 PV 是持久对象，几年前创建的 PV 带着 beta 标签很常见，必须兼容。
 
-Filter 里还保留了一个兜底：CycleState 里读不到状态时，现场调用 `getPVbyPod` 再算一遍。正常调度路径上 PreFilter 返回 `Skip` 时 Filter 根本不会被调用，读不到状态只可能出现在直接调用 Filter 的外部代码里，例如把调度器插件嵌进去做模拟的组件。
+Filter 里还保留了一个兜底：CycleState 里读不到状态时，现场调用 `getPVbyPod` 再算一遍（第 9–18 行）。正常调度路径上 PreFilter 返回 `Skip` 时 Filter 根本不会被调用，读不到状态只可能出现在直接调用 Filter 的外部代码里，例如把调度器插件嵌进去做模拟的组件。
 
 ### 2.5 为什么是 UnschedulableAndUnresolvable
 
@@ -295,9 +295,9 @@ Filter 里还保留了一个兜底：CycleState 里读不到状态时，现场�
 
 ## 三、EventsToRegister 与 QueueingHint
 
-四类事件覆盖了所有可能让结论翻转的变化：
+四类事件覆盖了所有可能让结论翻转的变化（第 6–13 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/volumezone/volume_zone.go
 func (pl *VolumeZone) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWithHint, error) {
 	return []fwk.ClusterEventWithHint{

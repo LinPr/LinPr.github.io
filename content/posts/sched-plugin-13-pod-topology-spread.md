@@ -27,7 +27,7 @@ description: "PodTopologySpread 按 zone、节点等拓扑域打散副本。本�
 
 副本数一多，「别把鸡蛋放在一个篮子里」就成了硬需求。下面这个 Deployment 要求副本在 zone 之间严格均衡，在节点之间尽量均衡：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -68,9 +68,9 @@ spec:
 
 ### 2.1 `topologySpreadConstraint`
 
-约束进入插件后先做一次解析。API 里的 `v1.TopologySpreadConstraint` 不直接参与计算，插件把它转换成内部结构，顺带把 `labelSelector` 解析成 `labels.Selector`，给可选字段填上默认值：
+约束进入插件后先做一次解析。API 里的 `v1.TopologySpreadConstraint` 不直接参与计算，插件把它转换成内部结构（第 2–9 行），顺带把 `labelSelector` 解析成 `labels.Selector`，给可选字段填上默认值：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/common.go
 type topologySpreadConstraint struct {
 	MaxSkew            int32
@@ -82,9 +82,9 @@ type topologySpreadConstraint struct {
 }
 ```
 
-转换逻辑在 `filterTopologySpreadConstraints` 中：
+转换逻辑在 `filterTopologySpreadConstraints` 中，第 6 行把 `labelSelector` 解析成 `labels.Selector`：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/common.go
 func (pl *PodTopologySpread) filterTopologySpreadConstraints(constraints []v1.TopologySpreadConstraint, podLabels map[string]string, action v1.UnsatisfiableConstraintAction) ([]topologySpreadConstraint, error) {
 	var result []topologySpreadConstraint
@@ -127,17 +127,17 @@ func (pl *PodTopologySpread) filterTopologySpreadConstraints(constraints []v1.To
 
 几个值得注意的默认值：
 
-- `minDomains` 缺省按 1 处理。1 的效果等于「不限制」，但它顺带处理了一个边界：一个合格域都没有时，最小值会被当作 0（见第四节）。API 校验要求 `minDomains` 只能和 `DoNotSchedule` 搭配。
-- `nodeAffinityPolicy` 缺省是 `Honor`：Pod 自己的 nodeSelector/required nodeAffinity 选不中的节点，不参与统计。
-- `nodeTaintsPolicy` 缺省是 `Ignore`：节点有污点照样统计。**两个默认值的方向正好相反。** 这是为了兼容这两个字段出现之前的行为——老版本只按 nodeAffinity 过滤节点，从不看污点。
+- `minDomains` 缺省按 1 处理（第 27 行）。1 的效果等于「不限制」，但它顺带处理了一个边界：一个合格域都没有时，最小值会被当作 0（见第四节）。API 校验要求 `minDomains` 只能和 `DoNotSchedule` 搭配。
+- `nodeAffinityPolicy` 缺省是 `Honor`（第 28 行）：Pod 自己的 nodeSelector/required nodeAffinity 选不中的节点，不参与统计。
+- `nodeTaintsPolicy` 缺省是 `Ignore`（第 29 行）：节点有污点照样统计。**两个默认值的方向正好相反。** 这是为了兼容这两个字段出现之前的行为——老版本只按 nodeAffinity 过滤节点，从不看污点。
 
 ### 2.2 `matchLabelKeys`：在调度器和 apiserver 两边各合并一次
 
 `matchLabelKeys` 解决的是滚动更新时的计数污染。Deployment 滚动更新期间，新旧两个 ReplicaSet 的 Pod 都带 `app: web`，如果 selector 只写 `app: web`，旧版本副本也会被计数，新版本副本的分布会被旧副本「带偏」，等旧副本缩容后分布就不均了。把 `pod-template-hash` 写进 `matchLabelKeys`，插件会读出新 Pod 自己这个标签的值，合并成 `pod-template-hash=<hash>` 的等值条件加到 selector 上，计数范围就缩小到同一版本。
 
-合并发生在两个地方。调度器侧是上面的 `mergeLabelSetWithSelector`；apiserver 侧，在 `MatchLabelKeysInPodTopologySpreadSelectorMerge` 开启时，Pod 创建时就把它写进 `labelSelector`：
+合并发生在两个地方。调度器侧是上面的 `mergeLabelSetWithSelector`（第 18–19 行）；apiserver 侧，在 `MatchLabelKeysInPodTopologySpreadSelectorMerge` 开启时，Pod 创建时就把它写进 `labelSelector`（第 3 行判断两个 gate，第 7–9 行逐条约束合并）：
 
-```go
+```go {linenos=inline}
 // pkg/registry/core/pod/strategy.go
 func mutateTopologySpreadConstraints(pod *api.Pod) {
 	if !utilfeature.DefaultFeatureGate.Enabled(features.MatchLabelKeysInPodTopologySpread) || !utilfeature.DefaultFeatureGate.Enabled(features.MatchLabelKeysInPodTopologySpreadSelectorMerge) || pod.Spec.TopologySpreadConstraints == nil {
@@ -156,7 +156,7 @@ func mutateTopologySpreadConstraints(pod *api.Pod) {
 
 Pod 没写 `topologySpreadConstraints` 时，`getConstraints` 走另一条分支：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/plugin.go
 func (pl *PodTopologySpread) getConstraints(pod *v1.Pod) ([]topologySpreadConstraint, error) {
 	var constraints []topologySpreadConstraint
@@ -178,9 +178,9 @@ func (pl *PodTopologySpread) getConstraints(pod *v1.Pod) ([]topologySpreadConstr
 }
 ```
 
-**显式约束和默认约束是二选一的**：只要 Pod 写了一条约束，默认约束就完全不生效。默认约束来自插件参数 `PodTopologySpreadArgs`：
+**显式约束和默认约束是二选一的**（第 5–13 行与第 14–17 行两个分支）：只要 Pod 写了一条约束，默认约束就完全不生效。默认约束来自插件参数 `PodTopologySpreadArgs`：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/apis/config/types_pluginargs.go
 type PodTopologySpreadArgs struct {
 	metav1.TypeMeta
@@ -202,7 +202,7 @@ type PodTopologySpreadArgs struct {
 
 `DefaultingType` 的默认值是 `System`（`SetDefaults_PodTopologySpreadArgs`）。校验函数 `validateDefaultingType` 规定：`System` 模式下 `DefaultConstraints` 必须为空；`List` 模式下用户自己给列表，每条约束不能带 `labelSelector`，`maxSkew` 必须大于 0，同一 `topologyKey`+`whenUnsatisfiable` 组合不能重复。`New` 中 `System` 模式会换成写死的系统约束：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/plugin.go
 var systemDefaultConstraints = []v1.TopologySpreadConstraint{
 	{
@@ -218,9 +218,9 @@ var systemDefaultConstraints = []v1.TopologySpreadConstraint{
 }
 ```
 
-两条都是 `ScheduleAnyway`，所以系统默认约束**只影响打分，永远不会让 Pod 调度失败**。selector 不在配置里，而是由 `buildDefaultConstraints` 现场推导：
+两条都是 `ScheduleAnyway`（第 5、10 行），所以系统默认约束**只影响打分，永远不会让 Pod 调度失败**。selector 不在配置里，而是由 `buildDefaultConstraints` 现场推导（第 7 行），推导结果为空时第 8–10 行直接放弃：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/common.go
 func (pl *PodTopologySpread) buildDefaultConstraints(p *v1.Pod, action v1.UnsatisfiableConstraintAction) ([]topologySpreadConstraint, error) {
 	constraints, err := pl.filterTopologySpreadConstraints(pl.defaultConstraints, p.Labels, action)
@@ -250,7 +250,7 @@ func (pl *PodTopologySpread) buildDefaultConstraints(p *v1.Pod, action v1.Unsati
 
 PreFilter 要做的事只有一件：把集群现有的 Pod 按拓扑域数清楚，供 Filter 反复查表。数出来的结果写进 CycleState 的 `preFilterState`：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/filtering.go
 type preFilterState struct {
 	Constraints []topologySpreadConstraint
@@ -268,13 +268,13 @@ type preFilterState struct {
 
 `TpValueToMatchNum[i]` 是第 i 条约束的「拓扑值 → 匹配 Pod 数」表。较早的实现用一张以 `topologyPair{key, value}` 为键的大表（字段名 `TpPairToMatchNum`）把所有约束混在一起，现在按约束下标拆成切片：每条约束一张小 map，键只需要拓扑值。两条约束用同一个 `topologyKey` 但 selector 不同的情况，也就不会互相串号。
 
-`CriticalPaths[i]` 只记两条「关键路径」，即匹配数最小的两个域。**Filter 要的只是最小值，没必要每次扫全部域。** 之所以多记一条，是为了 `AddPod`/`RemovePod` 增量更新时最小值所在的域被加一后，仍能找到新的最小值。
+`CriticalPaths[i]`（第 9 行）只记两条「关键路径」，即匹配数最小的两个域。**Filter 要的只是最小值，没必要每次扫全部域。** 之所以多记一条，是为了 `AddPod`/`RemovePod` 增量更新时最小值所在的域被加一后，仍能找到新的最小值。
 
 ### 3.2 `calPreFilterState`
 
-`calPreFilterState` 是 PreFilter 的主体。它并行扫一遍节点，把每个节点上按约束分好的计数收进 `tpCountsByNode`，再串行合并、求出每条约束的两个最小域。
+`calPreFilterState` 是 PreFilter 的主体。它并行扫一遍节点，把每个节点上按约束分好的计数收进 `tpCountsByNode`（第 4–34 行），再串行合并（第 36–41 行）、求出每条约束的两个最小域（第 44–50 行）。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/filtering.go
 	tpCountsByNode := make([][]topologyCount, len(allNodes))
 	requiredNodeAffinity := nodeaffinity.GetRequiredNodeAffinity(pod)
@@ -332,9 +332,9 @@ type preFilterState struct {
 1. **遍历的是全部节点**。`allNodes` 是 `RunPreFilterPlugins` 从快照里取出的完整节点列表，不是「通过了前面 Filter 的节点」。PreFilter 在所有 Filter 之前运行，此时还不知道哪些节点会被 `TaintToleration`、`NodeResourcesFit` 等插件淘汰。
 2. 节点必须带齐所有约束的 `topologyKey`。缺任何一个标签，这个节点对所有约束都不计数。
 3. **计数为 0 也会产生一个域**。只要节点通过了标签检查和包含策略，`tpCounts` 就会追加一条记录，哪怕 `count` 为 0。一个没有任何匹配 Pod 的 zone 也是「合格域」，它会把最小值拉到 0。
-4. 只数同 namespace、未在删除中的 Pod：
+4. 只数同 namespace、未在删除中的 Pod（第 9–12 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/common.go
 func countPodsMatchSelector(podInfos []fwk.PodInfo, selector labels.Selector, ns string) int {
 	if labels.MatchesNothing(selector) {
@@ -360,9 +360,9 @@ PreFilter 最后的分支很简单：没有任何 `DoNotSchedule` 约束（显�
 
 ### 3.3 `criticalPaths` 的增量更新
 
-`criticalPaths` 只有两个槽位。新增一个域、或某个已经登记过的域计数变了，`update` 要在一次比较里决定这两个槽位要不要换人：
+`criticalPaths` 只有两个槽位。新增一个域、或某个已经登记过的域计数变了，`update` 要在一次比较里决定这两个槽位要不要换人（第 11–18 行处理已登记的域，第 19–29 行插入新域）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/filtering.go
 func (p *criticalPaths) update(tpVal string, num int) {
 	// first verify if `tpVal` exists or not
@@ -408,7 +408,7 @@ func (p *criticalPaths) update(tpVal string, num int) {
 
 PreFilter 的结果会被复制：抢占要为每个候选节点各跑一次模拟，nominated Pod 的处理也是在副本上做的。`Clone` 决定哪些字段共享、哪些必须深拷贝：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/filtering.go
 func (s *preFilterState) Clone() fwk.StateData {
 	if s == nil {
@@ -430,7 +430,7 @@ func (s *preFilterState) Clone() fwk.StateData {
 }
 ```
 
-只读的 `Constraints` 共享，会被 `AddPod`/`RemovePod` 修改的两部分深拷贝。CycleState 的 `Clone` 发生在两个地方：`RunFilterPluginsWithNominatedPods` 把高优先级的 nominated Pod 加进来做第一轮 Filter 时，以及抢占为每个候选节点调用 `SelectVictimsOnNode(ctx, state.Clone(), ...)` 时。浅拷贝 map 会让不同候选节点的模拟互相污染。
+只读的 `Constraints` 共享，会被 `AddPod`/`RemovePod` 修改的两部分深拷贝（第 8–10 行建好新切片，第 12–17 行逐个复制）。CycleState 的 `Clone` 发生在两个地方：`RunFilterPluginsWithNominatedPods` 把高优先级的 nominated Pod 加进来做第一轮 Filter 时，以及抢占为每个候选节点调用 `SelectVictimsOnNode(ctx, state.Clone(), ...)` 时。浅拷贝 map 会让不同候选节点的模拟互相污染。
 
 {{< figure src="/images/posts/sched-plugins/13-pts-filter-skew.svg" caption="PreFilter 在全部节点上计数，写出每条约束的 TpValueToMatchNum 和两条关键路径；Filter 对每个节点只查表计算 skew（点击查看大图）" link="/images/posts/sched-plugins/13-pts-filter-skew.svg" >}}
 
@@ -442,7 +442,7 @@ func (s *preFilterState) Clone() fwk.StateData {
 
 Filter 对每个候选节点跑一次，读的全是 PreFilter 留下的状态，不再遍历节点上的 Pod。判定只有一条不等式：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/filtering.go
 	podLabelSet := labels.Set(pod.Labels)
 	for i, c := range s.Constraints {
@@ -475,13 +475,13 @@ Filter 对每个候选节点跑一次，读的全是 PreFilter 留下的状态�
 	}
 ```
 
-公式是 `skew = 该域现有匹配数 + 新 Pod 是否匹配自己的 selector − 全局最小值`。三个推论：
+公式是 `skew = 该域现有匹配数 + 新 Pod 是否匹配自己的 selector − 全局最小值`（第 24–25 行）。三个推论：
 
 - **判定的是放上去之后的状态**，所以加上 `selfMatchNum`。如果新 Pod 的标签不满足它自己约束里的 selector（这种写法通常是配置错误），`selfMatchNum` 为 0，约束退化成「不要放到已经比最少的域多出 maxSkew 个以上的域」。
 - 「全局最小值」不加新 Pod。当所有域计数相同时，放到任何一个域 skew 都是 1，`maxSkew: 1` 刚好允许。
 - 节点所在的域如果没被统计进 `TpValueToMatchNum`（比如它被包含策略排除了），`matchNum` 读出来是 0。
 
-两种失败的 Status code 不同，原因字符串也不同：
+两种失败的 Status code 不同（缺标签在第 8 行，skew 超限在第 28 行），原因字符串也不同：
 
 | 失败原因 | Status | reason |
 | --- | --- | --- |
@@ -492,9 +492,9 @@ Filter 对每个候选节点跑一次，读的全是 PreFilter 留下的状态�
 
 ### 4.2 `minDomains` 与全局最小值
 
-skew 里的「全局最小值」不是直接取 `CriticalPaths[0]`，中间还隔着 `minDomains` 一道修正：
+skew 里的「全局最小值」不是直接取 `CriticalPaths[0]`，中间还隔着 `minDomains` 一道修正（第 5–6 行取最小值与域数，第 8–12 行修正）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/filtering.go
 func (s *preFilterState) minMatchNum(constraintID int, minDomains int32) (int, error) {
 	paths := s.CriticalPaths[constraintID]
@@ -522,9 +522,9 @@ func (s *preFilterState) minMatchNum(constraintID int, minDomains int32) (int, e
 
 ### 4.3 包含策略：哪些节点算数
 
-`nodeAffinityPolicy` 和 `nodeTaintsPolicy` 控制的是 PreFilter 的统计口径，判断逻辑在 `matchNodeInclusionPolicies`：
+`nodeAffinityPolicy` 和 `nodeTaintsPolicy` 控制的是 PreFilter 的统计口径，判断逻辑在 `matchNodeInclusionPolicies`（nodeAffinity 部分在第 3–8 行，nodeTaints 部分在第 10–14 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/common.go
 func (tsc *topologySpreadConstraint) matchNodeInclusionPolicies(logger klog.Logger, pod *v1.Pod, node *v1.Node, require nodeaffinity.RequiredNodeAffinity, enableComparisonOperators bool) bool {
 	if tsc.NodeAffinityPolicy == v1.NodeInclusionPolicyHonor {
@@ -557,7 +557,7 @@ func (tsc *topologySpreadConstraint) matchNodeInclusionPolicies(logger klog.Logg
 
 `PreFilterExtensions` 返回插件自身，`AddPod` 和 `RemovePod` 都落到 `updateWithPod`，只是 `delta` 分别为 +1 和 -1：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/filtering.go
 func (pl *PodTopologySpread) updateWithPod(logger klog.Logger, s *preFilterState, updatedPod, preemptorPod *v1.Pod, node *v1.Node, delta int) {
 	if s == nil || updatedPod.Namespace != preemptorPod.Namespace || node == nil {
@@ -588,7 +588,7 @@ func (pl *PodTopologySpread) updateWithPod(logger klog.Logger, s *preFilterState
 }
 ```
 
-它和 `calPreFilterState` 用的是同一套口径：namespace 必须相同，节点必须带齐标签、通过包含策略，被增减的 Pod 必须匹配 selector。**两处口径一旦不一致，抢占模拟的结论就会和真实调度不符。**
+它和 `calPreFilterState` 用的是同一套口径：namespace 必须相同（第 3 行），节点必须带齐标签（第 6–8 行）、通过包含策略（第 19–22 行），被增减的 Pod 必须匹配 selector（第 15–17 行）。**两处口径一旦不一致，抢占模拟的结论就会和真实调度不符。**
 
 调用方有两类。一是 `RunFilterPluginsWithNominatedPods`：节点上有优先级不低于当前 Pod 的 nominated Pod 时，框架在 state 副本上逐个 `AddPod`，让它们在计数里「占位」，再跑一遍 Filter。二是 `DefaultPreemption` 的 `SelectVictimsOnNode`：先把所有低优先级 Pod `RemovePod`，看抢占者能否放下，再按优先级从高到低逐个 `AddPod` 回去，尽量少驱逐。skew 超限之所以是 `Unschedulable`，前提就是这里能正确模拟「驱逐某个域里的匹配 Pod 后 skew 下降」。
 
@@ -602,7 +602,7 @@ func (pl *PodTopologySpread) updateWithPod(logger klog.Logger, s *preFilterState
 
 打分阶段另有一份状态 `preScoreState`。它不需要关键路径，却多了两样东西：缺标签节点的名单，和每条约束的归一化权重。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/scoring.go
 type preScoreState struct {
 	Constraints []topologySpreadConstraint
@@ -624,13 +624,13 @@ func (s *preScoreState) Clone() fwk.StateData {
 }
 ```
 
-Score 阶段的状态不会被 `AddPod`/`RemovePod` 修改，`Clone` 直接返回自身。计数用 `*int64` 是为了在并行遍历节点时用 `atomic.AddInt64` 累加：map 的结构（有哪些键）在 `initPreScoreState` 里单线程建好，并行阶段只修改指针指向的值，不修改 map 本身。
+Score 阶段的状态不会被 `AddPod`/`RemovePod` 修改，`Clone`（第 17–19 行）直接返回自身。计数用 `*int64`（第 8 行的 `map[string]*int64`）是为了在并行遍历节点时用 `atomic.AddInt64` 累加：map 的结构（有哪些键）在 `initPreScoreState` 里单线程建好，并行阶段只修改指针指向的值，不修改 map 本身。
 
 ### 6.2 两轮遍历：域来自候选节点，计数来自全部节点
 
-`initPreScoreState` 先遍历 Filter 之后剩下的候选节点，把它们所在的域登记进 `TopologyValueToPodCounts`，同时数出每条约束有多少个域：
+`initPreScoreState` 先遍历 Filter 之后剩下的候选节点，把它们所在的域登记进 `TopologyValueToPodCounts`（第 2–21 行），同时数出每条约束有多少个域，算出归一化权重（第 23–29 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/scoring.go
 	topoSize := make([]int, len(s.Constraints))
 	for _, node := range filteredNodes {
@@ -667,9 +667,9 @@ Score 阶段的状态不会被 `AddPod`/`RemovePod` 修改，`Clone` 直接返�
 
 `kubernetes.io/hostname` 约束有专门的优化：每个节点自成一个域，没有必要在 PreScore 建一张节点数大小的 map，计数推迟到 Score 中直接数这个节点上的 Pod。
 
-`requireAllTopologies` 决定缺标签的节点怎么处理：
+`requireAllTopologies`（第 5 行）决定缺标签的节点怎么处理：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/scoring.go
 	// Only require that nodes have all the topology labels if using
 	// non-system-default spreading rules. This allows nodes that don't have a
@@ -681,9 +681,9 @@ Score 阶段的状态不会被 `AddPod`/`RemovePod` 修改，`Clone` 直接返�
 
 ### 6.3 打分公式
 
-Score 对每个候选节点算一次：把节点所在的每个域代入同一个函数，再求和。
+Score 对每个候选节点算一次：把节点所在的每个域代入同一个函数（第 4–11 行），再求和（第 14 行取整返回）。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/scoring.go
 	var score float64
 	for i, c := range s.Constraints {
@@ -700,7 +700,7 @@ Score 对每个候选节点算一次：把节点所在的每个域代入同一�
 	return int64(math.Round(score)), nil
 ```
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/scoring.go
 func topologyNormalizingWeight(size int) float64 {
 	return math.Log(float64(size + 2))
@@ -711,13 +711,13 @@ func scoreForCount(cnt int64, maxSkew int32, tpWeight float64) float64 {
 }
 ```
 
-原始分是各约束「域内匹配数 × 权重 + (maxSkew − 1)」之和，越小越好。权重 `ln(域数 + 2)` 随域数缓慢增长，注释给出的区间是 1.09 到 8.52（对应 1 个到 5000 个域）。它的用意是：hostname 约束有几百个域，zone 约束只有三五个域，单个节点上多一个 Pod 的「不均衡程度」要比单个 zone 多一个 Pod 更显著，对数权重让域多的约束在总分里占更大比重，同时又不至于线性放大到压倒一切。
+原始分是各约束「域内匹配数 × 权重 + (maxSkew − 1)」之和（第 6–8 行），越小越好。权重 `ln(域数 + 2)`（第 2–4 行）随域数缓慢增长，注释给出的区间是 1.09 到 8.52（对应 1 个到 5000 个域）。它的用意是：hostname 约束有几百个域，zone 约束只有三五个域，单个节点上多一个 Pod 的「不均衡程度」要比单个 zone 多一个 Pod 更显著，对数权重让域多的约束在总分里占更大比重，同时又不至于线性放大到压倒一切。
 
 ### 6.4 `NormalizeScore`
 
 框架的约定是分数越高越好，而这里的原始分越小越好，`NormalizeScore` 负责翻转并归一到 0~100：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/scoring.go
 	for i := range scores {
 		if scores[i].Score == invalidScore {
@@ -733,7 +733,7 @@ func scoreForCount(cnt int64, maxSkew int32, tpWeight float64) float64 {
 	}
 ```
 
-`IgnoredNodes` 中的节点先被标成哨兵值 `-1`（`invalidScore`），不参与求最小/最大值，最后置 0。其余节点用 `100 × (max + min − s) / max` 翻转方向，全部为整数运算。
+`IgnoredNodes` 中的节点先被标成哨兵值 `-1`（`invalidScore`），不参与求最小/最大值，最后置 0（第 2–6 行）。其余节点用 `100 × (max + min − s) / max` 翻转方向（第 12 行），全部为整数运算。
 
 这个公式不是 min-max 归一化：原始分最高（最不均衡）的节点得到的是 `100 × min / max`，而不是 0。分母是 `maxScore` 而非 `max − min`，意味着所有节点原始分加上同一个常数后，归一化结果会整体向 100 靠拢、差距缩小。`scoreForCount` 里的 `maxSkew − 1` 正是这样一个常数：**`maxSkew` 越大，打分对偏差越宽容。** 软约束的 `maxSkew` 不是「容许多少偏差」的硬阈值，而是调节打分敏感度的旋钮。
 
@@ -757,9 +757,9 @@ func scoreForCount(cnt int64, maxSkew int32, tpWeight float64) float64 {
 
 ## 七、EventsToRegister 与 QueueingHint
 
-被 `PodTopologySpread` 拒绝的 Pod，能被三类事件唤醒：
+被 `PodTopologySpread` 拒绝的 Pod，能被三类事件唤醒（已绑定 Pod 在第 2 行、目标 Pod 自身在第 4 行、节点在第 6 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/plugin.go
 		{Event: fwk.ClusterEvent{Resource: fwk.AssignedPod, ActionType: fwk.Add | fwk.UpdatePodLabel | fwk.Delete}, QueueingHintFn: pl.isSchedulableAfterAssignedPodChange},
 		// ...
@@ -796,7 +796,7 @@ func scoreForCount(cnt int64, maxSkew int32, tpWeight float64) float64 {
 
 **默认约束会关掉 opportunistic batching。** `PodTopologySpread` 实现了 `SignPlugin`，但签名逻辑是：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podtopologyspread/plugin.go
 func (pl *PodTopologySpread) SignPod(ctx context.Context, pod *v1.Pod) ([]fwk.SignFragment, *fwk.Status) {
 	if len(pod.Spec.TopologySpreadConstraints) > 0 {
@@ -811,7 +811,7 @@ func (pl *PodTopologySpread) SignPod(ctx context.Context, pod *v1.Pod) ([]fwk.Si
 }
 ```
 
-判断默认约束时看的是插件配置而不是 Pod：默认 System 模式下 `pl.defaultConstraints` 永远非空，于是**每一个 Pod** 都拒签。KEP-5598 的 opportunistic batching（feature gate `OpportunisticBatching`，1.35 起 Beta 且默认开启）依赖 Pod 签名识别「等价」的 Pod、复用上一个 Pod 的过滤与打分结果。
+判断默认约束时看的是插件配置而不是 Pod（第 7–9 行）：默认 System 模式下 `pl.defaultConstraints` 永远非空，于是**每一个 Pod** 都拒签。KEP-5598 的 opportunistic batching（feature gate `OpportunisticBatching`，1.35 起 Beta 且默认开启）依赖 Pod 签名识别「等价」的 Pod、复用上一个 Pod 的过滤与打分结果。
 
 **gate 虽然默认开着，在默认插件配置下它对任何 Pod 都不会生效。** 想让它工作，需要把 `defaultingType` 设为 `List` 并给一个空的 `defaultConstraints`——代价是失去默认打散。
 
@@ -835,7 +835,7 @@ func (pl *PodTopologySpread) SignPod(ctx context.Context, pod *v1.Pod) ([]fwk.Si
 
 在 KubeSchedulerConfiguration 里改成 `List` 模式，可以给所有没写约束的 Pod 套上集群统一的规则：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: kubescheduler.config.k8s.io/v1
 kind: KubeSchedulerConfiguration
 profiles:

@@ -27,7 +27,7 @@ Coscheduling 运行在 scheduler-plugins 自己构建的调度器二进制里（
 
 Coscheduling 的代码散在五个扩展点和一个 EnqueueExtensions 上。先看它实现了哪些接口，就能知道后面每一节在读哪一段。
 
-```go
+```go {linenos=inline}
 // pkg/coscheduling/coscheduling.go
 // Coscheduling is a plugin that schedules pods in a group.
 type Coscheduling struct {
@@ -48,9 +48,9 @@ var _ fwk.ReservePlugin = &Coscheduling{}
 var _ fwk.EnqueueExtensions = &Coscheduling{}
 ```
 
-五个扩展点加一个 EnqueueExtensions。官方给的配置是这样的：
+五个扩展点加一个 EnqueueExtensions（第 12–18 行的接口断言）。官方给的配置是这样的：
 
-```yaml
+```yaml {linenos=inline}
 # manifests/coscheduling/scheduler-config.yaml
 apiVersion: kubescheduler.config.k8s.io/v1
 kind: KubeSchedulerConfiguration
@@ -84,7 +84,7 @@ profiles:
 
 编组靠一个 CRD 加一个标签，没有改动 Pod 的 API。
 
-```go
+```go {linenos=inline}
 // apis/scheduling/v1alpha1/types.go
 // PodGroupSpec represents the template of a pod group.
 type PodGroupSpec struct {
@@ -107,7 +107,7 @@ type PodGroupSpec struct {
 
 Pod 和 PodGroup 的关联不是 Pod spec 里的字段，而是一个标签：
 
-```go
+```go {linenos=inline}
 // apis/scheduling/v1alpha1/types.go
 	// PodGroupLabel is the default label of coscheduling
 	PodGroupLabel = scheduling.GroupName + "/pod-group"
@@ -115,7 +115,7 @@ Pod 和 PodGroup 的关联不是 Pod spec 里的字段，而是一个标签：
 
 也就是 `scheduling.x-k8s.io/pod-group: <PodGroup 名>`。一个典型用法：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: scheduling.x-k8s.io/v1alpha1
 kind: PodGroup
 metadata:
@@ -154,7 +154,7 @@ spec:
 
 插件的行为由三个参数控制，分别管等待时长、失败退避和整组拒绝的门槛。
 
-```go
+```go {linenos=inline}
 // apis/config/types.go
 // CoschedulingArgs defines the parameters for Coscheduling plugin.
 type CoschedulingArgs struct {
@@ -175,7 +175,7 @@ type CoschedulingArgs struct {
 
 `New` 里有两处初始化值得注意：
 
-```go
+```go {linenos=inline}
 // pkg/coscheduling/coscheduling.go
 	scheme := runtime.NewScheme()
 	_ = v1alpha1.AddToScheme(scheme)
@@ -202,7 +202,7 @@ Pod 则复用调度器自己的 Pod informer，并加了一个按 namespace 的�
 
 插件的大部分逻辑在 `core.PodGroupManager` 里，它持有几份进程内状态：
 
-```go
+```go {linenos=inline}
 // pkg/coscheduling/core/core.go
 type PodGroupManager struct {
 	// client is a generic controller-runtime client to manipulate both core resources and PodGroups.
@@ -244,7 +244,7 @@ type PodGroupManager struct {
 
 有了这些状态，排序函数就能解释一件事：同组的 Pod 为什么会在队列里排在一起。
 
-```go
+```go {linenos=inline}
 // pkg/coscheduling/coscheduling.go
 // Less is used to sort pods in the scheduling queue in the following order.
 // 1. Compare the priorities of Pods.
@@ -267,7 +267,7 @@ func (cs *Coscheduling) Less(podInfo1, podInfo2 fwk.QueuedPodInfo) bool {
 
 和 [PrioritySort](/posts/sched-plugin-02-priority-sort/) 相比，关键差别在第二步用的时间戳：
 
-```go
+```go {linenos=inline}
 // pkg/coscheduling/core/core.go
 func (pgMgr *PodGroupManager) GetCreationTimestamp(ctx context.Context, pod *corev1.Pod, ts time.Time) time.Time {
 	pgName := util.GetPodGroupLabel(pod)
@@ -288,7 +288,7 @@ func (pgMgr *PodGroupManager) GetCreationTimestamp(ctx context.Context, pod *cor
 }
 ```
 
-同组的所有 Pod 拿到的是同一个时间戳（PodGroup 的创建时间），比较结果相等，于是落到第三步按 `namespace/podname` 排。效果是：同优先级下，同一个组的 Pod 在 activeQ 里连续排列，调度器会连着处理它们。
+同组的所有 Pod 拿到的是同一个时间戳（PodGroup 的创建时间），比较结果相等，于是落到第三步按 `namespace/podname` 排（第 14–15 行）。效果是：同优先级下，同一个组的 Pod 在 activeQ 里连续排列，调度器会连着处理它们。
 
 这是 Coscheduling 的基础假设，KEP 里「Lightweight coscheduling based on back-to-back queue sorting」说的就是这件事。同组的 Pod 被连续调度，它们在 Permit 处等待的时间就短，占着资源空等的时间也短。
 
@@ -303,7 +303,7 @@ func (pgMgr *PodGroupManager) GetCreationTimestamp(ctx context.Context, pod *cor
 
 排序只决定谁先出队，真正拦住「凑不齐的组」的是 PreFilter。
 
-```go
+```go {linenos=inline}
 // pkg/coscheduling/coscheduling.go
 func (cs *Coscheduling) PreFilter(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodes []fwk.NodeInfo) (*fwk.PreFilterResult, *fwk.Status) {
 	lh := klog.FromContext(klog.NewContext(ctx, cs.logger)).WithValues("ExtensionPoint", "PreFilter")
@@ -317,11 +317,11 @@ func (cs *Coscheduling) PreFilter(ctx context.Context, state fwk.CycleState, pod
 }
 ```
 
-所有失败统一返回 `UnschedulableAndUnresolvable`，注释说得很清楚：避免任何抢占尝试。PreFilter 失败时，所有节点都会带上这个状态，DefaultPreemption 只会在 `Unschedulable` 的节点上找候选，于是一个候选都没有。没有 `PreFilterResult`，也不缩小节点集合，`PreFilterExtensions` 返回 nil。
+所有失败统一返回 `UnschedulableAndUnresolvable`（第 8 行），注释说得很清楚：避免任何抢占尝试。PreFilter 失败时，所有节点都会带上这个状态，DefaultPreemption 只会在 `Unschedulable` 的节点上找候选，于是一个候选都没有。没有 `PreFilterResult`，也不缩小节点集合，`PreFilterExtensions` 返回 nil。
 
 真正的逻辑在 `PodGroupManager.PreFilter`：
 
-```go
+```go {linenos=inline}
 // pkg/coscheduling/core/core.go
 func (pgMgr *PodGroupManager) PreFilter(ctx context.Context, pod *corev1.Pod) error {
 	// ...
@@ -398,7 +398,7 @@ func (pgMgr *PodGroupManager) PreFilter(ctx context.Context, pod *corev1.Pod) er
 
 **④ 集群总资源。** 只有设置了 `minResources` 才做。把 `minResources` 加上 `pods: minMember`，和集群里每个节点的剩余资源逐个相减：
 
-```go
+```go {linenos=inline}
 // pkg/coscheduling/core/core.go
 func CheckClusterResource(ctx context.Context, nodeList []fwk.NodeInfo, resourceRequest corev1.ResourceList, desiredPodGroupName string) error {
 	for _, info := range nodeList {
@@ -439,7 +439,7 @@ PreFilter 放行之后，Pod 依次经过 Filter、Score、Reserve。Coschedulin
 
 这个空函数不是遗漏，它的存在有明确目的。
 
-```go
+```go {linenos=inline}
 // pkg/coscheduling/coscheduling.go
 // Reserve is the functions invoked by the framework at "reserve" extension point.
 func (cs *Coscheduling) Reserve(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeName string) *fwk.Status {
@@ -447,13 +447,13 @@ func (cs *Coscheduling) Reserve(ctx context.Context, state fwk.CycleState, pod *
 }
 ```
 
-它实现 `ReservePlugin` 只是为了拿到 `Unreserve` 回调：框架只对实现了 ReservePlugin 接口的插件调用 Unreserve。
+它实现 `ReservePlugin`（第 3–5 行，直接返回 nil）只是为了拿到 `Unreserve` 回调：框架只对实现了 ReservePlugin 接口的插件调用 Unreserve。
 
 ### 6.2 Permit：数 assigned，够了就全部放行
 
 真正的等待发生在 Permit。它数一数组里已经占住位置的 Pod，够了就放行，不够就返回 Wait。
 
-```go
+```go {linenos=inline}
 // pkg/coscheduling/core/core.go
 func (pgMgr *PodGroupManager) Permit(ctx context.Context, state fwk.CycleState, pod *corev1.Pod) Status {
 	pgFullName, pg := pgMgr.GetPodGroup(ctx, pod)
@@ -495,9 +495,9 @@ func (pgMgr *PodGroupManager) Permit(ctx context.Context, state fwk.CycleState, 
 }
 ```
 
-插件层把四种结果翻译成框架状态：
+插件层把四种结果翻译成框架状态（第 7–33 行的 `switch`）：
 
-```go
+```go {linenos=inline}
 // pkg/coscheduling/coscheduling.go
 func (cs *Coscheduling) Permit(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeName string) (*fwk.Status, time.Duration) {
 	// ...
@@ -553,7 +553,7 @@ func (cs *Coscheduling) Permit(ctx context.Context, state fwk.CycleState, pod *v
 
 Pod 在 Wait 里等的时候，同组其他 Pod 可能正躺在 unschedulable 队列里，需要有人把它们挪回来。做这件事的是 `ActivateSiblings`。
 
-```go
+```go {linenos=inline}
 // pkg/coscheduling/core/core.go
 func (pgMgr *PodGroupManager) ActivateSiblings(ctx context.Context, pod *corev1.Pod, state fwk.CycleState) {
 	// ...
@@ -583,7 +583,7 @@ func (pgMgr *PodGroupManager) ActivateSiblings(ctx context.Context, pod *corev1.
 }
 ```
 
-这是插件里唯一用到 CycleState 的地方：Permit 在 `assigned` 刚好为 1 时写入 `PermitState{Activate: true}`，`ActivateSiblings` 读到才动手，把同组其他 Pod 塞进框架预留的 `PodsToActivate`。调度周期结束时，框架把这些 Pod 从 backoffQ 或 unschedulable 队列里直接挪进 activeQ。
+这是插件里唯一用到 CycleState 的地方：Permit 在 `assigned` 刚好为 1 时写入 `PermitState{Activate: true}`（`pgMgr.Permit` 的第 26–36 行），`ActivateSiblings` 读到才动手，把同组其他 Pod 塞进框架预留的 `PodsToActivate`。调度周期结束时，框架把这些 Pod 从 backoffQ 或 unschedulable 队列里直接挪进 activeQ。
 
 `PermitState.Clone` 返回一个新对象，满足 `StateData` 接口的要求。
 
@@ -599,7 +599,7 @@ func (pgMgr *PodGroupManager) ActivateSiblings(ctx context.Context, pod *corev1.
 
 PostFilter 处理的是「这个 Pod 根本找不到节点」这种情况。
 
-```go
+```go {linenos=inline}
 // pkg/coscheduling/coscheduling.go
 func (cs *Coscheduling) PostFilter(ctx context.Context, state fwk.CycleState, pod *v1.Pod,
 	filteredNodeStatusReader fwk.NodeToStatusReader) (*fwk.PostFilterResult, *fwk.Status) {
@@ -653,9 +653,9 @@ func (cs *Coscheduling) PostFilter(ctx context.Context, state fwk.CycleState, po
 
 一个 Pod 在 Filter 阶段找不到节点，而且排在它前面的 DefaultPreemption 也没能通过抢占解决（DefaultPreemption 返回 Success 时 PostFilter 链就结束了，Coscheduling 根本不会被调用），才会走到这里。三条分支：
 
-1. 组已经够数（`assigned ≥ minMember`）：这个 Pod 是 minMember 之外的「额外成员」，它放不下不影响组，正常返回 Unschedulable 回队；
-2. 差距在阈值内：`(minMember - assigned) / minMember ≤ podGroupRejectPercentage / 100`。默认 10%，`minMember: 10` 时已经有 9 个在等，这个 Pod 失败也不拒绝，让后面的 Pod 再试试。测试用例覆盖了「9/10 不拒绝」「8/10 拒绝」「阈值 0 时总是拒绝」「阈值 100 时从不拒绝」等组合；
-3. 差距超过阈值：遍历所有 waiting Pod，同命名空间同标签的全部 `Reject`。这是一个「乐观推断」：第 n 个 Pod 放不下，大概率后面的也放不下，与其让前面的 Pod 占着资源等到超时，不如立刻全部释放。
+1. 组已经够数（`assigned ≥ minMember`，第 13–17 行）：这个 Pod 是 minMember 之外的「额外成员」，它放不下不影响组，正常返回 Unschedulable 回队；
+2. 差距在阈值内（第 21–25 行）：`(minMember - assigned) / minMember ≤ podGroupRejectPercentage / 100`。默认 10%，`minMember: 10` 时已经有 9 个在等，这个 Pod 失败也不拒绝，让后面的 Pod 再试试。测试用例覆盖了「9/10 不拒绝」「8/10 拒绝」「阈值 0 时总是拒绝」「阈值 100 时从不拒绝」等组合；
+3. 差距超过阈值（第 29–34 行）：遍历所有 waiting Pod，同命名空间同标签的全部 `Reject`。这是一个「乐观推断」：第 n 个 Pod 放不下，大概率后面的也放不下，与其让前面的 Pod 占着资源等到超时，不如立刻全部释放。
 
 拒绝之后的三个动作：可选地进入 backoff（只有当同组 Pod 总数已经 ≥ minMember 时才 backoff，人数不够的情况本来就会被 PreFilter 挡住，没必要再加 backoff）；删除 `permittedPG`，让下一轮重新做资源检查；记录失败时刻，影响 QueueSort。
 
@@ -668,7 +668,7 @@ func (cs *Coscheduling) PostFilter(ctx context.Context, state fwk.CycleState, po
 
 Permit 等不到人时走的是另一条路，而这条路最终也落到 Unreserve 上。
 
-```go
+```go {linenos=inline}
 // pkg/coscheduling/coscheduling.go
 // Unreserve rejects all other Pods in the PodGroup when one of the pods in the group times out.
 func (cs *Coscheduling) Unreserve(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeName string) {
@@ -706,7 +706,7 @@ Coscheduling 的 Unreserve 把它从 `assignedPodsByPG` 里删掉，然后 Rejec
 
 被拒绝的 Pod 不会自己回到调度队列，需要有人告诉它「情况变了，可以再试」。Coscheduling 用 `EventsToRegister` 声明它关心哪些事件。
 
-```go
+```go {linenos=inline}
 // pkg/coscheduling/coscheduling.go
 func (cs *Coscheduling) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWithHint, error) {
 	// To register a custom event, follow the naming convention at:
@@ -720,7 +720,7 @@ func (cs *Coscheduling) EventsToRegister(_ context.Context) ([]fwk.ClusterEventW
 }
 ```
 
-两类事件：任何 Pod 的 Add，以及 PodGroup CRD 的 Add/Update。CRD 事件用 `<resource>.<version>.<group>` 形式的字符串注册，调度器看到不认识的资源名会为它建一个动态 informer。
+两类事件（第 8–9 行）：任何 Pod 的 Add，以及 PodGroup CRD 的 Add/Update。CRD 事件用 `<resource>.<version>.<group>` 形式的字符串注册，调度器看到不认识的资源名会为它建一个动态 informer。
 
 两类事件都**没有** QueueingHintFn，框架会给它们配上 `defaultQueueingHintFn`，一律返回 `Queue`。也就是说，集群里任何一个 Pod 被创建，所有因 Coscheduling 被拒的 Pod 都会被移出 unschedulable 队列，进入 backoffQ 或 activeQ 再试一次，不管新 Pod 是不是同一个组的。
 
@@ -732,7 +732,7 @@ func (cs *Coscheduling) EventsToRegister(_ context.Context) ([]fwk.ClusterEventW
 
 PodGroup 的 `status` 不由调度器写，而由 `cmd/controller` 里的 PodGroupReconciler 维护。它监听 PodGroup 和所有 Pod，Pod 事件通过 `podToPodGroup` 映射到它标签指向的 PodGroup。
 
-```go
+```go {linenos=inline}
 // pkg/controllers/podgroup_controller.go
 	if pg.Status.Phase == schedv1alpha1.PodGroupFinished ||
 		pg.Status.Phase == schedv1alpha1.PodGroupFailed {

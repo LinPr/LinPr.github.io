@@ -32,9 +32,9 @@ Peaks 的参数比前三个插件都简单，没有 `TrimaranSpec`，只有一�
 
 ### 2.1 PeaksArgs
 
-`PeaksArgs` 只有两个字段。
+`PeaksArgs` 只有两个配置字段（`TypeMeta` 之外）：`WatcherAddress` 与 `NodePowerModel`（第 7–8 行）。
 
-```go
+```go {linenos=inline}
 // apis/config/types.go
 // PeaksArgs holds arguments used to configure the Peaks plugin
 type PeaksArgs struct {
@@ -54,9 +54,9 @@ type PowerModel struct {
 }
 ```
 
-和其它三个插件比，`PeaksArgs` **没有内嵌 `TrimaranSpec`**，只有 `WatcherAddress` 一个字符串。`New` 是这样创建 Collector 的：
+和其它三个插件比，`PeaksArgs` **没有内嵌 `TrimaranSpec`**（第 3–9 行的结构体里没有这个字段），只有 `WatcherAddress` 一个字符串（第 7 行）。`New` 是这样创建 Collector 的：
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/peaks/peaks.go
 	collector, err := trimaran.NewCollector(logger, &config.TrimaranSpec{WatcherAddress: args.WatcherAddress})
 	if err != nil {
@@ -66,7 +66,7 @@ type PowerModel struct {
 
 因此 Peaks **只能用服务模式**。不写 `WatcherAddress` 时，`checkSpecs` 会发现 `MetricProvider.Type` 为空，`New` 返回 `invalid MetricProvider.Type, got ` 错误，调度器启动失败。另外，v1 版本的参数类型里两个字段的 json tag 写坏了：
 
-```go
+```go {linenos=inline}
 // apis/config/v1/types.go
 	// Address of load watcher service
 	WatcherAddress string `json:watcherAddress",inline"`
@@ -74,9 +74,9 @@ type PowerModel struct {
 	NodePowerModel map[string]PowerModel `json:nodePowerModel",inline"`
 ```
 
-`json:` 后面缺了左引号，`reflect.StructTag` 解析不出 json 键，序列化库会退回使用字段名本身。而 apimachinery 的 JSON 反序列化（`kjson.UnmarshalCaseSensitivePreserveInts`）是区分大小写的，所以配置文件里必须写 `WatcherAddress`、`NodePowerModel`，首字母大写，和其它插件的驼峰写法不同。仓库里的 `pkg/trimaran/peaks/deployment/scheduler-config.yaml` 正是这样写的：
+`json:` 后面缺了左引号（第 3、5 行），`reflect.StructTag` 解析不出 json 键，序列化库会退回使用字段名本身。而 apimachinery 的 JSON 反序列化（`kjson.UnmarshalCaseSensitivePreserveInts`）是区分大小写的，所以配置文件里必须写 `WatcherAddress`、`NodePowerModel`，首字母大写，和其它插件的驼峰写法不同。仓库里的 `pkg/trimaran/peaks/deployment/scheduler-config.yaml` 正是这样写的：
 
-```yaml
+```yaml {linenos=inline}
   pluginConfig:
     - name: Peaks
       args:
@@ -90,7 +90,7 @@ v1 包里也没有 `SetDefaults_PeaksArgs`，两个字段都没有默认值，�
 
 模型可以从插件参数里来，也可以从文件里来，`initNodePowerModels` 负责二选一。
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/peaks/peaks.go
 func initNodePowerModels(powerModel map[string]config.PowerModel) error {
 	fmt.Printf("args power model : %+v\n", powerModel)
@@ -110,9 +110,9 @@ func initNodePowerModels(powerModel map[string]config.PowerModel) error {
 }
 ```
 
-逻辑是：配置里有 `NodePowerModel` 就直接用；没有就读环境变量 `NODE_POWER_MODEL` 指向的 JSON 文件，格式是 `{"节点名": {"k0": …, "k1": …, "k2": …}}`。
+逻辑是：配置里有 `NodePowerModel` 就直接用（第 4–6 行）；没有就读环境变量 `NODE_POWER_MODEL` 指向的 JSON 文件（第 7 行），格式是 `{"节点名": {"k0": …, "k1": …, "k2": …}}`。
 
-这里有一个 Go 语义上的问题。`powerModel` 是值传递进来的 map。`Decode(&powerModel)` 对 nil map 会新分配一个 map，并赋给函数内的局部变量；对非 nil 的空 map，则把键值写进原来那个 map。调用方传入的是 `args.NodePowerModel`：
+这里有一个 Go 语义上的问题。`powerModel` 是值传递进来的 map。`Decode(&powerModel)`（第 13 行）对 nil map 会新分配一个 map，并赋给函数内的局部变量；对非 nil 的空 map，则把键值写进原来那个 map。调用方传入的是 `args.NodePowerModel`：
 
 - 配置里完全不写 `NodePowerModel`：经过 v1 → 内部类型的转换（`autoConvert_v1_PeaksArgs_To_config_PeaksArgs` 是直接按指针转换的），它是 nil。文件被成功解析，但结果只存在局部变量里，函数返回后就丢了。插件拿到的仍是 nil map，所有节点都使用零值模型。
 - 配置里写 `NodePowerModel: {}`：它是一个非 nil 的空 map，文件内容会写进这个 map，插件能正常使用。单测 `TestPeaksScore` 走的就是这条路径（`NodePowerModel: map[string]pluginConfig.PowerModel{}`）。
@@ -121,7 +121,7 @@ func initNodePowerModels(powerModel map[string]config.PowerModel) error {
 
 找不到节点对应的模型时，使用零值：
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/peaks/peaks.go
 func getPowerModel(nodeName string, powerModelMap map[string]config.PowerModel) config.PowerModel {
 	powerModel, ok := powerModelMap[nodeName]
@@ -132,13 +132,13 @@ func getPowerModel(nodeName string, powerModelMap map[string]config.PowerModel) 
 }
 ```
 
-模型按**节点名**索引。v1 类型的注释写着「按节点标签关联功耗模型会在后续 PR 中加入」，目前还没有实现。每新增一个节点都要更新配置，并重启调度器（模型只在 `New` 时加载一次）。
+模型按**节点名**索引（第 3 行的 `powerModelMap[nodeName]`）。v1 类型的注释写着「按节点标签关联功耗模型会在后续 PR 中加入」，目前还没有实现。每新增一个节点都要更新配置，并重启调度器（模型只在 `New` 时加载一次）。
 
 ## 三、Score：计算功耗跳变
 
 模型加载好之后，Score 对每个节点做的事只有一件：算出「放上这个 Pod，功耗会增加多少」，再把这个增量当作代价返回。
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/peaks/peaks.go
 func (pl *Peaks) Score(ctx context.Context, cycleState fwk.CycleState, pod *v1.Pod, nodeInfo fwk.NodeInfo) (int64, *fwk.Status) {
 	// ...
@@ -185,13 +185,13 @@ func (pl *Peaks) Score(ctx context.Context, cycleState fwk.CycleState, pod *v1.P
 
 和 TLP（第 37 篇）的 Score 很像，但有三处不同：
 
-1. **Pod 的 CPU 用量取 request**，而且用的是 in-tree 的 `resource.GetResourceRequestQuantity`。它支持 Pod 级资源（在 `PodLevelResources` feature gate 开启且 Pod 设置了 `spec.resources` 时）和 sidecar 语义，overhead 只在 request 非零时才加。TLP 用的是 limit，并且是自己写的累加逻辑。
+1. **Pod 的 CPU 用量取 request**（第 13–14 行的 `GetResourceRequestQuantity` 与 `MilliValue()`），而且用的是 in-tree 的 `resource.GetResourceRequestQuantity`。它支持 Pod 级资源（在 `PodLevelResources` feature gate 开启且 Pod 设置了 `spec.resources` 时）和 sidecar 语义，overhead 只在 request 非零时才加。TLP 用的是 limit，并且是自己写的累加逻辑。
 2. **没有滞后补偿**。刚调度、还没体现在指标里的 Pod 不会被计入。
-3. 找到第一个 CPU 的 AVG/Latest 指标就 `break`，而 TLP 取的是最后一个。
+3. 找到第一个 CPU 的 AVG/Latest 指标就 `break`（第 23 行），而 TLP 取的是最后一个。
 
-功耗跳变的计算：
+功耗跳变的计算（第 3 行）：
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/peaks/peaks.go
 func getPowerJumpForUtilisation(x, p float64, m config.PowerModel) float64 {
 	return m.K1 * (math.Exp(m.K2*p) - math.Exp(m.K2*x))
@@ -202,7 +202,7 @@ func getPowerJumpForUtilisation(x, p float64, m config.PowerModel) float64 {
 
 记当前利用率为 x（%），Pod request 占容量的百分比为 b，放上 Pod 后的利用率为 p = x + b：
 
-```text
+```text {linenos=inline}
 P(u)  = K0 + K1 · e^(K2·u)
 ΔP    = P(p) − P(x) = K1 · (e^(K2·p) − e^(K2·x)) = K1 · e^(K2·x) · (e^(K2·b) − 1)
 raw   = int64(ΔP × 10^15)        当 p ≤ 100
@@ -213,7 +213,7 @@ raw   = int64(ΔP × 10^15)        当 p ≤ 100
 
 - **x 的单位是百分数**，不是 [0, 1] 的小数，所以 K2 是「每 1 个百分点」的指数系数。用 [0, 1] 区间训练出来的模型，K2 要除以 100 才能用在这里。
 - **K0 被消掉了**。K0 + K1 是空载功耗，K0 代表与负载无关的基础功耗，它不影响选择。也就是说，Peaks 不会因为一台机器的空载功耗高就避开它，只看边际功耗。
-- 乘以 10¹⁵ 再转 `int64`，是因为 Score 必须返回整数，而 ΔP 可能是零点几瓦这样的小数，直接取整会丢失全部区分度。代价是上限：`int64` 最大约 9.22×10¹⁸，ΔP 超过约 9223 时就会溢出。如果模型用毫瓦或微瓦作单位（load-watcher 采集的 Scaphandre 指标 `scaph_host_power_microwatts` 就是微瓦），ΔP 很容易超过这个值。Go 规范规定浮点转整数越界时结果由实现决定，在 amd64 上会得到 `math.MinInt64`，这个节点在下面的归一化中会变成最小值，从而得满分。所以模型要用瓦作单位。
+- 乘以 10¹⁵ 再转 `int64`（Score 第 40 行的 `int64(jumpInPower * math.Pow(10, 15))`），是因为 Score 必须返回整数，而 ΔP 可能是零点几瓦这样的小数，直接取整会丢失全部区分度。代价是上限：`int64` 最大约 9.22×10¹⁸，ΔP 超过约 9223 时就会溢出。如果模型用毫瓦或微瓦作单位（load-watcher 采集的 Scaphandre 指标 `scaph_host_power_microwatts` 就是微瓦），ΔP 很容易超过这个值。Go 规范规定浮点转整数越界时结果由实现决定，在 amd64 上会得到 `math.MinInt64`，这个节点在下面的归一化中会变成最小值，从而得满分。所以模型要用瓦作单位。
 
 ### 3.2 凹凸性决定装箱还是分散
 
@@ -230,7 +230,7 @@ KEP 实验里观察到的「Peaks 装箱、默认调度器分散」，来自异�
 
 Score 返回的是代价，量级在 10¹⁶ 左右；框架要求的是 0~100 的分数。两者的方向和量纲都不对，转换由 `NormalizeScore` 完成，这也是 Trimaran 四个插件里唯一一个非空实现。
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/peaks/peaks.go
 func (pl *Peaks) NormalizeScore(ctx context.Context, state fwk.CycleState, pod *v1.Pod, scores fwk.NodeScoreList) *fwk.Status {
 	minCost, maxCost := getMinMaxScores(scores)
@@ -251,15 +251,15 @@ func (pl *Peaks) NormalizeScore(ctx context.Context, state fwk.CycleState, pod *
 }
 ```
 
-Score 返回的是「代价」（ΔP × 10¹⁵），量级在 10¹⁶ 左右，远远超出 [0, 100]。框架在调用完 `NormalizeScore` 之后才检查分数是否越界（`plugin %q returns an invalid score %v, it should in the range of [%v, %v] after normalizing`），所以这里必须把代价映射回 [0, 100]，并且取反：代价最小的得 100，最大的得 0。
+Score 返回的是「代价」（ΔP × 10¹⁵），量级在 10¹⁶ 左右，远远超出 [0, 100]。框架在调用完 `NormalizeScore` 之后才检查分数是否越界（`plugin %q returns an invalid score %v, it should in the range of [%v, %v] after normalizing`），所以这里必须把代价映射回 [0, 100]，并且取反（第 10–11 行）：代价最小的得 100，最大的得 0。
 
-```text
+```text {linenos=inline}
 score_i = 100 − ⌊100 × (raw_i − min) / (max − min)⌋     （max ≠ min）
 score_i = 100                                            （max = min ≠ 0）
 不变（全为 0）                                            （max = min = 0）
 ```
 
-单测 `TestPeaksNormalizeScore` 覆盖了三种情况：`{0, 100}` → `{100, 0}`；`{0, 0}` → 原样不变；`{100, 100}` → 都是 100。注意第二、三种的不对称：所有节点代价都为 0 时全部得 0 分，代价相同但不为 0 时全部得 100 分。不过两者对排序都没有影响。
+单测 `TestPeaksNormalizeScore` 覆盖了三种情况：`{0, 100}` → `{100, 0}`；`{0, 0}` → 原样不变（`NormalizeScore` 第 4–5 行提前返回）；`{100, 100}` → 都是 100（第 13–14 行）。注意第二、三种的不对称：所有节点代价都为 0 时全部得 0 分，代价相同但不为 0 时全部得 100 分。不过两者对排序都没有影响。
 
 ### 4.1 「代价为 0」的含义被混在一起
 

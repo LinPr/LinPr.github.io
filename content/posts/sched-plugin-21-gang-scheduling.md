@@ -31,7 +31,7 @@ description: "GangScheduling 是 kube-scheduler 内置的 all-or-nothing 插件�
 
 GangScheduling 不在默认插件列表的字面量里，而是由 feature gate 追加：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/apis/config/v1/default_plugins.go
 func applyFeatureGates(config *v1.Plugins) {
 	// ...
@@ -48,7 +48,7 @@ func applyGangScheduling(config *v1.Plugins) {
 }
 ```
 
-它被追加在 `MultiPoint` 列表的末尾（`DefaultBinder` 之后），没有权重，因为它不打分。相关的几个 feature gate 在 `pkg/features/kube_features.go` 里是这样定义的：
+它被追加在 `MultiPoint` 列表的末尾（`DefaultBinder` 之后，第 12–14 行），没有权重，因为它不打分。相关的几个 feature gate 在 `pkg/features/kube_features.go` 里是这样定义的：
 
 | feature gate | 版本记录 | 作用 |
 |---|---|---|
@@ -64,7 +64,7 @@ func applyGangScheduling(config *v1.Plugins) {
 
 插件结构体只有两个字段，实现了三个接口：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/gangscheduling/gangscheduling.go
 type GangScheduling struct {
 	isCompositePodGroupEnabled bool
@@ -99,7 +99,7 @@ func New(_ context.Context, _ runtime.Object, fh fwk.Handle, fts feature.Feature
 
 一个 Pod 通过 `spec.schedulingGroup.podGroupName` 声明自己属于哪个 PodGroup：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/api/core/v1/types.go
 	// WorkloadRef is tombstoned to show why 42 is a reserved protobuf tag.
 	// This field got replaced with the SchedulingGroup field in Kubernetes 1.36.
@@ -129,7 +129,7 @@ func New(_ context.Context, _ runtime.Object, fh fwk.Handle, fts feature.Feature
 
 `schedulingPolicy` 是一个二选一的 union：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/api/scheduling/v1beta1/types.go
 type PodGroupSchedulingPolicy struct {
 	// ...
@@ -160,7 +160,7 @@ type GangSchedulingPolicy struct {
 
 把上面的结构写成 YAML，一个 gang 组最小可以是这样：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: scheduling.k8s.io/v1beta1
 kind: PodGroup
 metadata:
@@ -200,9 +200,9 @@ spec:
 
 ### 3.1 队列里的 entity 不再只是 Pod
 
-调度主循环每次从队列里取出的是一个 entity，可能是 Pod，也可能是 PodGroup：
+调度主循环每次从队列里取出的是一个 entity，可能是 Pod，也可能是 PodGroup（第 6–15 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/schedule_one.go
 func (sched *Scheduler) ScheduleOne(ctx context.Context) {
 	logger := klog.FromContext(ctx)
@@ -221,9 +221,9 @@ func (sched *Scheduler) ScheduleOne(ctx context.Context) {
 }
 ```
 
-一个 Pod 只要设置了 `schedulingGroup` 且 `GenericWorkload` 打开，就不会作为单个 Pod 入队：
+一个 Pod 只要设置了 `schedulingGroup` 且 `GenericWorkload` 打开，就不会作为单个 Pod 入队（第 12 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
 func (p *PriorityQueue) isPodGroupMember(pod *v1.Pod) bool {
 	if p.isInPlacePodVerticalScalingSchedulerPreemptionEnabled {
@@ -240,7 +240,7 @@ func (p *PriorityQueue) isPodGroupMember(pod *v1.Pod) bool {
 
 `PriorityQueue` 为此多了三个结构，类型注释里写清了它们之间的不变式：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
 // For handling PodGroups, the PriorityQueue is extended with following structures:
 //   - incompletePodGroupPods: stores pod infos that wait for their corresponding PodGroup or the parent CompositePodGroup object to be observed.
@@ -255,9 +255,9 @@ func (p *PriorityQueue) isPodGroupMember(pod *v1.Pod) bool {
 //     newly arriving Pods are placed in `pendingPodGroupPods` to wait for the PodGroup to be requeued.
 ```
 
-`addPodGroupMember` 把这三条不变式落实到代码里：根组没被观察到就进 `incomplete`；根组已经在某个队列里就并进去；根组刚被 Pop 出去正在调度，就先放 `pending`；否则新建一个 `QueuedPodGroupInfo` 送进 activeQ。
+`addPodGroupMember` 把这三条不变式落实到代码里：根组没被观察到就进 `incomplete`（第 4–9 行）；根组已经在某个队列里就并进去（第 11–13 行）；根组刚被 Pop 出去正在调度，就先放 `pending`（第 15–20 行）；否则新建一个 `QueuedPodGroupInfo` 送进 activeQ（第 23–26 行）。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
 func (p *PriorityQueue) addPodGroupMember(logger klog.Logger, pInfo *framework.QueuedPodInfo) {
 	rootInfoLookup, hasRoot := p.workloadForest.getRootLookupInfoForPod(logger, pInfo.Pod)
@@ -295,7 +295,7 @@ func (p *PriorityQueue) addPodGroupMember(logger klog.Logger, pInfo *framework.Q
 
 ### 3.2 scheduleOnePodGroup：开场的四步
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/schedule_one_podgroup.go
 func (sched *Scheduler) scheduleOnePodGroup(ctx context.Context, podGroupInfo *framework.QueuedPodGroupInfo) {
 	// ...
@@ -344,7 +344,7 @@ func (sched *Scheduler) scheduleOnePodGroup(ctx context.Context, podGroupInfo *f
 
 没有开启拓扑感知时，整组在一个「隐式 placement」里跑默认算法：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/schedule_one_podgroup.go
 func (sched *Scheduler) podGroupSchedulingAlgorithm(ctx context.Context, schedFwk framework.Framework, podGroupCycleState *framework.CycleState, podGroupInfo *framework.PodGroupInfo, queuedPodGroupInfo *framework.QueuedPodGroupInfo) (*podGroupAlgorithmResult, revertFns) {
 	// ...
@@ -363,7 +363,7 @@ func (sched *Scheduler) podGroupSchedulingAlgorithm(ctx context.Context, schedFw
 
 开启拓扑感知时，`podGroupSchedulingPlacementAlgorithm` 会先生成多个 placement，再对每个 placement 调用同一个 `podGroupSchedulingDefaultAlgorithm`，这部分留给第 22 篇。无论哪条路，最终都落到下面这个循环：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/schedule_one_podgroup.go
 func (sched *Scheduler) podGroupSchedulingDefaultAlgorithm(ctx context.Context, schedFwk framework.Framework, placementCycleState *framework.CycleState, podGroupInfo *framework.PodGroupInfo, queuedPodGroupInfo *framework.QueuedPodGroupInfo) (result *podGroupAlgorithmResult, revertFns revertFns) {
 	defer func() {
@@ -419,22 +419,22 @@ func (sched *Scheduler) podGroupSchedulingDefaultAlgorithm(ctx context.Context, 
 
 这段代码有三处设计值得停下来看。
 
-第一处是 `Scheduled` 的初值：它来自 snapshot 里的 `ScheduledPodsCount()`，数的是这个组里已经 assume 或已经绑定的 Pod。一个 `minCount: 4` 的组如果已经有 3 个 Pod 在跑，第 4 个新来的 Pod 单独就能满足条件，不必等其他人。
+第一处是 `Scheduled` 的初值（第 14–17 行）：它来自 snapshot 里的 `ScheduledPodsCount()`，数的是这个组里已经 assume 或已经绑定的 Pod。一个 `minCount: 4` 的组如果已经有 3 个 Pod 在跑，第 4 个新来的 Pod 单独就能满足条件，不必等其他人。
 
 第二处更关键：每个 Pod 成功后只在 snapshot 里 assume，不进 cache。`podGroupPodSchedulingAlgorithm` 里调用的是 `AssumeAndReserveInSnapshot`，注释写得很直白：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/schedule_one_podgroup.go
 // Pods of a pod group are assumed into the snapshot rather than the cache: the group's placement
 // stays tentative until the whole group is submitted, and a snapshot assume is dropped by the
 // next UpdateSnapshot instead of outliving the cycle.
 ```
 
-后一个 Pod 能「看见」前一个 Pod 占掉的资源，因为它们共享同一个 snapshot；而一旦整组失败，`defer` 里的 `revertFns.revert()` 会对每个已 assume 的 Pod 依次跑 Unreserve 并从 snapshot 里 Forget。即使漏掉了，下一次 `UpdateSnapshot` 也会把这些临时状态冲掉，不会污染 cache。**这是「all-or-nothing」在调度周期内的实现方式。**
+后一个 Pod 能「看见」前一个 Pod 占掉的资源，因为它们共享同一个 snapshot；而一旦整组失败，`podGroupSchedulingDefaultAlgorithm` 代码块里 `defer` 的 `revertFns.revert()`（第 3–8 行）会对每个已 assume 的 Pod 依次跑 Unreserve 并从 snapshot 里 Forget。即使漏掉了，下一次 `UpdateSnapshot` 也会把这些临时状态冲掉，不会污染 cache。**这是「all-or-nothing」在调度周期内的实现方式。**
 
-第三处是失败处理：单个 Pod 失败时不跑 PostFilter。`schedulingAlgorithm` 里有一个分支专门处理这种情况：
+第三处是失败处理：单个 Pod 失败时不跑 PostFilter。`schedulingAlgorithm` 里有一个分支专门处理这种情况（第 4–8 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/schedule_one.go
 		// We do not want to run PostFilters for single pods in PodGroup cycle.
 		// Instead we will run PodGroupPostFilter at the end of PodGroup cycle.
@@ -449,11 +449,11 @@ func (sched *Scheduler) podGroupSchedulingDefaultAlgorithm(ctx context.Context, 
 
 ## 四、PlacementFeasible：三种返回值
 
-上一节的循环每试放一个 Pod 就问一次 PlacementFeasible，问的是「这组还有没有希望」。这个插件本身只有两个不等式，对应三种返回值。
+上一节的循环每试放一个 Pod 就问一次 PlacementFeasible，问的是「这组还有没有希望」。这个插件本身只有两个不等式（第 8–16 行），对应三种返回值。
 
 ### 4.1 代码只有十几行
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/gangscheduling/gangscheduling.go
 func (pl *GangScheduling) PlacementFeasible(ctx context.Context, placementCycleState fwk.PlacementCycleState, podGroupInfo fwk.PodGroupInfo, args fwk.PlacementProgress) *fwk.Status {
 	minCount := podGroupInfo.GetMinCount()
@@ -478,7 +478,7 @@ func (pl *GangScheduling) PlacementFeasible(ctx context.Context, placementCycleS
 
 `GetMinCount()` 对不同策略的取值是：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/kube-scheduler/framework/types.go
 func (gpg *GenericPodGroup) GetMinCount() int {
 	if cpg := gpg.CompositePodGroup; cpg != nil {
@@ -494,13 +494,13 @@ func (gpg *GenericPodGroup) GetMinCount() int {
 }
 ```
 
-Basic 策略的 minCount 是 1。**这意味着 GangScheduling 对 basic 组同样生效，只是条件放宽成「这一轮至少放上一个」。** 如果 basic 组里的 Pod 一个都放不下，整组也是 Unschedulable，会走整组抢占的路径。
+Basic 策略的 minCount 是 1（第 7 行、第 12 行）。**这意味着 GangScheduling 对 basic 组同样生效，只是条件放宽成「这一轮至少放上一个」。** 如果 basic 组里的 Pod 一个都放不下，整组也是 Unschedulable，会走整组抢占的路径。
 
 ### 4.2 框架怎么解读这三种状态
 
 **插件返回 `Wait` 并不意味着最终结果是「等待」。** `podGroupPotentiallyFeasible` 同时返回「要不要继续」和「如果现在结束，结果是什么」两个值：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/schedule_one_podgroup.go
 func podGroupPotentiallyFeasible(ctx context.Context, schedFwk framework.Framework, placementCycleState *framework.CycleState, podGroupInfo *framework.PodGroupInfo, placementProgress fwk.PlacementProgress) (bool, *fwk.Status) {
 	status := schedFwk.RunPlacementFeasiblePlugins(ctx, placementCycleState, podGroupInfo, placementProgress)
@@ -541,9 +541,9 @@ func podGroupPotentiallyFeasible(ctx context.Context, schedFwk framework.Framewo
 
 ### 4.4 「至少放上一个」这条框架级约束
 
-PlacementFeasible 之外，`runRootSchedulingAlgorithm` 还加了一道检查：
+PlacementFeasible 之外，`runRootSchedulingAlgorithm` 还加了一道检查（第 2–7 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/schedule_one_podgroup.go
 	if result.status.IsSuccess() && !result.anyScheduled {
 		// The framework requires at least 1 pod to be scheduled in order to return a success status.
@@ -558,9 +558,9 @@ PlacementFeasible 之外，`runRootSchedulingAlgorithm` 还加了一道检查：
 
 ### 5.1 HierarchyTracker 是谁、在哪更新
 
-PlacementFeasible 解决的是「放不放得下」，PreEnqueue 解决的是「人到齐了没有」。后者用的数据结构是 `HierarchyTracker`，它和插件放在同一个包里，但由调度器在 `framework_init.go` 里创建：
+PlacementFeasible 解决的是「放不放得下」，PreEnqueue 解决的是「人到齐了没有」。后者用的数据结构是 `HierarchyTracker`，它和插件放在同一个包里，但由调度器在 `framework_init.go` 里创建（第 2–5 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework_init.go
 	var podGroupHierarchyTracker *gangscheduling.HierarchyTracker
 	if feature.DefaultFeatureGate.Enabled(features.GenericWorkload) {
@@ -570,7 +570,7 @@ PlacementFeasible 解决的是「放不放得下」，PreEnqueue 解决的是「
 
 调度器的 informer 事件处理函数直接调用它，未调度 Pod、已调度 Pod、PodGroup、CompositePodGroup 的增删改都会更新计数。以未调度 Pod 的 Add 为例：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/eventhandlers.go
 func (sched *Scheduler) addPodToSchedulingQueue(pod *v1.Pod) {
 	// ...
@@ -585,13 +585,13 @@ func (sched *Scheduler) addPodToSchedulingQueue(pod *v1.Pod) {
 }
 ```
 
-**顺序很关键：先更新 tracker，再把 Pod 交给队列。** 队列在 `moveToActiveQ` 里跑 PreEnqueue 时，看到的计数已经包含这个新 Pod。已调度 Pod 的 Add（`addAssignedPodToCache`）同样会 `AddPod`，所以 tracker 里数的是这个组「所有已知的 Pod」，不区分是否已经绑定。
+**顺序很关键：先更新 tracker，再把 Pod 交给队列（第 4–8 行）。** 队列在 `moveToActiveQ` 里跑 PreEnqueue 时，看到的计数已经包含这个新 Pod。已调度 Pod 的 Add（`addAssignedPodToCache`）同样会 `AddPod`，所以 tracker 里数的是这个组「所有已知的 Pod」，不区分是否已经绑定。
 
 ### 5.2 计数树的结构
 
 PreEnqueue 的判断全部依赖这棵树，先看它的结构。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/gangscheduling/hierarchy_tracker.go
 type hierarchyGroup struct {
 	key           fwk.EntityKey
@@ -620,7 +620,7 @@ type HierarchyTracker struct {
 }
 ```
 
-叶子 PodGroup 用一个 UID 集合数 Pod，CompositePodGroup 用一个整数数「已就绪的子组」。一个组就绪的条件统一成 `readyCount() >= minCount`。**用 UID 集合而不是一个计数，是为了让重复的 Add 事件幂等**（`addPod` 开头先 `Has` 检查）。
+叶子 PodGroup 用一个 UID 集合数 Pod，CompositePodGroup 用一个整数数「已就绪的子组」。一个组就绪的条件统一成 `readyCount() >= minCount`（第 14–19 行）。**用 UID 集合而不是一个计数，是为了让重复的 Add 事件幂等**（`addPod` 开头先 `Has` 检查）。
 
 CompositePodGroup 是更高一层的组：比如一个训练任务由 `worker-a`、`worker-b`、`ps` 三个 PodGroup 组成，外面套一个 CompositePodGroup，用 `minGroupCount` 表示至少几个子组同时就绪。不开 `CompositePodGroup` 时 `parentKey` 一律被忽略，每个 PodGroup 自己就是根。
 
@@ -628,7 +628,7 @@ CompositePodGroup 是更高一层的组：比如一个训练任务由 `worker-a`
 
 ### 5.3 只在跨越阈值时传播
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/gangscheduling/hierarchy_tracker.go
 func (ht *HierarchyTracker) addPod(logger klog.Logger, pod *v1.Pod) {
 	key := fwk.PodGroupKey(pod.Namespace, *pod.Spec.SchedulingGroup.PodGroupName)
@@ -668,11 +668,11 @@ func (ht *HierarchyTracker) propagateReadinessDelta(logger klog.Logger, parentKe
 }
 ```
 
-一个组从 3 个 Pod 涨到 4 个，跨过了 minCount=4，向父组传 +1；涨到 5 个时 `wasReady` 已经是 true，什么都不传。父组 `readyChildren` 的变化也只在它自己跨过阈值时才继续往上走。**这样每次 Pod 事件的代价是 O(树深)，而树深被 API 限制在 4 以内。**
+一个组从 3 个 Pod 涨到 4 个，跨过了 minCount=4，向父组传 +1（第 8–12 行）；涨到 5 个时 `wasReady` 已经是 true，什么都不传。父组 `readyChildren` 的变化也只在它自己跨过阈值时才继续往上走。**这样每次 Pod 事件的代价是 O(树深)，而树深被 API 限制在 4 以内。**
 
 `getOrCreateGroup` 有一个容易忽略的默认值：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/gangscheduling/hierarchy_tracker.go
 // We default minCount to 1 so that out-of-order informer events (e.g. a Pod arriving before its PodGroup)
 // still enforce a baseline quorum until the authoritative policy definition arrives.
@@ -690,11 +690,11 @@ func (ht *HierarchyTracker) getOrCreateGroup(key fwk.EntityKey) *hierarchyGroup 
 }
 ```
 
-Pod 先于 PodGroup 到达时，tracker 先建一个占位节点（`genericGroup == nil`）。PodGroup 到达后 `AddGenericPodGroup` 写入真实的 minCount 和 parentKey，`updateGroupReadiness` 比较前后的就绪状态并补发传播；如果父链从 nil 变成了某个 CompositePodGroup，还会先从旧父撤销、再向新父传播。PodGroup 被删除时，只要还有 Pod 引用它，节点作为占位保留下来。
+Pod 先于 PodGroup 到达时，tracker 先建一个占位节点（`genericGroup == nil`，第 7–13 行）。PodGroup 到达后 `AddGenericPodGroup` 写入真实的 minCount 和 parentKey，`updateGroupReadiness` 比较前后的就绪状态并补发传播；如果父链从 nil 变成了某个 CompositePodGroup，还会先从旧父撤销、再向新父传播。PodGroup 被删除时，只要还有 Pod 引用它，节点作为占位保留下来。
 
 ### 5.4 PreEnqueue 本身
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/gangscheduling/gangscheduling.go
 func (pl *GangScheduling) PreEnqueue(ctx context.Context, pod *v1.Pod) *fwk.Status {
 	if pod.Spec.SchedulingGroup == nil {
@@ -726,13 +726,13 @@ func (pl *GangScheduling) PreEnqueue(ctx context.Context, pod *v1.Pod) *fwk.Stat
 几个要点：
 
 - **判断的是根组是否就绪，而不是 Pod 自己所在的叶子组。** 一个 CompositePodGroup 下有 3 个子组、`minGroupCount: 2`，只要两个子组凑齐，第三个子组的 Pod 也一起放行，它们会在 PlacementFeasible 那一关再被检验；
-- `findRootGroup` 沿父链往上找，链上任何一个组对象缺失（`genericGroup == nil`）都返回 nil，于是得到「has not been created yet」；
-- 所有失败都是 `UnschedulableAndUnresolvable`。对 PreEnqueue 来说这只意味着「不进 activeQ、等事件」，不会触发抢占，和 Filter 阶段的语义略有不同；
+- `findRootGroup` 沿父链往上找，链上任何一个组对象缺失（`genericGroup == nil`）都返回 nil，于是得到「has not been created yet」（第 12–15 行）；
+- 所有失败都是 `UnschedulableAndUnresolvable`（第 14、23、25 行）。对 PreEnqueue 来说这只意味着「不进 activeQ、等事件」，不会触发抢占，和 Filter 阶段的语义略有不同；
 - `rootGroup.GetKey()` 是 `EntityKey`，它的 `String()` 格式是 `类型/命名空间/名字`，所以事件里看到的是 `podgroup/default/train-0` 这样的字符串。
 
 队列侧还有一条规则让 PreEnqueue 的效果放大到整组：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
 func (p *PriorityQueue) runPreEnqueuePlugins(ctx context.Context, entity framework.QueuedEntityInfo) {
 	// Run PreEnqueue plugins for each pod until the first gets gated.
@@ -751,13 +751,13 @@ func (p *PriorityQueue) runPreEnqueuePlugins(ctx context.Context, entity framewo
 }
 ```
 
-**任何一个 Pod 被拦，整个 entity 都不出队。** 这条规则对 [SchedulingGates](/posts/sched-plugin-01-scheduling-gates/) 也成立：组里只要有一个 Pod 带着 scheduling gate，整组都停在 gated 状态。
+**任何一个 Pod 被拦，整个 entity 都不出队（第 5–12 行）。** 这条规则对 [SchedulingGates](/posts/sched-plugin-01-scheduling-gates/) 也成立：组里只要有一个 Pod 带着 scheduling gate，整组都停在 gated 状态。
 
 ## 六、EventsToRegister：谁能把被拦下的组叫回来
 
-PreEnqueue 让组停在门外，能不能回来则取决于事件。这个扩展点声明的就是它关心哪些变化：
+PreEnqueue 让组停在门外，能不能回来则取决于事件。这个扩展点声明的就是它关心哪些变化（第 3–12 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/gangscheduling/gangscheduling.go
 func (pl *GangScheduling) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWithHint, error) {
 	events := []fwk.ClusterEventWithHint{
@@ -794,7 +794,7 @@ func (pl *GangScheduling) EventsToRegister(_ context.Context) ([]fwk.ClusterEven
 
 这些 hint 会在两种情况下被用到：一是组在 PreEnqueue 被拦，`GangScheduling` 记为 gating plugin；二是 PlacementFeasible 返回 Wait/Unschedulable，`podGroupFitError.addPluginStatus` 把 `GangScheduling` 记进 `unschedulablePlugins`，回队时复制到每个 Pod 的 `UnschedulablePlugins`。队列评估一个组时会对组内每个 Pod 跑 hint，只要有一个 Pod 得到 `Queue`，整组就被移出 unschedulableEntities：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
 // isEntityWorthRequeuing calls isPodWorthRequeuing for all pods belonging to the entity and returns the highest queueing strategy.
 func (p *PriorityQueue) isEntityWorthRequeuing(logger klog.Logger, entity framework.QueuedEntityInfo, event fwk.ClusterEvent, oldObj, newObj interface{}, hintKeys *preQueueingHintPodKeys) queueingStrategy {
@@ -811,7 +811,7 @@ func (p *PriorityQueue) isEntityWorthRequeuing(logger klog.Logger, entity framew
 
 ### 7.1 submitPodGroupResult
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/schedule_one_podgroup.go
 		if podResult.status.IsSuccess() {
 			switch {
@@ -842,7 +842,7 @@ func (p *PriorityQueue) isEntityWorthRequeuing(logger klog.Logger, entity framew
 		}
 ```
 
-**组成功时，每个成功的 Pod 才真正 `AssumeAndReserveInCache`**，跑 Permit，然后启动各自的绑定 goroutine。组失败时，即使某个 Pod 自己试放成功，也带着组的状态回队。
+**组成功时，每个成功的 Pod 才真正 `AssumeAndReserveInCache`**，跑 Permit，然后启动各自的绑定 goroutine（第 10–12 行）。组失败时，即使某个 Pod 自己试放成功，也带着组的状态回队。
 
 最后，调度器把结果写到 PodGroup 的 `status.conditions` 上，类型是 `PodGroupInitiallyScheduled`，reason 有 `Scheduled`、`Unschedulable`、`SchedulerError`、`PodGroupError` 四种。`updatePodGroupCondition` 有一条保护：condition 一旦是 True，后续轮次不会把它改回 False，避免扩容时新 Pod 的失败「污染」一个已经成功启动的组。
 
@@ -850,7 +850,7 @@ func (p *PriorityQueue) isEntityWorthRequeuing(logger klog.Logger, entity framew
 
 回队分两步。`FailureHandler` 把每个失败的 Pod 交给队列，此时根组仍是「最近一次 Pop 出来的 entity」，于是这些 Pod 被放进 `pendingPodGroupPods`。周期末尾 `AddAttemptedPodGroupIfNeeded` 把它们重新组装成一个 `QueuedPodGroupInfo`：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
 	if status.IsSuccess() {
 		// If the scheduling attempt of the pod group succeeded, requeue remaining pods directly to active queue.
@@ -870,7 +870,7 @@ func (p *PriorityQueue) isEntityWorthRequeuing(logger klog.Logger, entity framew
 	}
 ```
 
-**组成功但还有剩余 Pod 时（场景 A 的 p2、p6），组直接回 activeQ，不走 backoff**，并保留原时间戳排在前面，让下一轮立刻为这些 Pod 尝试抢占。组失败时 `UnschedulableCount` 加一，按 backoff 规则进 backoffQ 或 unschedulableEntities，等 hint 唤醒。
+**组成功但还有剩余 Pod 时（场景 A 的 p2、p6），组直接回 activeQ，不走 backoff（第 2–8 行）**，并保留原时间戳排在前面，让下一轮立刻为这些 Pod 尝试抢占。组失败时 `UnschedulableCount` 加一，按 backoff 规则进 backoffQ 或 unschedulableEntities，等 hint 唤醒。
 
 ## 八、边界情况与容易误解的地方
 
@@ -887,7 +887,7 @@ func (p *PriorityQueue) isEntityWorthRequeuing(logger klog.Logger, entity framew
 
 在 v1.36.4 的源码里，同一个插件长这样：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/gangscheduling/gangscheduling.go (Kubernetes v1.36.4)
 const (
 	// Name is the name of the plugin used in the plugin registry and configurations.

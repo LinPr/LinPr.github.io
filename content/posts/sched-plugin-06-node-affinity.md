@@ -19,7 +19,7 @@ description: "NodeAffinity 把 nodeSelector、required/preferred 节点亲和和
 
 它同时实现了 PreFilter、Filter、PreScore、Score 四个扩展点，外加 `EnqueueExtensions` 和用于批量调度的 `SignPlugin`。它不受任何 feature gate 控制，默认始终启用，只有 in-place 扩缩容相关的 `InPlacePodVerticalScalingSchedulerPreemption` 会让它对一类特殊 Pod 直接跳过（见 3.6 节）。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/apis/config/v1/default_plugins.go
 {Name: names.TaintToleration, Weight: ptr.To[int32](3)},
 {Name: names.NodeAffinity, Weight: ptr.To[int32](2)},
@@ -30,7 +30,7 @@ description: "NodeAffinity 把 nodeSelector、required/preferred 节点亲和和
 
 一个 Pod 能对节点标签提出三类要求，`NodeAffinity` 把它们都收进来：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: v1
 kind: Pod
 metadata:
@@ -79,7 +79,7 @@ spec:
 
 `GetRequiredNodeAffinity` 把 Pod 的两个字段解析成一个结构：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/component-helpers/scheduling/corev1/nodeaffinity/nodeaffinity.go
 type RequiredNodeAffinity struct {
 	labelSelector labels.Selector
@@ -114,13 +114,13 @@ func (s RequiredNodeAffinity) Match(node *v1.Node) (bool, error) {
 }
 ```
 
-**先查 `nodeSelector`，不满足立刻返回；满足了再查 required 亲和，两者是 AND。** `nodeSelector` 被转成 `labels.SelectorFromSet`，map 里每个键值都是一个等值条件，彼此也是 AND。
+**先查 `nodeSelector`，不满足立刻返回；满足了再查 required 亲和，两者是 AND。**（`Match` 在第 22–32 行）`nodeSelector` 被转成 `labels.SelectorFromSet`（第 9–11 行），map 里每个键值都是一个等值条件，彼此也是 AND。
 
 `nodeSelector` 只是这一层里的一个因子。required 亲和内部还有两层 AND/OR，下一节拆开。
 
 ### 2.2 term 之间 OR，term 内部 AND
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/component-helpers/scheduling/corev1/nodeaffinity/nodeaffinity.go
 func (ns *LazyErrorNodeSelector) Match(node *v1.Node) (bool, error) {
 	if node == nil {
@@ -157,7 +157,7 @@ func (t *nodeSelectorTerm) match(nodeLabels labels.Set, nodeFields fields.Set) (
 }
 ```
 
-遍历 term，任何一个命中就返回 `true`，这是 OR。单个 term 里 `matchExpressions` 被转成一个 `labels.Selector`（多条 requirement 叠加即 AND），`matchFields` 被转成 `fields.AndSelectors`，两者又是 AND。
+遍历 term（第 10–19 行），任何一个命中就返回 `true`，这是 OR。单个 term 里 `matchExpressions` 被转成一个 `labels.Selector`（多条 requirement 叠加即 AND），`matchFields` 被转成 `fields.AndSelectors`，两者又是 AND（第 23–34 行）。
 
 有三个细节只有读代码才看得到：
 
@@ -175,7 +175,7 @@ func (t *nodeSelectorTerm) match(nodeLabels labels.Set, nodeFields fields.Set) (
 
 ### 3.1 结构体、工厂与参数
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodeaffinity/node_affinity.go
 type NodeAffinity struct {
 	handle                                             fwk.Handle
@@ -187,7 +187,7 @@ type NodeAffinity struct {
 
 插件自身只持有 `addedAffinity` 的两半，Pod 的约束每个调度周期现算。`New` 在启动时把参数解析好：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodeaffinity/node_affinity.go
 func New(_ context.Context, plArgs runtime.Object, h fwk.Handle, fts feature.Features) (fwk.Plugin, error) {
 	args, err := getArgs(plArgs)
@@ -213,11 +213,11 @@ func New(_ context.Context, plArgs runtime.Object, h fwk.Handle, fts feature.Fea
 }
 ```
 
-注意这里用的是 `NewNodeSelector`，不是 Pod 用的 `NewLazyErrorNodeSelector`。**管理员写的配置没有历史包袱，任何解析错误都会在 `ValidateNodeAffinityArgs` 阶段直接让调度器启动失败。** `NodeAffinityArgs` 只有一个字段 `AddedAffinity`，默认为空，表示所有节点都满足。
+注意这里用的是 `NewNodeSelector`（第 13 行），不是 Pod 用的 `NewLazyErrorNodeSelector`（preferred 部分用的是 `NewPreferredSchedulingTerms`，第 18 行）。**管理员写的配置没有历史包袱，任何解析错误都会在 `ValidateNodeAffinityArgs` 阶段直接让调度器启动失败。** `NodeAffinityArgs` 只有一个字段 `AddedAffinity`，默认为空，表示所有节点都满足。
 
 一个典型用法是让第二个 Profile 只调度到特定节点池：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: kubescheduler.config.k8s.io/v1
 kind: KubeSchedulerConfiguration
 profiles:
@@ -240,7 +240,7 @@ profiles:
 
 PreFilter 要做三件事：判断能不能跳过、把约束解析一次、顺便缩小候选集。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodeaffinity/node_affinity.go
 func (pl *NodeAffinity) PreFilter(ctx context.Context, cycleState fwk.CycleState, pod *v1.Pod, nodes []fwk.NodeInfo) (*fwk.PreFilterResult, *fwk.Status) {
 	if pl.enableInPlacePodVerticalScalingSchedulerPreemption && resource.IsPodResizeDeferred(pod) {
@@ -267,11 +267,11 @@ func (pl *NodeAffinity) PreFilter(ctx context.Context, cycleState fwk.CycleState
 
 前半段做两件事。
 
-第一，能跳就跳。没有 required 亲和、没有 `nodeSelector`、也没有 `addedAffinity` 的 Pod 返回 `Skip`。框架会把插件名记进 `SkipFilterPlugins`，这个周期里它的 Filter 不会在任何节点上被调用。**集群里大多数 Pod 不写节点亲和，这条路径省掉了「节点数 × 一次空函数调用」。**
+第一，能跳就跳。没有 required 亲和、没有 `nodeSelector`、也没有 `addedAffinity` 的 Pod 返回 `Skip`（第 7–13 行）。框架会把插件名记进 CycleState 的 `skipFilterPlugins`，这个周期里它的 Filter 不会在任何节点上被调用。**集群里大多数 Pod 不写节点亲和，这条路径省掉了「节点数 × 一次空函数调用」。**
 
 第二，解析结果放进 CycleState。key 是 `"PreFilterNodeAffinity"`，值是：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodeaffinity/node_affinity.go
 type preFilterState struct {
 	requiredNodeSelectorAndAffinity nodeaffinity.RequiredNodeAffinity
@@ -287,7 +287,7 @@ func (s *preFilterState) Clone() fwk.StateData {
 
 后半段是这个插件最有意思的部分：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodeaffinity/node_affinity.go
 	// Check if there is affinity to a specific node and return it.
 	terms := affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms
@@ -323,13 +323,13 @@ func (s *preFilterState) Clone() fwk.StateData {
 	return nil, nil
 ```
 
-它把 required 亲和里的 `metadata.name In [...]` 提取出来，和语义保持一致：term 内取交集（AND），term 间取并集（OR）。**只要有一个 term 不含节点名条件，那个 term 可能被任何节点命中，就不能缩小，直接返回 `nil`。** 注意 `nodeNames` 有 `nil` 和「非 nil 但为空」两种状态，后者说明每个 term 的节点名条件内部自相矛盾，返回 `UnschedulableAndUnresolvable`，原因串 `pod affinity terms conflict`。
+它把 required 亲和里的 `metadata.name In [...]` 提取出来，和语义保持一致：term 内取交集（第 7–17 行，AND），term 间取并集（第 24 行，OR）。**只要有一个 term 不含节点名条件，那个 term 可能被任何节点命中，就不能缩小，直接返回 `nil`（第 19–23 行）。** 注意 `nodeNames` 有 `nil` 和「非 nil 但为空」两种状态，后者说明每个 term 的节点名条件内部自相矛盾，返回 `UnschedulableAndUnresolvable`（第 28–29 行），原因串 `pod affinity terms conflict`；能确定集合时返回 `PreFilterResult`（第 30–31 行）。
 
 `NotIn` 不参与推导：排除一个节点名并不能把候选集缩小到一个可枚举的集合。
 
 这个优化的主要受益者是 DaemonSet。DaemonSet 控制器为每个节点创建 Pod 时，会把 Pod 的 required 亲和整个替换成指向单个节点的 term：
 
-```go
+```go {linenos=inline}
 // pkg/controller/daemon/util/daemonset_util.go
 func ReplaceDaemonSetPodNodeNameNodeAffinity(affinity *v1.Affinity, nodename string) *v1.Affinity {
 	nodeSelReq := v1.NodeSelectorRequirement{
@@ -350,7 +350,7 @@ func ReplaceDaemonSetPodNodeNameNodeAffinity(affinity *v1.Affinity, nodename str
 
 5000 个节点的集群里，一个 DaemonSet Pod 原本要在 5000 个节点上跑一遍全部 Filter 插件，有了 `PreFilterResult` 只需跑一个。框架在 `RunPreFilterPlugins` 里把各插件的结果用 `Merge` 求交集，`getCandidateNodes` 再把不在集合里的节点统一标记为：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/algorithm.go
 diagnosis.NodeToStatus.SetAbsentNodesStatus(fwk.NewStatus(fwk.UnschedulableAndUnresolvable, fmt.Sprintf("node(s) didn't satisfy plugin(s) %v", sets.List(diagnosis.UnschedulablePlugins))))
 ```
@@ -361,7 +361,7 @@ diagnosis.NodeToStatus.SetAbsentNodesStatus(fwk.NewStatus(fwk.UnschedulableAndUn
 
 ### 3.3 Filter：两种原因，同一个状态码
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodeaffinity/node_affinity.go
 func (pl *NodeAffinity) Filter(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeInfo fwk.NodeInfo) *fwk.Status {
 	if pl.enableInPlacePodVerticalScalingSchedulerPreemption && resource.IsPodResizeDeferred(pod) {
@@ -390,7 +390,7 @@ func (pl *NodeAffinity) Filter(ctx context.Context, state fwk.CycleState, pod *v
 }
 ```
 
-先查管理员的 `addedAffinity`，再查 Pod 自己的约束，两种失败的原因串不同：
+先查管理员的 `addedAffinity`（第 8–10 行），再查 Pod 自己的约束（第 20–23 行），两种失败的原因串不同：
 
 | 失败来源 | 状态码 | 原因串 |
 | --- | --- | --- |
@@ -407,7 +407,7 @@ Filter 里还有一个兜底：读不到 PreFilter 状态时现场解析。这�
 
 打分只关心 preferred 亲和和 `addedAffinity` 里的 preferred 部分，两者的处理方式都是权重求和。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodeaffinity/node_affinity.go
 func (pl *NodeAffinity) PreScore(ctx context.Context, cycleState fwk.CycleState, pod *v1.Pod, nodes []fwk.NodeInfo) *fwk.Status {
 	preferredNodeAffinity, err := getPodPreferredNodeAffinity(pod)
@@ -441,11 +441,11 @@ func (pl *NodeAffinity) Score(ctx context.Context, state fwk.CycleState, pod *v1
 }
 ```
 
-没有 preferred 亲和的 Pod 在 PreScore 返回 `Skip`，Score 和 NormalizeScore 都不会执行，这个插件在总分里贡献 0。和 PreFilter 不同，PreScore 遇到解析错误是直接报错的（`fwk.AsStatus(err)`）：`NewPreferredSchedulingTerms` 不是 lazy 的，权重为 0 或 preference 为空的 term 会被静默跳过，但**有解析错误的 term 会让整个调度周期失败**。
+没有 preferred 亲和的 Pod 在 PreScore 返回 `Skip`（第 7–10 行），Score 和 NormalizeScore 都不会执行，这个插件在总分里贡献 0。和 PreFilter 不同，PreScore 遇到解析错误是直接报错的（`fwk.AsStatus(err)`）：`NewPreferredSchedulingTerms` 不是 lazy 的，权重为 0 或 preference 为空的 term 会被静默跳过，但**有解析错误的 term 会让整个调度周期失败**。
 
-单个节点的原始分是命中 term 的权重之和：
+单个节点的原始分是命中 term 的权重之和（第 6–11 行逐个 term 判断，命中就把 `weight` 累加）：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/component-helpers/scheduling/corev1/nodeaffinity/nodeaffinity.go
 func (t *PreferredSchedulingTerms) Score(node *v1.Node) int64 {
 	var score int64
@@ -461,9 +461,9 @@ func (t *PreferredSchedulingTerms) Score(node *v1.Node) int64 {
 }
 ```
 
-API 限制每个 term 的 `weight` 在 1 到 100 之间，多个 term 加起来很容易超过 100，所以必须归一化：
+API 限制每个 term 的 `weight` 在 1 到 100 之间，多个 term 加起来很容易超过 100，所以必须归一化（`reverse=false`，第 3 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodeaffinity/node_affinity.go
 func (pl *NodeAffinity) NormalizeScore(ctx context.Context, state fwk.CycleState, pod *v1.Pod, scores fwk.NodeScoreList) *fwk.Status {
 	return helper.DefaultNormalizeScore(fwk.MaxNodeScore, false, scores)
@@ -488,7 +488,7 @@ func (pl *NodeAffinity) NormalizeScore(ctx context.Context, state fwk.CycleState
 
 被 `NodeAffinity` 拒绝的 Pod，只有节点变了才有希望：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodeaffinity/node_affinity.go
 func (pl *NodeAffinity) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWithHint, error) {
 	return []fwk.ClusterEventWithHint{
@@ -497,11 +497,11 @@ func (pl *NodeAffinity) EventsToRegister(_ context.Context) ([]fwk.ClusterEventW
 }
 ```
 
-只订阅节点新增和标签变更两类事件。框架在 `extractNodeLabelsChange` 里用 `equality.Semantic.DeepEqual` 比较新旧标签，只有标签真的变了才产生 `UpdateNodeLabel`。节点心跳、condition、allocatable 变化都不会触发这个插件的 hint。
+只订阅节点新增和标签变更两类事件（第 4 行）。框架在 `extractNodeLabelsChange` 里用 `equality.Semantic.DeepEqual` 比较新旧标签，只有标签真的变了才产生 `UpdateNodeLabel`。节点心跳、condition、allocatable 变化都不会触发这个插件的 hint。
 
 hint 函数的判断顺序值得逐行看：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodeaffinity/node_affinity.go
 func (pl *NodeAffinity) isSchedulableAfterNodeChange(logger klog.Logger, pod *v1.Pod, oldObj, newObj interface{}) (fwk.QueueingHint, error) {
 	originalNode, modifiedNode, err := util.As[*v1.Node](oldObj, newObj)
@@ -543,12 +543,12 @@ func (pl *NodeAffinity) isSchedulableAfterNodeChange(logger klog.Logger, pod *v1
 }
 ```
 
-1. 新节点不满足 `addedAffinity`，`QueueSkip`。
-2. 新节点不满足 Pod 的 required 约束，`QueueSkip`。
-3. 节点是新增的，并且满足，`Queue`。
-4. 节点是更新的，且更新前就已经满足，`QueueSkip`。
+1. 新节点不满足 `addedAffinity`，`QueueSkip`（第 8–11 行）。
+2. 新节点不满足 Pod 的 required 约束，`QueueSkip`（第 13–21 行）。
+3. 节点是新增的，并且满足，`Queue`（第 23–26 行）。
+4. 节点是更新的，且更新前就已经满足，`QueueSkip`（第 29–36 行）。
 
-第 4 步是这个 hint 精确的地方。更新前就满足，说明 Pod 上次失败时 `NodeAffinity` 并没有拒绝这个节点，拒绝它的是别的插件。别的插件会通过自己注册的事件唤醒 Pod，`NodeAffinity` 不必凑热闹。**只有「不匹配 → 匹配」这一种转变才值得重试。**
+第 4 步是这个 hint 精确的地方。更新前就满足，说明 Pod 上次失败时 `NodeAffinity` 并没有拒绝这个节点，拒绝它的是别的插件。别的插件会通过自己注册的事件唤醒 Pod，`NodeAffinity` 不必凑热闹。**只有「不匹配 → 匹配」这一种转变才值得重试**（第 37–38 行）。
 
 hint 里调用的是 `GetRequiredNodeAffinity(pod)`，不是 CycleState 里的缓存：hint 运行在事件处理路径上，那时没有调度周期，也就没有 CycleState。解析错误会让 hint 返回 `Queue`，这是 hint 的通用约定：拿不准就放行，宁可多调度一次，也不要让 Pod 卡死。
 
@@ -556,7 +556,7 @@ hint 里调用的是 `GetRequiredNodeAffinity(pod)`，不是 CycleState 里的�
 
 插件实现了 `SignPlugin`：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodeaffinity/node_affinity.go
 func (pl *NodeAffinity) SignPod(ctx context.Context, pod *v1.Pod) ([]fwk.SignFragment, *fwk.Status) {
 	aff, err := fwk.NodeAffinitySigner(pod)
@@ -570,7 +570,7 @@ func (pl *NodeAffinity) SignPod(ctx context.Context, pod *v1.Pod) ([]fwk.SignFra
 }
 ```
 
-签名用于批量调度（KEP-5598）：若干 Pod 在所有参与过滤和打分的插件看来「长得一样」，调度器可以复用上一个 Pod 的节点排序结果。`NodeAffinity` 告诉框架，它的结论只取决于节点亲和与 `nodeSelector` 两个字段。框架的约定是，**只要有一个启用了 Filter/Score 的插件没实现 `SignPlugin`，所有 Pod 都关闭批量优化**，所以每个 in-tree 插件都要老老实实交出自己的签名片段。
+签名用于批量调度（KEP-5598）：若干 Pod 在所有参与过滤和打分的插件看来「长得一样」，调度器可以复用上一个 Pod 的节点排序结果。`NodeAffinity` 告诉框架，它的结论只取决于节点亲和与 `nodeSelector` 两个字段（第 7–10 行的两个 `SignFragment`）。框架的约定是，**只要有一个启用了 Filter/Score 的插件没实现 `SignPlugin`，所有 Pod 都关闭批量优化**，所以每个 in-tree 插件都要老老实实交出自己的签名片段。
 
 PreFilter 和 Filter 开头都有一段 `IsPodResizeDeferred` 判断。`InPlacePodVerticalScalingSchedulerPreemption`（1.37 Alpha，默认关闭）打开后，已经运行在节点上、原地扩容被 kubelet 以 `Deferred` 推迟的 Pod 会重新进入调度器，目的是在它自己所在的节点上通过抢占腾出资源。
 
@@ -582,7 +582,7 @@ PreFilter 和 Filter 开头都有一段 `IsPodResizeDeferred` 判断。`InPlaceP
 
 **`spec.nodeName` 绕过的是调度器，不是节点亲和。** 直接写了 `nodeName` 的 Pod 不进调度队列，`NodeAffinity` 的 Filter 不会执行。但 kubelet 准入会再查一遍：
 
-```go
+```go {linenos=inline}
 // pkg/kubelet/lifecycle/predicate.go
 	if matches, _ := corev1nodeaffinity.GetRequiredNodeAffinity(pod).Match(nodeInfo.Node()); !matches {
 		reasons = append(reasons, &PredicateFailureError{nodeaffinity.Name, nodeaffinity.ErrReasonPod})

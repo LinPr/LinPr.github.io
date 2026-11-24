@@ -28,7 +28,7 @@ LVRB 只实现 Score（外加一个空的 `NormalizeScore`），没有 PreScore�
 
 启用方式：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: kubescheduler.config.k8s.io/v1
 kind: KubeSchedulerConfiguration
 profiles:
@@ -53,7 +53,7 @@ profiles:
 
 `LoadVariationRiskBalancingArgs` 在 `TrimaranSpec` 之外只加了两个字段。
 
-```go
+```go {linenos=inline}
 // apis/config/types.go
 // LoadVariationRiskBalancingArgs holds arguments used to configure LoadVariationRiskBalancing plugin.
 type LoadVariationRiskBalancingArgs struct {
@@ -68,7 +68,7 @@ type LoadVariationRiskBalancingArgs struct {
 }
 ```
 
-```go
+```go {linenos=inline}
 // apis/config/v1/defaults.go
 // SetDefaults_LoadVariationRiskBalancingArgs sets the default parameters for LoadVariationRiskBalancing plugin
 func SetDefaults_LoadVariationRiskBalancingArgs(args *LoadVariationRiskBalancingArgs) {
@@ -88,7 +88,7 @@ func SetDefaults_LoadVariationRiskBalancingArgs(args *LoadVariationRiskBalancing
 
 `New` 和 TLP 几乎一样：创建 Collector，创建 `PodAssignEventHandler` 并挂到 Pod informer 上。
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/loadvariationriskbalancing/loadvariationriskbalancing.go
 	collector, err := trimaran.NewCollector(logger, &args.TrimaranSpec)
 	if err != nil {
@@ -117,7 +117,7 @@ func SetDefaults_LoadVariationRiskBalancingArgs(args *LoadVariationRiskBalancing
 
 Score 先取指标，再分别给 CPU 和内存打分，最后合并。
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/loadvariationriskbalancing/loadvariationriskbalancing.go
 func (pl *LoadVariationRiskBalancing) Score(ctx context.Context, cycleState fwk.CycleState, pod *v1.Pod, nodeInfo fwk.NodeInfo) (int64, *fwk.Status) {
 	// ...
@@ -158,11 +158,11 @@ func (pl *LoadVariationRiskBalancing) Score(ctx context.Context, cycleState fwk.
 }
 ```
 
-流程是：节点没有指标时得 0 分；有指标时，CPU 和内存各算一个分。两个都有就取**较小值**，也就是瓶颈资源决定得分；只有一个时，`max(x, 0)` 就等于那一个；两个都没有时得 0 分。
+流程是：节点没有指标时得 0 分（第 7–10 行）；有指标时，CPU 和内存各算一个分（第 16–19 行、第 23–26 行）。两个都有就取**较小值**（第 30–31 行），也就是瓶颈资源决定得分；只有一个时，`max(x, 0)` 就等于那一个（第 32–33 行）；两个都没有时得 0 分。
 
-Pod 的资源量由 `GetResourceRequested` 计算：
+Pod 的资源量由 `GetResourceRequested` 计算，它把 `container.Resources.Requests` 作为回调传给 `GetEffectiveResource`（第 3 行的 `fn` 参数）：
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/resourcestats.go
 // GetEffectiveResource : calculate effective resources of a pod (CPU and Memory)
 func GetEffectiveResource(pod *v1.Pod, fn func(container *v1.Container) v1.ResourceList) *framework.Resource {
@@ -190,13 +190,13 @@ func GetEffectiveResource(pod *v1.Pod, fn func(container *v1.Container) v1.Resou
 }
 ```
 
-这是旧版 kube-scheduler 的口径：容器求和，与每个 init 容器取 max，再加 overhead。它没有处理 sidecar（`restartPolicy: Always` 的 init 容器应该累加，而不是取 max），也不读 Pod 级 `spec.resources`。与 TLP 不同，这里用的是 **request**，不是 limit。
+这是旧版 kube-scheduler 的口径：容器求和（第 6–8 行），与每个 init 容器取 max（第 10–19 行），再加 overhead（第 21–23 行）。它没有处理 sidecar（`restartPolicy: Always` 的 init 容器应该累加，而不是取 max），也不读 Pod 级 `spec.resources`。与 TLP 不同，这里用的是 **request**，不是 limit。
 
 ### 3.2 GetResourceData：从一组 Metric 里挑出均值和标准差
 
 同一个资源在指标里可能同时有均值记录和标准差记录，由 `GetResourceData` 挑出来。
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/resourcestats.go
 // GetResourceData : get data from measurements for a given resource type
 func GetResourceData(metrics []watcher.Metric, resourceType string) (avg float64, stDev float64, isValid bool) {
@@ -220,13 +220,13 @@ func GetResourceData(metrics []watcher.Metric, resourceType string) (avg float64
 }
 ```
 
-`AVG` 优先；没有 `AVG` 时，用 `Latest` 或空算子的值当均值；`STD` 单独取。只要出现过该类型的任意一个指标，`isValid` 就为 true。所以，**只有 STD 没有均值时，均值按 0 处理**。
+`AVG` 优先；没有 `AVG` 时，用 `Latest` 或空算子的值当均值；`STD` 单独取（第 9–16 行）。只要出现过该类型的任意一个指标，`isValid` 就为 true（第 17 行）。所以，**只有 STD 没有均值时，均值按 0 处理**。
 
 ### 3.3 CreateResourceStats 与 GetMuSigma
 
 这一步把百分比形式的均值和标准差换算成绝对量，再叠加上待调度 Pod 的 request。
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/resourcestats.go
 	// get resource capacity
 	rs = &ResourceStats{}
@@ -247,9 +247,9 @@ func GetResourceData(metrics []watcher.Metric, resourceType string) (avg float64
 	rs.UsedStdev = nodeStd * rs.Capacity / 100
 ```
 
-容量取 **`Allocatable`**。CPU 以毫核为单位，内存换算成 MiB。百分比形式的均值和标准差乘以容量，得到绝对量。
+容量取 **`Allocatable`**（第 4–5 行）。CPU 以毫核为单位（第 8 行），内存换算成 MiB（第 11–13 行的 `MegaFactor`）。百分比形式的均值和标准差乘以容量，得到绝对量（第 17–18 行）。
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/resourcestats.go
 // GetMuSigma : get average and standard deviation from statistics
 func GetMuSigma(rs *ResourceStats) (float64, float64) {
@@ -264,15 +264,15 @@ func GetMuSigma(rs *ResourceStats) (float64, float64) {
 }
 ```
 
-再除以容量，回到 [0, 1] 区间的比例。**Pod 的 request 加在均值上，不加在标准差上**。README 的解释是：待调度 Pod 的未来负载未知，假设它的均值等于 request、方差为 0。
+再除以容量，回到 [0, 1] 区间的比例（第 7–10 行）。**Pod 的 request 加在均值上，不加在标准差上**。README 的解释是：待调度 Pod 的未来负载未知，假设它的均值等于 request、方差为 0。
 
 这里绕了一圈：百分比 × Allocatable 得到绝对量，再除以 Allocatable 变回比例，`ResourceStats` 只在加 request 的时候需要绝对量。但百分比本身的分母是什么，取决于指标源：metrics-server provider 用的是 `Capacity`。所以，在 Capacity 明显大于 Allocatable 的节点上（预留了较多 system/kube reserved），μ 中「已用」的部分和「request」的部分口径不完全一致。
 
 ## 四、computeScore：风险公式
 
-`ResourceStats` 备齐之后，`computeScore` 从中取出 μ 和 σ，合成一个 0~100 的分数。函数不长，但每一步都带截断，合起来决定了模型的形状。
+`ResourceStats` 备齐之后，`computeScore` 从中取出 μ 和 σ（第 17 行），合成一个 0~100 的分数。函数不长，但每一步都带截断（第 12–14 行、第 25 行），合起来决定了模型的形状。
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/loadvariationriskbalancing/analysis.go
 // computeScore : compute score given usage statistics
 // - risk = [ average + margin * stDev^{1/sensitivity} ] / 2
@@ -310,7 +310,7 @@ func computeScore(logger klog.Logger, rs *trimaran.ResourceStats, margin float64
 
 记 m = margin，s = sensitivity，U 为平均用量，R 为 Pod request，D 为用量标准差，Cap 为可分配量：
 
-```text
+```text {linenos=inline}
 μ  = clamp((U + R) / Cap, 0, 1)
 σ  = clamp(D / Cap, 0, 1)
 σ' = clamp(m × σ^(1/s), 0, 1)
@@ -318,15 +318,15 @@ risk  = (μ + σ') / 2                 ∈ [0, 1]
 score = 100 × (1 − risk) = 100 − 50 × (μ + σ')
 ```
 
-每一项都被截断到 [0, 1]，两项相加再除以 2，所以 risk 也在 [0, 1] 内，得分必然在 [0, 100] 内，`NormalizeScore` 可以什么都不做。
+每一项都被截断到 [0, 1]，两项相加再除以 2（`computeScore` 第 25 行截断 σ'，第 28 行取平均），所以 risk 也在 [0, 1] 内，得分必然在 [0, 100] 内，`NormalizeScore` 可以什么都不做。
 
 ### 4.2 margin 和 sensitivity 分别做什么
 
 公式只有一个可调的空间，就是 σ 前面的两个参数。它们各自的作用并不直观，KEP 对两者都给了统计意义上的解释。
 
-margin（m）是 σ 的系数。KEP 用正态分布解释它：如果节点用量近似服从正态分布，「μ + η·σ ≤ 100%」对应用量超出容量的概率约为 16%（η=1）、2.5%（η=2）、0.15%（η=3）。η 越大越保守。不过代码里并没有计算概率，m 只是一个线性权重，并且 `m·σ'` 超过 1 后会被截断。margin 设得太大时，σ 稍大的节点都会被截在 1，彼此之间就没有区别了。
+margin（m）是 σ 的系数。KEP 用正态分布解释它：如果节点用量近似服从正态分布，「μ + η·σ ≤ 100%」对应用量超出容量的概率约为 16%（η=1）、2.5%（η=2）、0.15%（η=3）。η 越大越保守。不过代码里并没有计算概率，m 只是一个线性权重，并且 `m·σ'` 超过 1 后会被截断。margin 设得太大时，σ 稍大的节点都会被截在 1（`computeScore` 第 24–25 行），彼此之间就没有区别了。
 
-sensitivity（s）是开方次数。因为 σ ∈ [0, 1]，开 s 次方（s > 1）会**放大小的 σ**：σ = 0.05 时，s=1 得 0.05，s=2 得 0.224，s=3 得 0.368。在实际集群中，节点 CPU 标准差多在 0 到 10% 之间，s=1 时它对风险的贡献很小，几乎被均值淹没；s=2 时，标准差的差异才能真正影响排序。这就是 README 推荐 s=2 的原因。
+sensitivity（s）是开方次数（第 20–21 行的 `math.Pow(sigma, 1/sensitivity)`）。因为 σ ∈ [0, 1]，开 s 次方（s > 1）会**放大小的 σ**：σ = 0.05 时，s=1 得 0.05，s=2 得 0.224，s=3 得 0.368。在实际集群中，节点 CPU 标准差多在 0 到 10% 之间，s=1 时它对风险的贡献很小，几乎被均值淹没；s=2 时，标准差的差异才能真正影响排序。这就是 README 推荐 s=2 的原因。
 
 两个边界值值得单独说明：
 

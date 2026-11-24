@@ -31,7 +31,7 @@ NetworkOverhead 的打分依据是「这个 Pod 依赖的那些 Pod 已经被放
 
 Pod 通过两个 label 声明自己属于哪个应用、是其中哪个 workload：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -49,7 +49,7 @@ spec:
 
 两个 label 的 key 是 appgroup-api 里的常量：
 
-```go
+```go {linenos=inline}
 // github.com/diktyo-io/appgroup-api@v1.0.1-alpha/pkg/apis/appgroup/v1alpha1/types.go
 const (
 	// AppGroupLabel is the default label of the AppGroup for the network-aware framework
@@ -71,7 +71,7 @@ const (
 
 AppGroup 的 `spec` 由用户手写，描述应用由哪些 workload 组成、谁依赖谁。
 
-```go
+```go {linenos=inline}
 // github.com/diktyo-io/appgroup-api@v1.0.1-alpha/pkg/apis/appgroup/v1alpha1/types.go
 type AppGroupSpec struct {
 	// NumMembers defines the number of Pods belonging to the App Group
@@ -105,7 +105,7 @@ type AppGroupWorkload struct {
 
 一个四个 workload 的应用写成 AppGroup 是这样：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: appgroup.diktyo.x-k8s.io/v1alpha1
 kind: AppGroup
 metadata:
@@ -134,7 +134,7 @@ spec:
 
 `spec` 是用户写的，插件的二分查找读的却是 `status` 里的另一份数据。
 
-```go
+```go {linenos=inline}
 // github.com/diktyo-io/appgroup-api@v1.0.1-alpha/pkg/apis/appgroup/v1alpha1/types.go
 type AppGroupStatus struct {
 	// The number of actively running workloads (e.g., number of pods).
@@ -166,11 +166,11 @@ type AppGroupTopologyInfo struct {
 }
 ```
 
-`TopologyOrder` 是一个 `(workload, index)` 列表，`index` 越小越先调度。插件自己不做拓扑排序，这个列表由 AppGroup controller 计算后写入 status。
+`TopologyOrder` 是一个 `(workload, index)` 列表（第 18 行，元素定义在第 23–29 行），`index` 越小越先调度。插件自己不做拓扑排序，这个列表由 AppGroup controller 计算后写入 status。
 
 controller 不在 scheduler-plugins 仓库里，而是 diktyo-io 社区单独维护的组件，仓库只提供部署清单 `manifests/appgroup/deploy-appgroup-controller.yaml`。可选的算法在 appgroup-api 里列为常量：
 
-```go
+```go {linenos=inline}
 // github.com/diktyo-io/appgroup-api@v1.0.1-alpha/pkg/apis/appgroup/v1alpha1/types.go
 	// Topological Sorting algorithms supported by AppGroup
 	AppGroupKahnSort        = "KahnSort"
@@ -196,7 +196,7 @@ KEP 用 Online Boutique（11 个 workload，P1 是前端）给出了各算法的
 
 `TopologyOrder` 数组的排列顺序**不是**拓扑序本身，而是按 `workload.selector` 的字典序排好的；拓扑序体现在每个元素的 `index` 上。插件代码的注释写着 `topology list is ordered by Workload Name`，查找时用的是二分：
 
-```go
+```go {linenos=inline}
 // pkg/networkaware/util/util.go
 // FindPodOrder : return the order index of the given pod
 func FindPodOrder(t agv1alpha1.AppGroupTopologyList, selector string) int32 {
@@ -219,7 +219,7 @@ func FindPodOrder(t agv1alpha1.AppGroupTopologyList, selector string) int32 {
 
 单元测试也遵守这个约定：KEP 例子里的 `TopologyOrder` 是按 P1、P10、P9 …… 的拓扑序写的，测试在创建 AppGroup 之前先 `sort.Sort(util.ByWorkloadSelector(tt.appGroup.Status.TopologyOrder))` 把它重排成 p1、p10、p11、p2 …… 的字符串字典序。
 
-如果手工写 status 或者自己实现 controller 时没有按 selector 排序，二分查找会漏掉存在的元素，返回 `-1`。
+如果手工写 status 或者自己实现 controller 时没有按 selector 排序，二分查找会漏掉存在的元素，走到第 17 行返回 `-1`。
 
 {{< figure src="/images/posts/sched-plugins/26-topological-order.svg" caption="从依赖图到出队顺序：controller 按 spec.topologySortingAlgorithm 计算拓扑序，把 (selector, index) 按 selector 排好写进 status；Less 读两个 Pod 的 label，同组时二分查出 index 比大小，否则回退 PrioritySort（点击查看大图）" link="/images/posts/sched-plugins/26-topological-order.svg" >}}
 
@@ -229,7 +229,7 @@ func FindPodOrder(t agv1alpha1.AppGroupTopologyList, selector string) int32 {
 
 到了插件这一侧，要做的事反而简单：拿到 Pod 的 label，读出 index，比大小。先看它手里有哪些东西。
 
-```go
+```go {linenos=inline}
 // pkg/networkaware/topologicalsort/topologicalsort.go
 // TopologicalSort : Sort pods based on their AppGroup and corresponding microservice dependencies
 type TopologicalSort struct {
@@ -242,7 +242,7 @@ type TopologicalSort struct {
 
 参数只有一个 `namespaces`：
 
-```go
+```go {linenos=inline}
 // apis/config/v1/types.go
 type TopologicalSortArgs struct {
 	metav1.TypeMeta `json:",inline"`
@@ -252,7 +252,7 @@ type TopologicalSortArgs struct {
 }
 ```
 
-```go
+```go {linenos=inline}
 // apis/config/v1/defaults.go
 func SetDefaults_TopologicalSortArgs(obj *TopologicalSortArgs) {
 	if len(obj.Namespaces) == 0 {
@@ -261,11 +261,11 @@ func SetDefaults_TopologicalSortArgs(obj *TopologicalSortArgs) {
 }
 ```
 
-默认值是 `["default"]`，`apis/config/validation` 里没有针对它的校验。AppGroup 只会在这些 namespace 里找，与 Pod 自己在哪个 namespace 无关。
+默认值是 `["default"]`（第 3–5 行），`apis/config/validation` 里没有针对它的校验。AppGroup 只会在这些 namespace 里找，与 Pod 自己在哪个 namespace 无关。
 
-`New` 里构造了一个 controller-runtime 客户端，读操作走本地缓存：
+`New` 里构造了一个 controller-runtime 客户端（第 9 行），读操作走本地缓存：
 
-```go
+```go {linenos=inline}
 // pkg/networkaware/topologicalsort/topologicalsort.go
 func New(ctx context.Context, obj runtime.Object, handle fwk.Handle) (fwk.Plugin, error) {
 	// ...
@@ -289,7 +289,7 @@ func New(ctx context.Context, obj runtime.Object, handle fwk.Handle) (fwk.Plugin
 }
 ```
 
-```go
+```go {linenos=inline}
 // pkg/util/client_util.go
 func NewClientWithCachedReader(ctx context.Context, config *rest.Config, scheme *runtime.Scheme) (client.Client, cache.Cache, error) {
 	ccache, err := cache.New(config, cache.Options{
@@ -320,7 +320,7 @@ func NewClientWithCachedReader(ctx context.Context, config *rest.Config, scheme 
 
 前置数据齐了，接下来是比较函数本身。
 
-```go
+```go {linenos=inline}
 // pkg/networkaware/topologicalsort/topologicalsort.go
 // Less is the function used by the activeQ heap algorithm to sort pods.
 // 1) Sort Pods based on their AppGroup and corresponding service topology graph.
@@ -359,12 +359,12 @@ func (ts *TopologicalSort) Less(pInfo1, pInfo2 fwk.QueuedPodInfo) bool {
 
 分两条路：
 
-- 不在同一个 AppGroup（包括两者都没有 label、只有一个有、属于不同 AppGroup）：直接调用 in-tree 的 `PrioritySort.Less`，即优先级降序、入队时间升序。代码注释写的是 `follow vanilla QoS Sort`，KEP 和插件 README 也说回退到 QoS 插件的策略，但实际调用的是 `queuesort.PrioritySort`，**不比较 QoS**。
-- 同一个 AppGroup：取出 AppGroup，分别用两个 Pod 的 workload label 在 `TopologyOrder` 里查 index，`orderP1 <= orderP2` 时 pInfo1 排前面。这条路上既不看优先级，也不看入队时间。
+- 不在同一个 AppGroup（包括两者都没有 label、只有一个有、属于不同 AppGroup）：直接调用 in-tree 的 `PrioritySort.Less`（第 12–15 行），即优先级降序、入队时间升序。代码注释写的是 `follow vanilla QoS Sort`，KEP 和插件 README 也说回退到 QoS 插件的策略，但实际调用的是 `queuesort.PrioritySort`，**不比较 QoS**。
+- 同一个 AppGroup：取出 AppGroup，分别用两个 Pod 的 workload label 在 `TopologyOrder` 里查 index（第 27–29 行），`orderP1 <= orderP2` 时 pInfo1 排前面（第 33 行）。这条路上既不看优先级，也不看入队时间。
 
 取 AppGroup 的函数按 `namespaces` 顺序逐个尝试：
 
-```go
+```go {linenos=inline}
 // pkg/networkaware/topologicalsort/topologicalsort.go
 func (ts *TopologicalSort) findAppGroupTopologicalSort(ctx context.Context, agName string) *agv1alpha.AppGroup {
 	logger := ts.logger
@@ -404,7 +404,7 @@ TopologicalSort 只实现 `QueueSortPlugin`，没有 `EventsToRegister`，也没
 
 实现读完了，回到一个更根本的问题：这个 `Less` 能不能当堆的比较函数用。堆排序要求 `Less` 是严格弱序：非自反（`Less(a, a)` 为 false）、传递、不可比关系也传递。TopologicalSort 有两处不满足。
 
-**第一处是 `<=`。** 同一个 workload 的两个副本 index 相同，`Less(cart-0, cart-1)` 和 `Less(cart-1, cart-0)` 都返回 true。调度队列的堆基于 `container/heap`，新元素 Push 后上浮的条件是 `h.Less(j, parent)`，对 `<=` 来说相等也成立，于是新加入的 Pod 会越过同 index 的父节点往上走。
+**第一处是 `<=`（第 33 行）。** 同一个 workload 的两个副本 index 相同，`Less(cart-0, cart-1)` 和 `Less(cart-1, cart-0)` 都返回 true。调度队列的堆基于 `container/heap`，新元素 Push 后上浮的条件是 `h.Less(j, parent)`，对 `<=` 来说相等也成立，于是新加入的 Pod 会越过同 index 的父节点往上走。
 
 结果是同一 workload 内的出队顺序取决于插入顺序和当时的堆形状，既不是 FIFO，也不受优先级影响。一个调度失败、重新入队的副本，可能马上又被排到同组其他副本前面。
 

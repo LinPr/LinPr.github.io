@@ -17,9 +17,9 @@ description: "kubectl cordon 只改了 Node 的 spec.unschedulable 一个字段�
 
 ## 一、cordon 改了什么
 
-`kubectl cordon n1` 只做一件事：把 Node 的 `spec.unschedulable` 设为 `true`。kubectl 的实现是一个 patch：
+`kubectl cordon n1` 只做一件事：把 Node 的 `spec.unschedulable` 设为 `true`。kubectl 的实现是一个 patch（第 4 行）：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/kubectl/pkg/drain/cordon.go
 func (c *CordonHelper) PatchOrReplaceWithContext(clientCtx context.Context, clientset kubernetes.Interface, serverDryRun bool) (error, error) {
 	// ...
@@ -34,7 +34,7 @@ func (c *CordonHelper) PatchOrReplaceWithContext(clientCtx context.Context, clie
 
 结构体里只有两个 feature gate 快照，判定分 PreFilter 和 Filter 两段。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodeunschedulable/node_unschedulable.go
 // NodeUnschedulable plugin filters nodes that set node.Spec.Unschedulable=true unless
 // the pod tolerates {key=node.kubernetes.io/unschedulable, effect:NoSchedule} taint.
@@ -91,18 +91,18 @@ func New(_ context.Context, _ runtime.Object, _ fwk.Handle, fts feature.Features
 }
 ```
 
-结构体里的两个布尔值是 feature gate 的快照，在 `New` 里通过 `feature.Features` 传入，运行期不再查询全局 gate：
+结构体里的两个布尔值（第 4–7 行）是 feature gate 的快照，在 `New`（第 49–54 行）里通过 `feature.Features` 传入，运行期不再查询全局 gate：
 
-- `InPlacePodVerticalScalingSchedulerPreemption`（1.37 Alpha，默认关）：原地扩容被推迟的 Pod 已经在节点上运行，节点被 cordon 不影响它扩容，所以 PreFilter 返回 `Skip`，Filter 也直接放行。上一篇讲过这类 Pod 是唯一带着 `nodeName` 进入调度周期的 Pod。
+- `InPlacePodVerticalScalingSchedulerPreemption`（1.37 Alpha，默认关）：原地扩容被推迟的 Pod 已经在节点上运行，节点被 cordon 不影响它扩容，所以 PreFilter 返回 `Skip`（第 18–20 行），Filter 也直接放行（第 26–28 行）。上一篇讲过这类 Pod 是唯一带着 `nodeName` 进入调度周期的 Pod。
 - `TaintTolerationComparisonOperators`（1.35 Alpha，默认关）：允许 toleration 使用 `Lt`/`Gt` 数值比较，这里只是透传给容忍判断函数，第 05 篇细讲。
 
-对普通 Pod，PreFilter 返回 `nil, nil`：既不缩小节点范围，也不 `Skip`。插件没有 CycleState，Filter 每次直接读 Node 对象。
+对普通 Pod，PreFilter 返回 `nil, nil`（第 21 行）：既不缩小节点范围，也不 `Skip`。插件没有 CycleState，Filter 每次直接读 Node 对象。
 
 判定只有三步：
 
-1. 节点没被 cordon，放行；
-2. 节点被 cordon 了，看 Pod 是否容忍一个构造出来的污点 `node.kubernetes.io/unschedulable:NoSchedule`，容忍就放行；
-3. 否则返回 `UnschedulableAndUnresolvable`，原因 `node(s) were unschedulable`。
+1. 节点没被 cordon，放行（第 31–33 行）；
+2. 节点被 cordon 了，看 Pod 是否容忍一个构造出来的污点 `node.kubernetes.io/unschedulable:NoSchedule`（第 37–40 行），容忍就放行；
+3. 否则返回 `UnschedulableAndUnresolvable`，原因 `node(s) were unschedulable`（第 41–43 行）。
 
 **驱逐节点上的 Pod 不会让节点取消 cordon，所以这个节点不会成为抢占候选。**
 
@@ -116,7 +116,7 @@ Filter 里那句「容忍一个构造出来的污点」还留下一个问题：c
 
 Filter 用「是否容忍某个污点」来决定是否忽略一个 spec 字段，这看起来有点绕。原因是 cordon 在集群里确实有两份表示。kube-controller-manager 里的 node-lifecycle-controller 会把 `spec.unschedulable` 镜像成一个污点：
 
-```go
+```go {linenos=inline}
 // pkg/controller/nodelifecycle/node_lifecycle_controller.go
 func (nc *Controller) doNoScheduleTaintingPass(ctx context.Context, nodeName string) error {
 	// ...
@@ -145,9 +145,9 @@ func (nc *Controller) doNoScheduleTaintingPass(ctx context.Context, nodeName str
 }
 ```
 
-这个函数把节点的状态统一翻译成 `NoSchedule` 污点：`Ready=False` 变成 `not-ready`，`MemoryPressure=True` 变成 `memory-pressure`，`spec.unschedulable=true` 变成 `unschedulable`。**这样做的好处是只需要一种机制（污点与容忍）就能表达「哪些 Pod 可以无视节点的某种状态」。** DaemonSet 控制器给它创建的每个 Pod 都加上了一组默认容忍，其中就有这一条：
+这个函数把节点的状态统一翻译成 `NoSchedule` 污点：`Ready=False` 变成 `not-ready`，`MemoryPressure=True` 变成 `memory-pressure`（第 6–15 行的映射），`spec.unschedulable=true` 变成 `unschedulable`（第 16–22 行）。**这样做的好处是只需要一种机制（污点与容忍）就能表达「哪些 Pod 可以无视节点的某种状态」。** DaemonSet 控制器给它创建的每个 Pod 都加上了一组默认容忍，其中就有这一条（第 2–6 行）：
 
-```go
+```go {linenos=inline}
 // pkg/controller/daemon/util/daemonset_util.go
 	v1helper.AddOrUpdateTolerationInPodSpec(spec, &v1.Toleration{
 		Key:      v1.TaintNodeUnschedulable,
@@ -178,7 +178,7 @@ func (nc *Controller) doNoScheduleTaintingPass(ctx context.Context, nodeName str
 
 被 `NodeUnschedulable` 拒绝的 Pod，要等到某个节点不再「不可调度」，或者自己补上容忍，才有希望。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodeunschedulable/node_unschedulable.go
 func (pl *NodeUnschedulable) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWithHint, error) {
 	return []fwk.ClusterEventWithHint{
@@ -193,13 +193,13 @@ func (pl *NodeUnschedulable) EventsToRegister(_ context.Context) ([]fwk.ClusterE
 }
 ```
 
-两个事件：节点新增或污点变化；Pod 自己的容忍发生变化。
+两个事件：节点新增或污点变化（第 5 行）；Pod 自己的容忍发生变化（第 10 行）。
 
 ### 4.1 uncordon 被翻译成 UpdateNodeTaint
 
 这里有一个容易漏掉的细节：插件注册的是 `UpdateNodeTaint`，而 uncordon 改的是 `spec.unschedulable`，不是污点。两者的连接点在调度器把 Node 更新翻译成事件的地方：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/events.go
 func extractNodeSpecUnschedulableChange(newNode *v1.Node, oldNode *v1.Node) fwk.ActionType {
 	if newNode.Spec.Unschedulable != oldNode.Spec.Unschedulable && !newNode.Spec.Unschedulable {
@@ -210,13 +210,13 @@ func extractNodeSpecUnschedulableChange(newNode *v1.Node, oldNode *v1.Node) fwk.
 }
 ```
 
-`spec.unschedulable` 从 `true` 变为 `false` 时，产生一个 `UpdateNodeTaint` 事件。**反方向（cordon）不产生事件**：节点变得更不可调度，不可能让任何等待中的 Pod 变得可调度，没必要唤醒谁。TODO 注释说明这是一个借用：没有专门的 ActionType，就复用了语义最接近的污点变化。
+`spec.unschedulable` 从 `true` 变为 `false` 时，产生一个 `UpdateNodeTaint` 事件（第 3–5 行）。**反方向（cordon）不产生事件**：节点变得更不可调度，不可能让任何等待中的 Pod 变得可调度，没必要唤醒谁。TODO 注释说明这是一个借用：没有专门的 ActionType，就复用了语义最接近的污点变化。
 
 ### 4.2 hint 函数
 
 事件进来了，hint 要回答的是：这一次变化，有没有让这个 Pod 从「不行」变成「行」。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodeunschedulable/node_unschedulable.go
 func (pl *NodeUnschedulable) isSchedulableAfterNodeChange(logger klog.Logger, pod *v1.Pod, oldObj, newObj interface{}) (fwk.QueueingHint, error) {
 	originalNode, modifiedNode, err := util.As[*v1.Node](oldObj, newObj)
@@ -238,13 +238,13 @@ func (pl *NodeUnschedulable) isSchedulableAfterNodeChange(logger klog.Logger, po
 }
 ```
 
-**只有两种情况返回 `Queue`：节点从 cordon 变为 uncordon；新增了一个没被 cordon 的节点。** 其他的污点变化（比如有人给节点加了别的污点）返回 `QueueSkip`。hint 只看事件里的节点，不看 Pod 被哪个节点拒绝过，所以集群里任何一个节点 uncordon，所有被 `NodeUnschedulable` 拒绝过的 Pod 都会被唤醒一次。
+**只有两种情况返回 `Queue`：节点从 cordon 变为 uncordon；新增了一个没被 cordon 的节点**（第 11–15 行的两个条件）。其他的污点变化（比如有人给节点加了别的污点）返回 `QueueSkip`。hint 只看事件里的节点，不看 Pod 被哪个节点拒绝过，所以集群里任何一个节点 uncordon，所有被 `NodeUnschedulable` 拒绝过的 Pod 都会被唤醒一次。
 
 `util.As` 转换失败时返回 `Queue` 加错误，这是所有 hint 函数的惯例：拿不准就唤醒，宁可多跑一次调度周期，也不让 Pod 卡死。
 
 Pod 容忍变化的 hint：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodeunschedulable/node_unschedulable.go
 func (pl *NodeUnschedulable) isSchedulableAfterTargetPodTolerationChange(logger klog.Logger, pod *v1.Pod, oldObj, newObj interface{}) (fwk.QueueingHint, error) {
 	_, modifiedPod, err := util.As[*v1.Pod](oldObj, newObj)
@@ -269,7 +269,7 @@ func (pl *NodeUnschedulable) isSchedulableAfterTargetPodTolerationChange(logger 
 }
 ```
 
-注释里的「Taint can be added, but can't be modified nor removed」说的其实是 toleration（API 校验 `validateOnlyAddedTolerations` 只允许给 Pod 追加容忍）。因为只能追加，事件提取函数 `extractPodTolerationChange` 只比较新旧容忍的数量；hint 也只需要检查新 Pod 是否容忍，不必比较旧 Pod：**旧 Pod 如果已经容忍，根本不会被这个插件拒绝。**
+注释里的「Taint can be added, but can't be modified nor removed」说的其实是 toleration（API 校验 `validateOnlyAddedTolerations` 只允许给 Pod 追加容忍）。因为只能追加，事件提取函数 `extractPodTolerationChange` 只比较新旧容忍的数量；hint 也只需要检查新 Pod 是否容忍（第 12–19 行），不必比较旧 Pod：**旧 Pod 如果已经容忍，根本不会被这个插件拒绝。**
 
 ### 4.3 uncordon 之后的两次唤醒
 

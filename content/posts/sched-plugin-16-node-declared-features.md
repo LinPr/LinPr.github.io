@@ -41,7 +41,7 @@ Kubernetes 的版本偏差策略允许 kubelet 比 kube-apiserver 落后若干�
 
 推断和发现的逻辑都不在调度器里，而在 `k8s.io/component-helpers/nodedeclaredfeatures`。每个特性实现一个接口：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/component-helpers/nodedeclaredfeatures/types/types.go
 type Feature interface {
 	// Name returns the feature's well-known name.
@@ -67,11 +67,11 @@ type Feature interface {
 }
 ```
 
-一个特性同时回答两侧的问题：节点侧的 `Discover`（我有没有），Pod 侧的 `InferForScheduling`/`InferForUpdate`（你要不要）。两侧逻辑写在同一个文件里，由同一个特性的作者维护，不会出现「kubelet 声明的名字和调度器检查的名字对不上」。
+接口一共六个方法（第 3–22 行）。一个特性同时回答两侧的问题：节点侧的 `Discover`（我有没有），Pod 侧的 `InferForScheduling`/`InferForUpdate`（你要不要）。两侧逻辑写在同一个文件里，由同一个特性的作者维护，不会出现「kubelet 声明的名字和调度器检查的名字对不上」。
 
 以 `RestartAllContainersOnContainerExits` 为例：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/component-helpers/nodedeclaredfeatures/features/restartallcontainers/restart_all_containers.go
 func (f *restartAllContainersFeature) Discover(cfg *types.NodeConfiguration) bool {
 	return cfg.FeatureGates.Enabled(RestartAllContainersOnContainerExits)
@@ -101,15 +101,15 @@ func (f *restartAllContainersFeature) InferForUpdate(oldPodInfo, newPodInfo *typ
 }
 ```
 
-节点开了这个 gate 就声明；Pod 只要有一条容器重启规则用了 `RestartAllContainers` 就需要它。字段不可变，所以更新时永远不需要。
+节点开了这个 gate 就声明（`Discover`，第 2–4 行）；Pod 只要有一个容器或 init 容器的 `RestartPolicyRules` 里出现 `rule.Action == v1.ContainerRestartRuleActionRestartAllContainers`，就算需要它（`InferForScheduling`，第 6–22 行）。字段不可变，所以更新时永远不需要（`InferForUpdate`，第 24–27 行）。
 
 有的特性的 `Discover` 还依赖容器运行时，比如 `UserNamespacesHostNetworkSupport` 要求 gate 开启并且 CRI 报告支持「user namespace + host network」；它的 `InferForScheduling` 检查 `hostNetwork: true` 且 `hostUsers: false`。
 
 ### 2.2 当前注册表
 
-注册表是代码里写死的切片：
+注册表是代码里写死的切片，当前十项（第 3–12 行）：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/component-helpers/nodedeclaredfeatures/features/registry.go
 var AllFeatures = []types.Feature{
 	restartallcontainers.Feature,
@@ -144,9 +144,9 @@ var AllFeatures = []types.Feature{
 
 ### 2.3 从名字到位图
 
-`Framework` 在构造时把注册表按名字排序，每个特性的下标就是它在位图中的位置：
+`Framework` 在构造时把注册表按名字排序（第 4–6 行），每个特性的下标就是它在位图中的位置：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/component-helpers/nodedeclaredfeatures/framework.go
 func New(registry []types.Feature) *Framework {
 	// Ensure the features are sorted.
@@ -166,7 +166,7 @@ func New(registry []types.Feature) *Framework {
 
 `FeatureSet` 就是一个 `[]uint64` 位图，子集判断是逐字的按位运算：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/component-helpers/nodedeclaredfeatures/bitmap.go
 func (b bitmap) IsSubset(other bitmap) (bool, error) {
 	if b.size != other.size {
@@ -181,7 +181,7 @@ func (b bitmap) IsSubset(other bitmap) (bool, error) {
 }
 ```
 
-`b &^ other`（b 与非 other）留下「b 有而 other 没有」的位，全为 0 即是子集。当前 10 个特性只占一个 `uint64` 的低 10 位，一次 Filter 的判断就是一次按位运算。
+`b &^ other`（b 与非 other）留下「b 有而 other 没有」的位（第 6–10 行），全为 0 即是子集；两边长度不同时先报错（第 3–5 行）。当前十项特性只占一个 `uint64` 的低 10 位，一次 Filter 的判断就是一次按位运算。
 
 名字列表到位图的映射在 `mapSorted` 中，它假定输入是有序的，用双指针一次扫描完成。有两个变体：`MustMapSorted` 遇到未知名字就 panic，`TryMap` 则跳过未知名字。
 
@@ -193,7 +193,7 @@ func (b bitmap) IsSubset(other bitmap) (bool, error) {
 
 kubelet 在初始化时（`NewMainKubelet`）计算一次，之后不再变化：
 
-```go
+```go {linenos=inline}
 // pkg/kubelet/kubelet.go
 	if utilfeature.DefaultFeatureGate.Enabled(features.NodeDeclaredFeatures) {
 		if status, err := klet.containerRuntime.Status(ctx); err == nil && status != nil {
@@ -215,11 +215,11 @@ kubelet 在初始化时（`NewMainKubelet`）计算一次，之后不再变化�
 
 `discoverNodeDeclaredFeatures` 把 kubelet 的 feature gate、CRI 报告的运行时能力（目前是 `UserNamespacesHostNetwork` 和 `MountOptions` 两项）和 kubelet 版本打包成 `NodeConfiguration`，交给 `DiscoverNodeFeatures`。结果写进节点状态（`kubelet_node_status.go` 中 `node.Status.DeclaredFeatures = kl.nodeDeclaredFeatures`）。
 
-kubelet 用 `MustMapSorted` 而不是 `TryMap`：它声明的名字本来就来自同一个注册表，出现未知名字说明程序有 bug，应该立刻暴露。
+kubelet 用 `MustMapSorted` 而不是 `TryMap`（第 16 行）：它声明的名字本来就来自同一个注册表，出现未知名字说明程序有 bug，应该立刻暴露。
 
 API 字段的定义是一个 `listType=atomic` 的字符串列表：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/api/core/v1/types.go
 	// DeclaredFeatures represents the features related to feature gates that are declared by the node.
 	// +featureGate=NodeDeclaredFeatures
@@ -238,7 +238,7 @@ API 字段的定义是一个 `listType=atomic` 的字符串列表：
 
 调度器缓存在节点对象写入 `NodeInfo` 时就完成转换，不需要每个调度周期重复：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/types.go
 func (n *NodeInfo) SetNode(node *v1.Node) {
 	n.node = node
@@ -253,13 +253,13 @@ func (n *NodeInfo) SetNode(node *v1.Node) {
 }
 ```
 
-这里用 `TryMap`。kubelet 有可能比调度器新：版本偏差策略允许 kube-scheduler 比 apiserver 落后一个小版本，而 kubelet 不超过 apiserver，于是在控制面升级过程中，可能出现 kubelet 已是新版本、调度器还是旧版本的窗口。新 kubelet 声明了旧调度器不认识的特性名，旧调度器也不会推断出 Pod 需要这个特性（它的注册表里没有），丢弃它不会造成误判。
+这里用 `TryMap`（第 9 行）。kubelet 有可能比调度器新：版本偏差策略允许 kube-scheduler 比 apiserver 落后一个小版本，而 kubelet 不超过 apiserver，于是在控制面升级过程中，可能出现 kubelet 已是新版本、调度器还是旧版本的窗口。新 kubelet 声明了旧调度器不认识的特性名，旧调度器也不会推断出 Pod 需要这个特性（它的注册表里没有），丢弃它不会造成误判。
 
 ### 4.2 结构体与 `New`
 
 插件本身很薄，只持有框架、版本和两个开关：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodedeclaredfeatures/nodedeclaredfeatures.go
 type NodeDeclaredFeatures struct {
 	ndfFramework                                       *ndf.Framework
@@ -282,13 +282,13 @@ func New(ctx context.Context, plArgs runtime.Object, fh fwk.Handle, fts feature.
 }
 ```
 
-gate 关闭时返回一个空壳插件（`enabled` 为 false），所有扩展点直接放行或 `Skip`，`EventsToRegister` 返回空。这样即使用户在自定义配置里显式启用了它，也不会出错。`version` 是调度器自身的版本，下一节会看到它的作用。
+gate 关闭时直接返回 `&NodeDeclaredFeatures{}`（第 12 行），`enabled` 为 false，所有扩展点直接放行或 `Skip`，`EventsToRegister` 返回空。这样即使用户在自定义配置里显式启用了它，也不会出错。`version` 是调度器自身的版本，下一节会看到它的作用。
 
 ### 4.3 PreFilter
 
 PreFilter 把 Pod spec 推断成一张需求位图，写进 CycleState：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodedeclaredfeatures/nodedeclaredfeatures.go
 func (pl *NodeDeclaredFeatures) PreFilter(ctx context.Context, cycleState fwk.CycleState, pod *v1.Pod, nodes []fwk.NodeInfo) (*fwk.PreFilterResult, *fwk.Status) {
 	if pl.enableInPlacePodVerticalScalingSchedulerPreemption && resource.IsPodResizeDeferred(pod) {
@@ -311,13 +311,13 @@ func (pl *NodeDeclaredFeatures) PreFilter(ctx context.Context, cycleState fwk.Cy
 }
 ```
 
-三个 `Skip` 出口：原地扩容被推迟的已绑定 Pod（它不换节点，见[第 17 篇](/posts/sched-plugin-17-deferred-pod-scheduling/)）；插件未启用；Pod 不需要任何特性。第三个是绝大多数 Pod 的路径，对它们来说插件的全部开销就是十次 `InferForScheduling` 调用，每次只是遍历容器或卷列表。
+三个 `Skip` 出口：原地扩容被推迟的已绑定 Pod（`resource.IsPodResizeDeferred`，第 3–5 行；它不换节点，见[第 17 篇](/posts/sched-plugin-17-deferred-pod-scheduling/)）；插件未启用（第 6–8 行）；Pod 不需要任何特性（`reqs.IsEmpty()`，第 15–17 行）。第三个是绝大多数 Pod 的路径，对它们来说插件的全部开销就是十次 `InferForScheduling` 调用，每次只是遍历容器或卷列表。
 
 推断时只传 `Spec`，`Status` 为 nil：调度阶段的 Pod 还没有运行时状态。
 
 `preFilterState` 只有一个位图，`Clone` 直接返回自身：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodedeclaredfeatures/nodedeclaredfeatures.go
 type preFilterState struct {
 	reqs ndf.FeatureSet
@@ -335,7 +335,7 @@ func (s *preFilterState) Clone() fwk.StateData {
 
 轮到 Filter 时，Pod 的需求已经算好，每个候选节点只剩一次子集判断：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodedeclaredfeatures/nodedeclaredfeatures.go
 func (pl *NodeDeclaredFeatures) Filter(ctx context.Context, cycleState fwk.CycleState, pod *v1.Pod, nodeInfo fwk.NodeInfo) *fwk.Status {
 	if pl.enableInPlacePodVerticalScalingSchedulerPreemption && resource.IsPodResizeDeferred(pod) {
@@ -362,15 +362,15 @@ func (pl *NodeDeclaredFeatures) Filter(ctx context.Context, cycleState fwk.Cycle
 
 注释说明了一个取舍：库里的 `MatchNodeFeatureSet` 在不匹配时会计算差集并把位图反解成名字列表，用于生成可读的错误信息（kubelet 和 apiserver 准入就用它）。
 
-Filter 在每个候选节点上都要跑，几千个节点各算一次差集、分配一个字符串切片是不必要的开销，所以只做 `IsSubset`，原因字符串是固定的 `node(s) didn't match Pod's required features`。代价是调度失败事件里看不出具体缺哪个特性，排查时需要自己比对 Pod spec 和节点的 `status.declaredFeatures`。
+Filter 在每个候选节点上都要跑，几千个节点各算一次差集、分配一个字符串切片是不必要的开销，所以只做 `IsSubset`（第 14 行），原因字符串是固定的 `node(s) didn't match Pod's required features`。代价是调度失败事件里看不出具体缺哪个特性，排查时需要自己比对 Pod spec 和节点的 `status.declaredFeatures`。
 
-失败返回 `UnschedulableAndUnresolvable`：节点会不会某个功能取决于 kubelet 版本和配置，驱逐 Pod 改变不了它，抢占不应该考虑这些节点。
+失败返回 `UnschedulableAndUnresolvable`（第 18–20 行）：节点会不会某个功能取决于 kubelet 版本和配置，驱逐 Pod 改变不了它，抢占不应该考虑这些节点。
 
 ### 4.5 MaxVersion：特性「毕业」之后
 
 版本比较出现在两处，先是推断侧：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/component-helpers/nodedeclaredfeatures/framework.go
 func (f *Framework) InferForPodScheduling(podInfo *types.PodInfo, targetVersion *version.Version) (FeatureSet, error) {
 	if targetVersion == nil {
@@ -392,7 +392,7 @@ func (f *Framework) InferForPodScheduling(podInfo *types.PodInfo, targetVersion 
 
 发现侧对称地做同一件事：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/component-helpers/nodedeclaredfeatures/framework.go
 func (f *Framework) DiscoverNodeFeatures(cfg *types.NodeConfiguration) []string {
 	var enabledFeatures []string
@@ -410,8 +410,8 @@ func (f *Framework) DiscoverNodeFeatures(cfg *types.NodeConfiguration) []string 
 
 一个特性 GA 之后，最终所有受支持版本的 kubelet 都具备它，再声明、再检查就没有意义了。`MaxVersion` 就是这个「毕业版本」：
 
-- 推断侧用**调度器的版本**比较：调度器版本超过 `MaxVersion`，说明按版本偏差策略，所有合法的 kubelet 都已经支持，不再把它列为需求；
-- 发现侧用 **kubelet 的版本**比较：kubelet 超过 `MaxVersion` 后不再声明它，`declaredFeatures` 不会无限增长。
+- 推断侧用**调度器的版本**比较：调度器版本超过 `MaxVersion`，说明按版本偏差策略，所有合法的 kubelet 都已经支持，不再把它列为需求（`InferForPodScheduling`，第 8–11 行）；
+- 发现侧用 **kubelet 的版本**比较：kubelet 超过 `MaxVersion` 后不再声明它（`DiscoverNodeFeatures`，第 6–8 行），`declaredFeatures` 不会无限增长。
 
 两侧必须同时停止，否则会出现「调度器还在要求、新 kubelet 已经不声明」的情况。单元测试 `Feature not required, version > MaxVersion` 覆盖了推断侧：调度器版本 1.34.0、特性 `MaxVersion` 1.33.0 时，即使 `InferForScheduling` 返回 true，PreFilter 也返回 `Skip`。
 
@@ -421,7 +421,7 @@ func (f *Framework) DiscoverNodeFeatures(cfg *types.NodeConfiguration) []string 
 
 与前两篇不同，这个插件的签名片段直接来自推断结果：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodedeclaredfeatures/nodedeclaredfeatures.go
 func (pl *NodeDeclaredFeatures) SignPod(ctx context.Context, pod *v1.Pod) ([]fwk.SignFragment, *fwk.Status) {
 	podInfo := &ndf.PodInfo{Spec: &pod.Spec}
@@ -441,9 +441,9 @@ func (pl *NodeDeclaredFeatures) SignPod(ctx context.Context, pod *v1.Pod) ([]fwk
 
 ## 五、EventsToRegister 与 QueueingHint
 
-事件注册只有两条，分别对应需求侧和节点侧各一种变化：
+事件注册只有两条（第 2–11 行），分别对应需求侧和节点侧各一种变化：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodedeclaredfeatures/nodedeclaredfeatures.go
 	return []fwk.ClusterEventWithHint{
 		{
@@ -457,9 +457,9 @@ func (pl *NodeDeclaredFeatures) SignPod(ctx context.Context, pod *v1.Pod) ([]fwk
 	}, nil
 ```
 
-`UpdateNodeDeclaredFeature` 是专门为这个插件新增的节点事件类型。调度器的事件处理器在 gate 开启时比较新旧节点的 `declaredFeatures`：
+`UpdateNodeDeclaredFeature` 是专门为这个插件新增的节点事件类型。调度器的事件处理器在 gate 开启时比较新旧节点的 `declaredFeatures`（第 4–6 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/events.go
 func extractNodeFeaturesChange(newNode *v1.Node, oldNode *v1.Node) fwk.ActionType {
 	// DeclaredFeatures is maintained in a sorted order, so slice comparison is safe.
@@ -485,7 +485,7 @@ hint 的判断都很直接：
 
 kubelet 注册了一个 `declaredFeaturesAdmitHandler`，Pod 到达节点时用自己算出的位图再检查一次：
 
-```go
+```go {linenos=inline}
 // pkg/kubelet/lifecycle/handlers.go
 func (c *declaredFeaturesAdmitHandler) Admit(_ context.Context, attrs *PodAdmitAttributes) PodAdmitResult {
 	pod := attrs.Pod
@@ -507,13 +507,13 @@ func (c *declaredFeaturesAdmitHandler) Admit(_ context.Context, attrs *PodAdmitA
 }
 ```
 
-这道检查兜住了绕过调度器的路径：直接写 `spec.nodeName` 的 Pod、静态 Pod，以及使用不带此插件的第三方调度器。被拒绝的 Pod 会被 kubelet 置为 `Failed`，原因 `PodFeatureUnsupported`，这里用的是会计算差集的 `MatchNodeFeatureSet`，消息里列出缺少的特性名。
+这道检查兜住了绕过调度器的路径：直接写 `spec.nodeName` 的 Pod、静态 Pod，以及使用不带此插件的第三方调度器。被拒绝的 Pod 会被 kubelet 置为 `Failed`，原因 `PodFeatureUnsupported`，这里用的是会计算差集的 `MatchNodeFeatureSet`（第 8 行），消息里列出缺少的特性名。
 
 ### 6.2 apiserver 准入：Pod 更新
 
 原地扩缩容这类特性在调度时不需要，在运行中修改时才需要。负责这一环的是 apiserver 的准入插件 `NodeDeclaredFeatureValidator`，它在默认开启的准入插件列表里，只在 gate 开启时生效：
 
-```go
+```go {linenos=inline}
 // plugin/pkg/admission/nodedeclaredfeatures/admission.go
 func (p *Plugin) validatePod(a admission.Attributes) error {
 	if a.GetOperation() != admission.Update {
@@ -541,7 +541,7 @@ func (p *Plugin) validatePod(a admission.Attributes) error {
 }
 ```
 
-只处理已绑定 Pod 的 spec 更新和 `resize` 子资源，用 `generation` 是否变化快速跳过 status 更新。`validatePodUpdate` 调用 `InferForPodUpdate(old, new)`，从 node lister 取出 Pod 所在节点做 `MatchNode`，不满足就返回 `Forbidden`：`pod update requires features ... which are not available on node ...`。这样一个跑在旧节点上的 Pod 发起 Pod 级资源的原地扩容，请求在 API 层就被拒绝，而不是写进去之后 kubelet 处理不了。
+只处理已绑定 Pod 的 spec 更新和 `resize` 子资源（第 9–17 行），用 `generation` 是否变化快速跳过 status 更新（第 19–22 行）。`validatePodUpdate` 调用 `InferForPodUpdate(oldPodInfo, newPodInfo, p.version)`，从 node lister 取出 Pod 所在节点做 `MatchNode`，不满足就返回 `Forbidden`：`pod update requires features ... which are not available on node ...`。这样一个跑在旧节点上的 Pod 发起 Pod 级资源的原地扩容，请求在 API 层就被拒绝，而不是写进去之后 kubelet 处理不了。
 
 kubelet 收到 Pod 更新时也会做一次同样的推断（`HandlePodUpdates` 中），不满足时只记录一个 `FailedNodeDeclaredFeaturesCheck` 事件，作为准入插件之外的可观测性补充。
 

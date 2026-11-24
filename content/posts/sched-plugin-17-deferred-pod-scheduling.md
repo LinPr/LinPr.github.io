@@ -21,7 +21,7 @@ description: "原地扩容放不下时会被 kubelet 标记为 Deferred，新 ga
 
 原地扩缩容允许直接修改运行中 Pod 的 `resources`，不用重建 Pod。kubelet 收到修改后先做准入：节点剩余资源够，就分配并让容器运行时调整 cgroup；不够，就把这次 resize 标记为**推迟**：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/api/core/v1/types.go
 	// PodReasonDeferred reason in PodResizePending pod condition indicates the proposed resize is feasible in
 	// theory (it fits on this node) but is not possible right now.
@@ -32,13 +32,13 @@ description: "原地扩容放不下时会被 kubelet 标记为 Deferred，新 ga
 	PodReasonInfeasible = "Infeasible"
 ```
 
-`Infeasible` 是节点总容量都放不下，再等也没用；`Deferred` 是「理论上放得下，但现在被其它 Pod 占着」。被推迟的 resize 会留在 kubelet 的 pending 列表里，等节点上有 Pod 退出、资源被释放时重试。
+`Infeasible`（第 8 行）是节点总容量都放不下，再等也没用；`Deferred`（第 4 行）是「理论上放得下，但现在被其它 Pod 占着」。被推迟的 resize 会留在 kubelet 的 pending 列表里，等节点上有 Pod 退出、资源被释放时重试。
 
 问题在于：资源可能永远不会被释放。节点上的其它 Pod 都在正常运行，没有理由退出。一个高优先级的数据库 Pod 想把内存从 8Gi 扩到 16Gi，节点上挤满了低优先级的批处理任务，它就会一直卡在 `Deferred`。
 
 kubelet 本身有一个抢占机制，但只服务于关键 Pod（critical pod）的准入，而且只看本节点。KEP-5836 的选择是让调度器来做这件事：调度器本来就有完整的抢占实现（优先级比较、PDB、最少驱逐），把 Deferred 的 Pod 当作「一个只能放在当前节点上、需要额外资源的 Pod」送进调度周期，资源不足时自然会触发 `DefaultPreemption`。gate 开启后，kubelet 侧明确放弃了 resize 场景下的抢占：
 
-```go
+```go {linenos=inline}
 // pkg/kubelet/preemption/preemption.go
 	if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScalingSchedulerPreemption) {
 		if operation == lifecycle.ResizeOperation {
@@ -50,9 +50,9 @@ kubelet 本身有一个抢占机制，但只服务于关键 Pod（critical pod�
 	}
 ```
 
-判断一个 Pod 是否处于这种状态，全系统用的都是同一个辅助函数：
+判断一个 Pod 是否处于这种状态，全系统用的都是同一个辅助函数（第 2–9 行）：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/component-helpers/resource/helpers.go
 func IsPodResizeDeferred(pod *v1.Pod) bool {
 	for _, condition := range pod.Status.Conditions {
@@ -70,7 +70,7 @@ Pod 卡在 `Deferred`，调度器要接手。第一步是让它重新回到队�
 
 在看插件之前，先看已绑定的 Pod 是怎么回到调度队列的。正常情况下调度器只把**未绑定**的 Pod 放进队列，已绑定的 Pod 只进缓存。gate 开启后，事件处理器多了几条分支：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/eventhandlers.go
 	if assignedPod(oldPod) {
 		if utilfeature.DefaultFeatureGate.Enabled(features.InPlacePodVerticalScalingSchedulerPreemption) && responsibleForPod(newPod, sched.Profiles) {
@@ -97,11 +97,11 @@ Pod 卡在 `Deferred`，调度器要接手。第一步是让它重新回到队�
 	}
 ```
 
-三个状态转换对应三个动作：进入 Deferred 时入队，离开 Deferred（kubelet 完成了 resize，或者用户撤回了修改）时出队，持续 Deferred 期间 spec 再变（比如用户把目标值又改大了）时更新队列里的副本。`addPod`（调度器重启后 informer 首次同步）和 `deletePod` 也有对应处理。注意 `updateAssignedPodInCache` 照常执行：这个 Pod 同时存在于缓存和队列中，这一点后面会再提到。
+三个状态转换对应三个动作：进入 Deferred 时入队（第 7–11 行），离开 Deferred（kubelet 完成了 resize，或者用户撤回了修改）时出队（第 12–16 行），持续 Deferred 期间 spec 再变（比如用户把目标值又改大了）时更新队列里的副本（第 17–20 行）。`addPod`（调度器重启后 informer 首次同步）和 `deletePod` 也有对应处理。注意 `updateAssignedPodInCache` 照常执行（第 23 行）：这个 Pod 同时存在于缓存和队列中，这一点后面会再提到。
 
-队列侧，Deferred 的 Pod 被强制当作单个 Pod 处理，即使它属于某个 PodGroup：
+队列侧，Deferred 的 Pod 被强制当作单个 Pod 处理（第 7–9 行），即使它属于某个 PodGroup：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
 func (p *PriorityQueue) isPodGroupMember(pod *v1.Pod) bool {
 	if p.isInPlacePodVerticalScalingSchedulerPreemptionEnabled {
@@ -116,9 +116,9 @@ func (p *PriorityQueue) isPodGroupMember(pod *v1.Pod) bool {
 }
 ```
 
-失败处理侧，`handleSchedulingFailure` 原本有一个保护：如果 informer 里的 Pod 已经有了 `spec.nodeName`（比如 extender 绑定超时但实际成功了），就不再放回队列。Deferred 的 Pod 天生有 `nodeName`，所以这个保护要绕开；同时它也不应该被设置 `nominatedNodeName`、不应该改 `PodScheduled` 条件，函数在入队之后直接返回：
+失败处理侧，`handleSchedulingFailure` 原本有一个保护：如果 informer 里的 Pod 已经有了 `spec.nodeName`（比如 extender 绑定超时但实际成功了），就不再放回队列。Deferred 的 Pod 天生有 `nodeName`，所以这个保护要绕开；同时它也不应该被设置 `nominatedNodeName`、不应该改 `PodScheduled` 条件，函数在入队之后直接返回（第 5–7 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/schedule_one.go
 	// Deferred resize pods are already bound to and running on their assigned node. The scheduler only
 	// evaluates resize feasibility and executes preemption; Kubelet actuates the resize in-place.
@@ -134,7 +134,7 @@ Pod 就这样回到了队列。接下来的问题是：它走一遍调度周期�
 
 调度周期开始后，Deferred 的 Pod 在 PreFilter 阶段被几乎所有插件 `Skip`。`schedule_one_test.go` 中的 `TestScheduler_DeferredResizePluginSkipping` 把这个分工写成了断言：注册十几个 Filter 插件，跑一次 `SchedulePod`，检查 `state.GetSkipFilterPlugins()`：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/schedule_one_test.go
 	// Irrelevant plugins should be skipped
 	irrelevant := []string{
@@ -171,7 +171,7 @@ Deferred Pod 的资源判断有一个特殊之处：它已经在节点上了，�
 
 `helper/resource_fit.go` 为此加了一个调整函数：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/helper/resource_fit.go
 func adjustDeltasToAccomodateCacheDiscrepancy(opts ResourceRequestsOptions, podRequest *framework.Resource, nodeInfo fwk.NodeInfo, pod *v1.Pod) (int64, int64, int64, map[v1.ResourceName]int64) {
 	deltaMilliCPU := podRequest.MilliCPU
@@ -198,7 +198,7 @@ func adjustDeltasToAccomodateCacheDiscrepancy(opts ResourceRequestsOptions, podR
 }
 ```
 
-`delta = max(0, 队列中 Pod 的请求 − 缓存中同一 Pod 的值)`。缓存与队列中的 Pod 同步时 delta 为 0，判断式 `delta > allocatable − requested` 实际上变成了「节点是否已经超卖」。函数名里的 `CacheDiscrepancy` 说明了它的另一个用途：队列里的 Pod 对象与缓存里的可能有时间差（用户刚又改了一次 spec），delta 吸收这个差值。
+`delta = max(0, 队列中 Pod 的请求 − 缓存中同一 Pod 的值)`（第 22 行）。缓存与队列中的 Pod 同步时 delta 为 0，判断式 `delta > allocatable − requested` 实际上变成了「节点是否已经超卖」。函数名里的 `CacheDiscrepancy` 说明了它的另一个用途：队列里的 Pod 对象与缓存里的可能有时间差（用户刚又改了一次 spec），delta 吸收这个差值。
 
 用集成测试 `TestDeferredResizePodPreemption` 的第一个用例算一遍。输入：
 
@@ -222,7 +222,7 @@ func adjustDeltasToAccomodateCacheDiscrepancy(opts ResourceRequestsOptions, podR
 
 PreFilter 里没有可做的准备，只有一次开关判断：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/deferredpodscheduling/deferred_pod_scheduling.go
 func (pl *DeferredPodScheduling) PreFilter(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodes []fwk.NodeInfo) (*fwk.PreFilterResult, *fwk.Status) {
 	if !pl.enableInPlacePodVerticalScalingSchedulerPreemption || !resource.IsPodResizeDeferred(pod) {
@@ -232,13 +232,13 @@ func (pl *DeferredPodScheduling) PreFilter(ctx context.Context, state fwk.CycleS
 }
 ```
 
-与其它插件正好相反：普通 Pod `Skip`，Deferred Pod 才参与。没有写 CycleState，`PreFilterExtensions` 返回 nil。
+与其它插件正好相反：普通 Pod `Skip`（第 3–5 行），Deferred Pod 才参与。没有写 CycleState，`PreFilterExtensions` 返回 nil。
 
 ### 5.2 Filter
 
 Filter 只做两件事：确认当前节点是它绑定的那个，再确认这个节点没有禁止 resize 抢占。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/deferredpodscheduling/deferred_pod_scheduling.go
 func (pl *DeferredPodScheduling) Filter(ctx context.Context, _ fwk.CycleState, pod *v1.Pod, nodeInfo fwk.NodeInfo) *fwk.Status {
 	if !pl.enableInPlacePodVerticalScalingSchedulerPreemption || !resource.IsPodResizeDeferred(pod) {
@@ -261,9 +261,9 @@ func (pl *DeferredPodScheduling) Filter(ctx context.Context, _ fwk.CycleState, p
 }
 ```
 
-两个检查。第一个与 `NodeName` 插件重复，作为防御。第二个读的是 KEP-5836 在 Node 上新增的 spec 字段：
+Filter 的两个检查（第 12–14 行、第 16–18 行）。第一个与 `NodeName` 插件重复，作为防御。第二个读的是 KEP-5836 在 Node 上新增的 spec 字段：
 
-```go
+```go {linenos=inline}
 // pkg/apis/core/types.go
 	// PodPreemptionPolicy controls the node-level preemption behaviors for pods on this node.
 	// This is an alpha field and requires enabling the InPlacePodVerticalScalingSchedulerPreemption feature gate.
@@ -281,7 +281,7 @@ type NodePodPreemptionPolicy struct {
 }
 ```
 
-`DisableResizePreemption` 是一个「所有者」列表而不是布尔值。多个组件（运维工具、节点维护控制器、某个 operator）可能各自出于不同原因要求临时禁止这个节点上的 resize 抢占，每个组件把自己的名字加进去、用完再删掉，列表为空时才恢复。用布尔值的话，两个组件先后设置、其中一个提前清除，就会覆盖另一个的意图。
+`DisableResizePreemption`（第 14 行）是一个「所有者」列表而不是布尔值。多个组件（运维工具、节点维护控制器、某个 operator）可能各自出于不同原因要求临时禁止这个节点上的 resize 抢占，每个组件把自己的名字加进去、用完再删掉，列表为空时才恢复。用布尔值的话，两个组件先后设置、其中一个提前清除，就会覆盖另一个的意图。
 
 节点禁止了 resize 抢占时，Filter 返回 `UnschedulableAndUnresolvable`，抢占不会把这个节点列为候选——而这是 Deferred Pod 唯一可能的节点，所以抢占直接放弃，Pod 留在队列里等待。
 
@@ -291,7 +291,7 @@ apiserver 侧，`nodeStrategy` 在 gate 关闭且旧对象没有用到这个字�
 
 `default_plugins.go` 中插入它的函数带着一段注释：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/apis/config/v1/default_plugins.go
 // applyDeferredPodScheduling inserts the DeferredPodScheduling plugin.
 // It must be placed before NodeResourcesFit so that if a node has preemption disabled,
@@ -310,7 +310,7 @@ func applyDeferredPodScheduling(config *v1.Plugins) {
 }
 ```
 
-`slices.Insert(..., idx, ...)` 把它放在 `NodeResourcesFit` 原来的位置上，`NodeResourcesFit` 及之后的插件后移一位，即紧挨在 `NodeResourcesFit` 之前。顺序之所以重要，要从两个机制说起：
+`slices.Insert(..., idx, ...)`（第 12 行）把它放在 `NodeResourcesFit` 原来的位置上，`NodeResourcesFit` 及之后的插件后移一位，即紧挨在 `NodeResourcesFit` 之前。顺序之所以重要，要从两个机制说起：
 
 1. `RunFilterPlugins` 遇到第一个失败的插件就返回，并把这个插件名记进 Status；
 2. 失败的 Pod 进入 unschedulable 队列后，只有**记录在案的失败插件**注册的事件和 QueueingHint 才能把它唤醒。
@@ -327,7 +327,7 @@ func applyDeferredPodScheduling(config *v1.Plugins) {
 
 Permit 的行为在这个插件里最反直觉：Filter 都通过了，它却返回失败。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/deferredpodscheduling/deferred_pod_scheduling.go
 // Permit invoked at the permit extension point.
 // It rejects deferred resize pods that successfully fit in order to keep them in the Unschedulable queue until
@@ -342,7 +342,7 @@ func (pl *DeferredPodScheduling) Permit(ctx context.Context, state fwk.CycleStat
 
 Filter 全部通过，意味着节点现在放得下扩容后的 Pod。这个 Pod 已经绑定了，不需要也不能再 Bind。调度器在这里的使命已经完成，剩下的事是 kubelet 重试 pending resize。
 
-Permit 返回 `UnschedulableAndUnresolvable`，让 Pod 以「被 DeferredPodScheduling 拒绝」的身份回到 unschedulable 队列，原因字符串说明它在等什么。集成测试把这称为 parking strategy：Pod 停在队列里，`nominatedNodeName` 保持为空，`PodScheduled` 条件保持 True。等 kubelet 完成 resize、清掉 `Deferred` 条件，事件处理器的 `oldDeferred && !newDeferred` 分支把它从队列里删除。
+Permit 返回 `UnschedulableAndUnresolvable`（第 9 行），让 Pod 以「被 DeferredPodScheduling 拒绝」的身份回到 unschedulable 队列，原因字符串说明它在等什么。集成测试把这称为 parking strategy：Pod 停在队列里，`nominatedNodeName` 保持为空，`PodScheduled` 条件保持 True。等 kubelet 完成 resize、清掉 `Deferred` 条件，事件处理器的 `oldDeferred && !newDeferred` 分支把它从队列里删除。
 
 为什么不在 Filter 通过后直接让 Pod 离开队列？因为「放得下」只是调度器基于自己缓存的判断，kubelet 用自己的用量记录做准入，两者之间有时间差，实际执行也可能再次推迟。Pod 留在队列里，同节点再出现资源竞争（其它 Pod 扩容抢走余量）时，`NodeResourcesFit` 的扩容 hint 会把它重新拉回来评估。
 
@@ -350,7 +350,7 @@ Permit 返回 `UnschedulableAndUnresolvable`，让 Pod 以「被 DeferredPodSche
 
 按 `prepareForBindingCycle` 的顺序，Permit 之前先执行 `AssumeAndReserveInCache`，第一步是把 Pod「假定」进调度器缓存：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/cache/cache.go
 func (cache *cacheImpl) AssumePod(logger klog.Logger, pod *v1.Pod) error {
 	key, err := framework.GetPodKey(pod)
@@ -370,7 +370,7 @@ func (cache *cacheImpl) AssumePod(logger klog.Logger, pod *v1.Pod) error {
 
 而 Deferred Pod 是已绑定的 Pod，早已通过 `addAssignedPodToCache` 进入了缓存（第二节提到它同时存在于缓存和队列中）。在 `aabdf5a2` 上，用 `go test -overlay` 注入一个临时测试（不修改源码），以默认插件顺序（`NodeName`、`DeferredPodScheduling`、`NodeResourcesFit`、Permit 阶段的 `DeferredPodScheduling`）对一个「已在缓存中、资源放得下」的 Deferred Pod 跑一次 `schedulingCycle`，得到的是：
 
-```text
+```text {linenos=inline}
 Scheduler cache AssumePod failed err="pod pod1(ns1/pod1) is in the cache, so can't be assumed"
 status code=Error msg="pod pod1(ns1/pod1) is in the cache, so can't be assumed" plugin=""
 ```
@@ -383,9 +383,9 @@ status code=Error msg="pod pod1(ns1/pod1) is in the cache, so can't be assumed" 
 
 ## 六、EventsToRegister 与 QueueingHint
 
-它只注册两条节点事件：
+它只注册两条节点事件（第 3–12 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/deferredpodscheduling/deferred_pod_scheduling.go
 func (pl *DeferredPodScheduling) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWithHint, error) {
 	return []fwk.ClusterEventWithHint{
@@ -403,7 +403,7 @@ func (pl *DeferredPodScheduling) EventsToRegister(_ context.Context) ([]fwk.Clus
 
 `UpdateNodePreemptionPolicy` 是为此新增的节点事件类型，事件处理器用 `equality.Semantic.DeepEqual` 比较新旧节点的 `spec.podPreemptionPolicy` 来识别它。两个 hint 的逻辑：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/deferredpodscheduling/deferred_pod_scheduling.go
 	if pod.Spec.NodeName != newNode.Name {
 		return fwk.QueueSkip, nil
@@ -421,7 +421,7 @@ func (pl *DeferredPodScheduling) EventsToRegister(_ context.Context) ([]fwk.Clus
 	return fwk.QueueSkip, nil
 ```
 
-- 节点更新：只关心 Pod 所在节点，只在「禁止 → 允许」时 `Queue`。「允许 → 禁止」和其它字段的变化都 `QueueSkip`。所有者列表从两个变成一个仍然是「禁止」，不会唤醒。
+- 节点更新（第 2–4 行、第 10–13 行）：只关心 Pod 所在节点，只在「禁止 → 允许」时 `Queue`。「允许 → 禁止」和其它字段的变化都 `QueueSkip`。所有者列表从两个变成一个仍然是「禁止」，不会唤醒。
 - 节点新增：只有名字等于 Pod 的 `nodeName`、且没有禁止 resize 抢占时 `Queue`。正常情况下 Pod 所在的节点不会「新增」，这对应的是节点对象被删除后又以同名重建的情况。
 
 两个 hint 的开头都先检查 gate 和 `IsPodResizeDeferred`，对普通 Pod 一律 `QueueSkip`，因为普通 Pod 不可能被这个插件拒绝。

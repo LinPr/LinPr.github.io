@@ -23,7 +23,7 @@ description: "VolumeRestrictions 是默认 Profile 里第一个存储插件，�
 
 **第一类是内联卷的读写冲突。** Pod 直接在 `spec.volumes` 里写 GCE PD、AWS EBS、iSCSI 或 Ceph RBD 卷（不经过 PVC），而同一节点上已有 Pod 以冲突的方式用着同一块盘：
 
-```yaml
+```yaml {linenos=inline}
 # 节点上已有 Pod 使用了同一块 EBS 卷
 volumes:
 - name: data
@@ -36,7 +36,7 @@ volumes:
 
 **第二类是 ReadWriteOncePod（RWOP）冲突。** PVC 的 `accessModes` 里有 `ReadWriteOncePod`，表示整个集群里同一时间只能有一个 Pod 使用它：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -58,9 +58,9 @@ spec:
 
 ### 2.1 结构体与工厂
 
-结构体里只有 lister、快照和一个 feature gate 开关，错误码以常量形式定义在旁边：
+结构体里只有 lister、快照和一个 feature gate 开关（第 2–6 行），错误码以常量形式定义在旁边（第 8–16 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/volumerestrictions/volume_restrictions.go
 type VolumeRestrictions struct {
 	pvcLister                                          corelisters.PersistentVolumeClaimLister
@@ -89,7 +89,7 @@ const (
 
 CycleState 里只有 RWOP 的引用计数，内联卷的信息一概不进状态：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/volumerestrictions/volume_restrictions.go
 // preFilterState computed at PreFilter and used at Filter.
 type preFilterState struct {
@@ -115,15 +115,15 @@ func (s *preFilterState) Clone() fwk.StateData {
 }
 ```
 
-状态里只有两样东西：本 Pod 引用的 RWOP PVC 名字集合，以及「这些 PVC 已经被别的 Pod 引用了几次」。内联卷冲突完全不进 CycleState，Filter 时直接从 `nodeInfo.GetPods()` 现算。
+状态里只有两样东西（第 5–7 行）：本 Pod 引用的 RWOP PVC 名字集合，以及「这些 PVC 已经被别的 Pod 引用了几次」。内联卷冲突完全不进 CycleState，Filter 时直接从 `nodeInfo.GetPods()` 现算。
 
-`Clone` 的写法值得注意：集合是浅拷贝，计数是值拷贝。集合在 PreFilter 之后只读，共享没有问题；计数会被 `AddPod`/`RemovePod` 修改，而抢占时 DefaultPreemption 会为每个候选节点克隆一份 CycleState 并行模拟，每份必须有自己的计数。**这正好是「只复制会变的部分」。**
+`Clone` 的写法值得注意：集合是浅拷贝，计数是值拷贝（第 19–22 行）。集合在 PreFilter 之后只读，共享没有问题；计数会被 `AddPod`/`RemovePod` 修改，而抢占时 DefaultPreemption 会为每个候选节点克隆一份 CycleState 并行模拟，每份必须有自己的计数。**这正好是「只复制会变的部分」。**
 
 ### 2.3 PreFilter：查 PVC、数引用、决定要不要 Skip
 
-PreFilter 要做三件事：判断这个 Pod 有没有需要检查的卷、把它的 RWOP PVC 找出来、数一数它们已经被引用了几次。
+PreFilter 要做三件事：判断这个 Pod 有没有需要检查的卷（第 4–10 行）、把它的 RWOP PVC 找出来（第 12 行）、数一数它们已经被引用了几次（第 20 行）。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/volumerestrictions/volume_restrictions.go
 func (pl *VolumeRestrictions) PreFilter(ctx context.Context, cycleState fwk.CycleState, pod *v1.Pod, nodes []fwk.NodeInfo) (*fwk.PreFilterResult, *fwk.Status) {
 	// ...
@@ -160,13 +160,13 @@ func (pl *VolumeRestrictions) PreFilter(ctx context.Context, cycleState fwk.Cycl
 
 注意它对每个 PVC 都做 Get，不管是不是 RWOP，所以 PVC 不存在时这里第一个发现。
 
-这带来一个排障时常见的现象：Pod 引用了一个还没创建的 PVC，事件里看到的失败插件是 `VolumeRestrictions`，信息是 `persistentvolumeclaim "xxx" not found`，状态码 `UnschedulableAndUnresolvable`。
+这带来一个排障时常见的现象：Pod 引用了一个还没创建的 PVC，事件里看到的失败插件是 `VolumeRestrictions`，信息是 `persistentvolumeclaim "xxx" not found`，状态码 `UnschedulableAndUnresolvable`（第 14–15 行）。
 
 框架在 PreFilter 阶段遇到 `UnschedulableAndUnresolvable` 会立刻返回，不再跑后面的 PreFilter（`RunPreFilterPlugins` 里的注释说得很清楚：这种情况下本轮不会抢占，没必要继续），所以排在后面的 `VolumeBinding` 根本没有机会报出自己的错误信息。
 
 计数逻辑在 `calPreFilterState`：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/volumerestrictions/volume_restrictions.go
 func (pl *VolumeRestrictions) calPreFilterState(ctx context.Context, pod *v1.Pod, pvcs sets.Set[string]) (*preFilterState, error) {
 	conflictingPVCRefCount := 0
@@ -181,14 +181,14 @@ func (pl *VolumeRestrictions) calPreFilterState(ctx context.Context, pod *v1.Pod
 }
 ```
 
-`IsPVCUsedByPods` 背后是快照里的 `usedPVCRefCounts`，由每个 `NodeInfo.PVCRefCounts` 汇总而来（`pkg/scheduler/backend/cache/snapshot.go` 的 `createUsedPVCRefCounts`）。
+`IsPVCUsedByPods`（第 6 行）背后是快照里的 `usedPVCRefCounts`，由每个 `NodeInfo.PVCRefCounts` 汇总而来（`pkg/scheduler/backend/cache/snapshot.go` 的 `createUsedPVCRefCounts`）。
 
 `NodeInfo` 在 AddPod 时通过 `PodPVCKeys` 给 Pod 引用的每个 PVC 计数加一。这里有两个细节：
 
 - 快照包含 **assumed Pod**。一个 Pod 刚在 Reserve 后被 assume、还在异步绑定，下一个引用同一 RWOP PVC 的 Pod 就已经能看到冲突，不会出现两个 Pod 前后脚都「抢到」的竞态。
 - 这是**集群级**的查询，与节点无关。所以 RWOP 冲突一旦存在，Filter 对每个节点给出的结论都一样。
 
-最后的 `Skip` 判断：既没有四种内联卷，也没有 RWOP 冲突，就跳过 Filter。注意条件是「冲突计数为 0」而不是「没有 RWOP PVC」，即使 Pod 用了 RWOP PVC，只要现在没人占着，同样 Skip。
+最后的 `Skip` 判断：既没有四种内联卷，也没有 RWOP 冲突，就跳过 Filter（上面 PreFilter 那个块的第 25–27 行）。注意条件是「冲突计数为 0」而不是「没有 RWOP PVC」，即使 Pod 用了 RWOP PVC，只要现在没人占着，同样 Skip。
 
 这个 Skip 有一个副作用。框架在 Filter 前会把「已提名到该节点、优先级不低于当前 Pod」的 Pod 通过 `AddPod` 临时加进状态（`addGENominatedPods`），但被 Skip 的插件连 `AddPod` 也不会被调用（`RunPreFilterExtensionAddPod` 里检查了 `GetSkipFilterPlugins()`）。
 
@@ -198,9 +198,9 @@ func (pl *VolumeRestrictions) calPreFilterState(ctx context.Context, pod *v1.Pod
 
 ### 2.4 Filter：两段检查
 
-Filter 按顺序做两段判定：先查内联卷冲突，再查 PreFilter 记下的 RWOP 计数。
+Filter 按顺序做两段判定：先查内联卷冲突（第 4–6 行），再查 PreFilter 记下的 RWOP 计数（第 11 行转到 `satisfyReadWriteOncePod`，判定在第 18–20 行）。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/volumerestrictions/volume_restrictions.go
 func (pl *VolumeRestrictions) Filter(ctx context.Context, cycleState fwk.CycleState, pod *v1.Pod, nodeInfo fwk.NodeInfo) *fwk.Status {
 	// ...
@@ -227,7 +227,7 @@ func satisfyReadWriteOncePod(ctx context.Context, state *preFilterState) *fwk.St
 
 `satisfyVolumeConflicts` 对 Pod 的每个需要检查的内联卷，与节点上每个已有 Pod 做两两比较，核心是 `isVolumeConflict`：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/volumerestrictions/volume_restrictions.go
 func isVolumeConflict(volume *v1.Volume, pod *v1.Pod) bool {
 	for _, existingVolume := range pod.Spec.Volumes {
@@ -252,7 +252,7 @@ func isVolumeConflict(volume *v1.Volume, pod *v1.Pod) bool {
 }
 ```
 
-四种卷的「同一块盘」判定和冲突条件各不相同：
+四种卷的「同一块盘」判定和冲突条件各不相同（GCE 在第 5–10 行，EBS 在第 12–16 行，iSCSI 和 RBD 的代码在这个块里用 `// ...` 略去，即第 17–18 行）：
 
 | 卷类型 | 判定为同一块盘 | 何时冲突 |
 | --- | --- | --- |
@@ -273,7 +273,7 @@ EBS 的规则最严，只读也冲突，对应的是 EBS 卷（在不考虑 mult
 
 计数既然是预先算好的，抢占模拟删除 Pod 时就必须同步减掉，这就是 `AddPod`/`RemovePod` 存在的理由：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/volumerestrictions/volume_restrictions.go
 func (pl *VolumeRestrictions) AddPod(ctx context.Context, cycleState fwk.CycleState, podToSchedule *v1.Pod, podInfoToAdd fwk.PodInfo, nodeInfo fwk.NodeInfo) *fwk.Status {
 	state, err := getPreFilterState(cycleState)
@@ -294,7 +294,7 @@ func (pl *VolumeRestrictions) RemovePod(ctx context.Context, cycleState fwk.Cycl
 }
 ```
 
-`updateWithPod` 统计被加入/移除的 Pod 引用了几个「本 Pod 的 RWOP PVC」，乘以 ±1 加到计数上。两段检查在抢占时的行为因此不同：
+`updateWithPod` 统计被加入/移除的 Pod 引用了几个「本 Pod 的 RWOP PVC」，乘以 ±1 加到计数上：`AddPod` 传 `1`（第 7 行），`RemovePod` 传 `-1`（第 16 行）。两段检查在抢占时的行为因此不同：
 
 - **内联卷冲突**：Filter 每次都从 `nodeInfo.GetPods()` 现算。抢占模拟把受害者从 NodeInfo 副本里删掉，Filter 自然看不到它，不需要额外支持。
 - **RWOP 冲突**：计数是 PreFilter 算好的，与 NodeInfo 无关。如果没有 `RemovePod`，抢占模拟删掉占用者之后，计数仍然是 1，Filter 照样失败，抢占永远找不到候选节点。
@@ -320,7 +320,7 @@ func (pl *VolumeRestrictions) RemovePod(ctx context.Context, cycleState fwk.Cycl
 
 能让被拒绝的 Pod 重新可调度的变化只有三类，插件把它们全部声明出来：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/volumerestrictions/volume_restrictions.go
 func (pl *VolumeRestrictions) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWithHint, error) {
 	return []fwk.ClusterEventWithHint{
@@ -339,7 +339,7 @@ func (pl *VolumeRestrictions) EventsToRegister(_ context.Context) ([]fwk.Cluster
 }
 ```
 
-三个事件分别对应三种失败原因：
+三个事件分别对应三种失败原因（`AssignedPod/Delete` 在第 7 行、`Node/Add` 在第 10 行、`PersistentVolumeClaim/Add` 在第 13 行）：
 
 - 已调度 Pod 被删除：释放内联盘或 RWOP PVC。Pod 的 `spec.volumes` 不可变，所以不关心 Pod 更新事件。
 - 新增节点：内联卷冲突是节点级的，换个干净的节点就能过。不设 hint，所有 Node/Add 一律 `Queue`。
@@ -349,7 +349,7 @@ func (pl *VolumeRestrictions) EventsToRegister(_ context.Context) ([]fwk.Cluster
 
 `isSchedulableAfterAssignedPodDeleted` 则做了一个有意思的折中：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/volumerestrictions/volume_restrictions.go
 	if deletedPod.Namespace != pod.Namespace {
 		return fwk.QueueSkip, nil
@@ -379,11 +379,11 @@ func (pl *VolumeRestrictions) EventsToRegister(_ context.Context) ([]fwk.Cluster
 	}
 ```
 
-它把被删的 Pod 包成一个只含它自己的 `NodeInfo`，复用 `satisfyVolumeConflicts` 判断两者的内联卷是否冲突。这个复用很巧：不用关心被删的 Pod 原来在哪个节点，只看「它和我有没有冲突关系」。
+它把被删的 Pod 包成一个只含它自己的 `NodeInfo`（第 6 行），复用 `satisfyVolumeConflicts` 判断两者的内联卷是否冲突（第 7–10 行）。这个复用很巧：不用关心被删的 Pod 原来在哪个节点，只看「它和我有没有冲突关系」。
 
 RWOP 部分则只比较 PVC 名字，不去查 PVC 的 access mode，注释解释了原因：QueueingHint 在事件处理路径上同步执行，多一次 lister 查询会拖慢所有事件的处理，宁可多放几个 Pod 回队列。
 
-有一处值得留意：命名空间不同直接 `QueueSkip`。
+有一处值得留意：命名空间不同直接 `QueueSkip`（第 2–4 行）。
 
 内联 EBS、GCE PD 是按卷 ID 判冲突的，跨命名空间的两个 Pod 完全可能用同一块盘；按这个 hint，其他命名空间里占盘 Pod 的删除不会唤醒等待者，只能等队列的周期性刷新（`DefaultPodMaxInUnschedulablePodsDuration`，5 分钟）。不过内联云盘本来就是遗留用法，实际影响不大。
 

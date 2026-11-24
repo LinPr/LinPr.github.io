@@ -21,7 +21,7 @@ description: "PrioritySort 是默认的 QueueSort 插件，只有一个 Less 方
 
 插件的全部逻辑都在 `Less` 里，先把代码看完。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/queuesort/priority_sort.go
 // PrioritySort is a plugin that implements Priority based sorting.
 type PrioritySort struct{}
@@ -43,11 +43,11 @@ func New(_ context.Context, _ runtime.Object, handle fwk.Handle) (fwk.Plugin, er
 }
 ```
 
-整个插件就是一个严格弱序：**`Less(a, b)` 为真表示 a 应该排在 b 前面。** 先比优先级，数值大的在前；优先级相等再比时间戳，早的在前。两者都相等时 `Less(a,b)` 和 `Less(b,a)` 都为假，堆不保证它们的先后。
+整个插件就是一个严格弱序：**`Less(a, b)` 为真表示 a 应该排在 b 前面。** 先比优先级，数值大的在前；优先级相等再比时间戳，早的在前（第 10–14 行）。两者都相等时 `Less(a,b)` 和 `Less(b,a)` 都为假，堆不保证它们的先后。
 
 `QueueSortPlugin` 接口只要求这一个方法：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/kube-scheduler/framework/interface.go
 // LessFunc is the function to sort entity info
 type LessFunc func(entity1, entity2 QueuedEntityInfo) bool
@@ -62,7 +62,7 @@ type QueueSortPlugin interface {
 }
 ```
 
-参数类型是 `QueuedEntityInfo`，不是 `QueuedPodInfo`。开启 `GenericWorkload` 后，队列里排队的除了单个 Pod，还有整个 PodGroup（`QueuedPodGroupInfo`），两种 entity 放在同一个堆里比较。Less 只依赖接口上的 `GetPriority()` 和 `GetTimestamp()`，不关心 entity 是什么类型。
+参数类型是 `QueuedEntityInfo`，不是 `QueuedPodInfo`（接口里写的是 `Less(QueuedEntityInfo, QueuedEntityInfo)`，第 11 行）。开启 `GenericWorkload` 后，队列里排队的除了单个 Pod，还有整个 PodGroup（`QueuedPodGroupInfo`），两种 entity 放在同一个堆里比较。Less 只依赖接口上的 `GetPriority()` 和 `GetTimestamp()`，不关心 entity 是什么类型。
 
 这个插件值得一读的地方不在 Less 本身，而在它的两个输入：priority 从哪里来，timestamp 从哪里来。
 
@@ -72,16 +72,16 @@ Less 的第一个输入是 priority。它看起来只是 Pod 上的一个字段�
 
 ### 2.1 Pod 的 priority 在创建时写死
 
-单个 Pod 的 `GetPriority()` 读的是 `spec.priority`：
+单个 Pod 的 `GetPriority()` 读的是 `spec.priority`（第 2–4 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/types.go
 func (pqi *QueuedPodInfo) GetPriority() int32 {
 	return corev1helpers.PodPriority(pqi.GetPod())
 }
 ```
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/component-helpers/scheduling/corev1/helpers.go
 func PodPriority(pod *v1.Pod) int32 {
 	if pod.Spec.Priority != nil {
@@ -96,7 +96,7 @@ func PodPriority(pod *v1.Pod) int32 {
 
 `spec.priority` 不是创建者填的，而是 API Server 的 `Priority` 准入插件在创建 Pod 时根据 `priorityClassName` 解析出来的：
 
-```go
+```go {linenos=inline}
 // plugin/pkg/admission/priority/admission.go
 	if operation == admission.Create {
 		var priority int32
@@ -131,7 +131,7 @@ PriorityClass 本身也是一样：`value` 和 `preemptionPolicy` 不可修改�
 
 `pkg/apis/scheduling/types.go` 定义了两个上界：
 
-```go
+```go {linenos=inline}
 // pkg/apis/scheduling/types.go
 	// HighestUserDefinablePriority is the highest priority for user defined priority classes. Priority values larger than 1 billion are reserved for Kubernetes system use.
 	HighestUserDefinablePriority = int32(1000000000)
@@ -143,7 +143,7 @@ PriorityClass 本身也是一样：`value` 和 `preemptionPolicy` 不可修改�
 
 一个常见的配置：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
@@ -164,9 +164,9 @@ priority 是 entity 自带的、创建后不再变的属性。Less 的另一个�
 
 `GetTimestamp()` 返回 `QueueingParams.Timestamp`，字段注释写的是「The time entity added to the scheduling queue」。**它是入队时间，不是 Pod 的 `creationTimestamp`。** 它在两个地方被赋值。
 
-新 Pod 第一次进入队列：
+新 Pod 第一次进入队列（第 8 行把 `now` 写进 `Timestamp`）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
 func (p *PriorityQueue) newQueuedPodInfo(ctx context.Context, pod *v1.Pod, plugins ...string) *framework.QueuedPodInfo {
 	now := p.clock.Now()
@@ -183,9 +183,9 @@ func (p *PriorityQueue) newQueuedPodInfo(ctx context.Context, pod *v1.Pod, plugi
 }
 ```
 
-调度失败、回到队列：
+调度失败、回到队列（第 5 行重新取 `p.clock.Now()`，第 8 行清掉缓存的退避时间）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
 func (p *PriorityQueue) AddUnschedulablePodIfNotPresent(ctx context.Context, pInfo *framework.QueuedPodInfo, podSchedulingCycle int64) error {
 	// ...
@@ -220,7 +220,7 @@ Less 不直接出现在调度流程里，它被注册成堆的比较函数。队
 
 调度器启动时，用第一个 profile 的 `QueueSortFunc()` 创建队列：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/scheduler.go
 	podQueue := internalqueue.NewSchedulingQueue(
 		profiles[comps.options.profiles[0].SchedulerName].QueueSortFunc(),
@@ -229,7 +229,7 @@ Less 不直接出现在调度流程里，它被注册成堆的比较函数。队
 	)
 ```
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/runtime/framework.go
 func (f *frameworkImpl) QueueSortFunc() fwk.LessFunc {
 	// ...
@@ -244,14 +244,14 @@ func (f *frameworkImpl) QueueSortFunc() fwk.LessFunc {
 
 `NewPriorityQueue` 把它包成堆的比较函数：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
 	pq.activeQ = newActiveQueue(heap.NewWithRecorder(queuedEntityKeyFunc, heap.LessFunc[framework.QueuedEntityInfo](lessConverted), metrics.NewActiveEntitiesRecorder()), options.metricsRecorder, backoffQPopper)
 ```
 
-堆的实现在 `pkg/scheduler/backend/heap`，是对 `container/heap` 的封装，额外维护了一个 `keyIndex map[string]int`，从 entity key 映射到数组下标，这样按 key 删除或更新时不用线性查找：
+堆的实现在 `pkg/scheduler/backend/heap`，是对 `container/heap` 的封装，额外维护了一个 `keyIndex map[string]int`，从 entity key 映射到数组下标，这样按 key 删除或更新时不用线性查找（`AddOrUpdate` 第 2–12 行、`keyIndex` 查询在第 4 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/heap/heap.go
 func (h *Heap[T]) AddOrUpdate(obj T) {
 	key := h.data.keyFunc(obj)
@@ -274,7 +274,7 @@ Push、Pop、Fix 都是 O(log n)，Less 在每次上浮或下沉时被调用 O(l
 
 `backoffQ` 也是堆，主排序键是退避到期时间。开启 `SchedulerPopFromBackoffQ`（1.33 Beta，默认开启）后，它把同一个 Less 用作第二排序键：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/backoff_queue.go
 // lessBackoffCompletedWithPriority is a less function of entityBackoffQ if PopFromBackoffQ feature is enabled.
 // It orders the entities in the same BackoffOrderingWindow the same as the activeQ will do to improve popping order from backoffQ when activeQ is empty.
@@ -289,13 +289,13 @@ func (bq *backoffQueue) lessBackoffCompletedWithPriority(entity1, entity2 framew
 }
 ```
 
-退避到期时间会被 `alignToWindow` 截断到 1 秒的窗口（`backoffQOrderingWindowDuration`），**所以只有同一秒内到期的 entity 之间才按 Less 排序**。这个 feature 打开后，`activeQ` 为空时 `Pop` 会直接从 `backoffQ` 取，取出的顺序因此也基本符合优先级。只有 `entityErrorBackoffQ`（因 `Error` 状态退避的 entity）仍然只按到期时间排序。
+退避到期时间会被 `alignToWindow` 截断到 1 秒的窗口（`backoffQOrderingWindowDuration`），**所以只有同一秒内到期的 entity 之间才按 Less 排序**（第 7–11 行：先比 `getBackoffTime`，相等才落到 `activeQLessFn`）。这个 feature 打开后，`activeQ` 为空时 `Pop` 会直接从 `backoffQ` 取，取出的顺序因此也基本符合优先级。只有 `entityErrorBackoffQ`（因 `Error` 状态退避的 entity）仍然只按到期时间排序。
 
 两个堆用的是同一份 Less。这不是巧合：整个调度器只有一个 `PriorityQueue`，也就只有一份比较函数，框架对此有强校验。
 
 ## 五、为什么只能有一个 QueueSort
 
-4.1 已经看到，`QueueSortFunc()` 取的是 `f.queueSortPlugins[0]`。框架在三个层面上保证这个列表只有一项：
+4.1 已经看到，`QueueSortFunc()` 取的是 `f.queueSortPlugins[0]`（第 9 行）。框架在三个层面上保证这个列表只有一项：
 
 1. 单个 profile 内，`NewFramework` 检查 `len(f.queueSortPlugins) != 1` 就报错：`only one queue sort plugin required for profile with scheduler name ...`；
 2. 多个 profile 之间，配置校验 `validateCommonQueueSort` 要求所有 profile 的 QueueSort 插件和参数完全相同，否则报 `must be the same for all profiles`；
@@ -313,9 +313,9 @@ QueueSort 的职责到这里就讲完了：它只决定谁先出队。而 `spec.
 
 ### 6.1 提名 Pod 的占位
 
-被抢占提名了节点（`status.nominatedNodeName`）、但还没真正绑定的 Pod，会在 Filter 阶段被当作「已经在那个节点上」。不过只对优先级不低于当前 Pod 的提名 Pod 这样做：
+被抢占提名了节点（`pod.Status.NominatedNodeName`）、但还没真正绑定的 Pod，会在 Filter 阶段被当作「已经在那个节点上」。不过只对优先级不低于当前 Pod 的提名 Pod 这样做（第 3 行比较的就是两边的 `corev1.PodPriority`）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/runtime/framework.go
 	for _, pi := range nominatedPodInfos {
 		if corev1.PodPriority(pi.GetPod()) >= corev1.PodPriority(pod) && pi.GetPod().UID != pod.UID {
@@ -330,9 +330,9 @@ QueueSort 的职责到这里就讲完了：它只决定谁先出队。而 `spec.
 
 ### 6.2 抢占
 
-`DefaultPreemption` 只会驱逐优先级严格低于抢占者的 Pod，第 18 篇会细讲。这里只说和 PriorityClass 直接相关的一个字段：`preemptionPolicy`。
+`DefaultPreemption` 只会驱逐优先级严格低于抢占者的 Pod，第 18 篇会细讲。这里只说和 PriorityClass 直接相关的一个字段：`preemptionPolicy`（第 3–5 行是它的全部判断）。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go
 func (pl *DefaultPreemption) PodEligibleToPreemptOthers(_ context.Context, pod *v1.Pod, nominatedNodeStatus *fwk.Status) (bool, string) {
 	if pod.Spec.PreemptionPolicy != nil && *pod.Spec.PreemptionPolicy == v1.PreemptNever {
@@ -350,14 +350,14 @@ func (pl *DefaultPreemption) PodEligibleToPreemptOthers(_ context.Context, pod *
 
 节点内存、磁盘、PID 紧张时，kubelet 选择驱逐对象也用 priority 作排序键之一：
 
-```go
+```go {linenos=inline}
 // pkg/kubelet/eviction/helpers.go
 func rankMemoryPressure(pods []*v1.Pod, stats statsFunc) {
 	orderedBy(exceedMemoryRequests(stats), priority, memory(stats)).Sort(pods)
 }
 ```
 
-内存压力下先看是否超出 request，再看 priority，再看实际用量。**一个 PriorityClass 同时影响了「先调度谁」「可以赶走谁」「节点紧张时先赶走谁」三件事**，设计 PriorityClass 体系时要一起考虑。
+内存压力下先看是否超出 request，再看 priority，再看实际用量（第 3 行的排序键顺序）。**一个 PriorityClass 同时影响了「先调度谁」「可以赶走谁」「节点紧张时先赶走谁」三件事**，设计 PriorityClass 体系时要一起考虑。
 
 三处正常路径上的用法看完了，下面是几种经常被误解的情况。
 

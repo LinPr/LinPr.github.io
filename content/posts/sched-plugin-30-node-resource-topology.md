@@ -54,7 +54,7 @@ NRT 插件的思路是：让节点上的代理把 NUMA 粒度的资源情况写�
 
 CRD 定义在依赖模块 `github.com/k8stopologyawareschedwg/noderesourcetopology-api`（本仓库用 v0.1.2），API 组 `topology.node.k8s.io`，版本 `v1alpha2`，集群级对象，名字等于节点名：
 
-```go
+```go {linenos=inline}
 // noderesourcetopology-api@v0.1.2/pkg/apis/topology/v1alpha2/types.go
 type NodeResourceTopology struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -79,7 +79,7 @@ type Zone struct {
 
 每个 `ResourceInfo` 有 `Capacity`、`Allocatable`、`Available` 三个量，插件判定时只用 `Available`（`Allocatable` 只在抢占模拟里做上限校验）。一个由节点代理上报的对象大致如下（示例）：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: topology.node.k8s.io/v1alpha2
 kind: NodeResourceTopology
 metadata:
@@ -112,7 +112,7 @@ zones:
 
 第一，zone 名必须能被 `numanode.NameToID` 解析，它要求前缀是 `node-`：
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/pluginhelpers.go
 func createNUMANodeList(lh logr.Logger, zones topologyv1alpha2.ZoneList) NUMANodeList {
 	numaIDToZoneIDx := make([]int, maxNUMAId)
@@ -135,13 +135,13 @@ func createNUMANodeList(lh logr.Logger, zones topologyv1alpha2.ZoneList) NUMANod
 }
 ```
 
-`type` 不是 `Node` 的 zone、名字解析失败的 zone 都被静默跳过。插件自己的 `pkg/noderesourcetopology/README.md` 演示部分写的是 `numa-node-0`，按这段代码会被全部丢弃；`manifests/noderesourcetopology/worker-node-A.yaml` 里用的是 `node-0`，以后者为准。
+`type` 不是 `Node` 的 zone、名字解析失败的 zone 都被静默跳过（第 7–15 行）。插件自己的 `pkg/noderesourcetopology/README.md` 演示部分写的是 `numa-node-0`，按这段代码会被全部丢弃；`manifests/noderesourcetopology/worker-node-A.yaml` 里用的是 `node-0`，以后者为准。
 
 顺带一提，`maxNUMAId` 是 64，判断条件是 `> maxNUMAId`，ID 恰好为 64 时会越界访问长度为 64 的数组，好在现实中没有这么多 NUMA 节点。
 
 第二，Topology Manager 的策略和作用域要从 NRT 里读：
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/nodeconfig/topologymanager.go
 func TopologyManagerFromNodeResourceTopology(lh logr.Logger, nodeTopology *topologyv1alpha2.NodeResourceTopology) TopologyManager {
 	conf := TopologyManagerDefaults()
@@ -154,7 +154,7 @@ func TopologyManagerFromNodeResourceTopology(lh logr.Logger, nodeTopology *topol
 }
 ```
 
-默认值是 `scope=container`、`policy=none`、`maxNUMANodes=8`，与 kubelet 一致。先读已废弃的 `topologyPolicies`（如 `SingleNUMANodeContainerLevel`），再用顶层 `attributes` 中的 `topologyManagerPolicy`、`topologyManagerScope`、`topologyManagerMaxNUMANodes` 覆盖。
+默认值是 `scope=container`、`policy=none`、`maxNUMANodes=8`，与 kubelet 一致。先读已废弃的 `topologyPolicies`（如 `SingleNUMANodeContainerLevel`，第 6 行），再用顶层 `attributes` 中的 `topologyManagerPolicy`、`topologyManagerScope`、`topologyManagerMaxNUMANodes` 覆盖（第 8 行）。
 
 代理没有上报这些属性时，节点会被当成 `policy=none`，Filter 直接放行。这是部署时最常见的「插件装了却不起作用」的原因。
 
@@ -164,7 +164,7 @@ func TopologyManagerFromNodeResourceTopology(lh logr.Logger, nodeTopology *topol
 
 插件的字段不多，复杂度都藏在它持有的那一个缓存接口后面。
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/plugin.go
 type TopologyMatch struct {
 	logger              klog.Logger
@@ -178,7 +178,7 @@ type TopologyMatch struct {
 
 真正的复杂度在 `nrtCache` 里。`New` 校验参数后调用 `initNodeTopologyInformer`，按参数挑一种缓存实现：
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/pluginhelpers.go
 func initNodeTopologyInformer(ctx context.Context, lh logr.Logger,
 	tcfg *apiconfig.NodeResourceTopologyMatchArgs, handle fwk.Handle) (nrtcache.Interface, error) {
@@ -229,7 +229,7 @@ func initNodeTopologyInformer(ctx context.Context, lh logr.Logger,
 
 PreFilter 是这个插件里唯一不参与判定的扩展点。
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/prefilter.go
 const stateVictimPodsKey fwk.StateKey = "stateVictimPods"
 
@@ -268,7 +268,7 @@ DefaultPreemption 在某个节点上模拟「驱逐这些受害者后能否放�
 
 Filter 先做几轮早退，把与 NUMA 对齐无关的 Pod 和节点挡掉，再进入真正的判定。
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/filter.go
 func (tm *TopologyMatch) Filter(ctx context.Context, cycleState fwk.CycleState, pod *v1.Pod, nodeInfo fwk.NodeInfo) *fwk.Status {
 	if nodeInfo.Node() == nil {
@@ -317,10 +317,10 @@ func (tm *TopologyMatch) Filter(ctx context.Context, cycleState fwk.CycleState, 
 
 几个早退分支值得逐个看：
 
-- 不请求扩展资源的 BestEffort Pod 直接放行，因为 kubelet 不会给它任何对齐；
-- `Fresh=false`（缓存认为数据不可信，比如节点上有外来 Pod）返回 `Unschedulable`，原因 `invalid node topology data`；
-- 节点没有 NRT 对象时**放行**。没部署代理的节点、名字不匹配的 NRT，都会让插件对这个节点完全失效；
-- 策略不是 `single-numa-node` 时 `filterHandlerFromTopologyManager` 返回 nil，同样放行。`restricted` 和 `best-effort` 节点不受保护。
+- 不请求扩展资源的 BestEffort Pod 直接放行（第 6–9 行），因为 kubelet 不会给它任何对齐；
+- `Fresh=false`（缓存认为数据不可信，比如节点上有外来 Pod）返回 `Unschedulable`（第 15–18 行），原因 `invalid node topology data`；
+- 节点没有 NRT 对象时**放行**（第 19–21 行）。没部署代理的节点、名字不匹配的 NRT，都会让插件对这个节点完全失效；
+- 策略不是 `single-numa-node` 时 `filterHandlerFromTopologyManager` 返回 nil（第 25–28 行），同样放行。`restricted` 和 `best-effort` 节点不受保护。
 
 所有拒绝都用 `Unschedulable` 而不是 `UnschedulableAndUnresolvable`，所以 DefaultPreemption 会尝试在这些节点上找受害者。拒绝后还会调用 `NodeMaybeOverReserved` 把节点标脏，这是缓存重同步的触发器，第七节细讲。
 
@@ -330,7 +330,7 @@ func (tm *TopologyMatch) Filter(ctx context.Context, cycleState fwk.CycleState, 
 
 两种作用域最终都调用 `resourcesAvailableInAnyNUMANodes`：
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/filter.go
 func resourcesAvailableInAnyNUMANodes(lh logr.Logger, info *filterInfo, resources v1.ResourceList) (int, bool, string) {
 	numaID := info.topologyManager.MaxNUMANodes // highest NUMA ID
@@ -392,11 +392,11 @@ func resourcesAvailableInAnyNUMANodes(lh logr.Logger, info *filterInfo, resource
 
 这里用的 `bitmask` 包直接来自 kubelet（`k8s.io/kubernetes/pkg/kubelet/cm/topologymanager/bitmask`），和 Topology Manager 合并 hint 时用的是同一个数据结构。
 
-算法本身很直白：一开始假设所有 zone 都可行，每处理一种资源就把「放不下」的 zone 位清掉，位图一旦为空立刻失败。最终选中的 zone 是剩余位中编号最小的那个，对应 kubelet 在多个等宽可行 hint 中偏好低编号的行为（`IsNarrowerThan` 在位数相同时比较 `IsLessThan`）。
+算法本身很直白：一开始假设所有 zone 都可行，每处理一种资源就把「放不下」的 zone 位清掉，位图一旦为空立刻失败。最终选中的 zone 是剩余位中编号最小的那个（第 52 行），对应 kubelet 在多个等宽可行 hint 中偏好低编号的行为（`IsNarrowerThan` 在位数相同时比较 `IsLessThan`）。
 
 资源分三类处理，对应两个辅助函数：
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/numaresources.go
 func isHostLevelResource(resource corev1.ResourceName) bool {
 	// ...
@@ -428,7 +428,7 @@ func isResourceSetSuitable(qos corev1.PodQOSClass, resource corev1.ResourceName,
 
 `container` 作用域把每个容器单独判定，判定完再从 zone 里扣掉。
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/filter.go
 func singleNUMAContainerLevelHandler(lh logr.Logger, pod *v1.Pod, info *filterInfo) *fwk.Status {
 	// the init containers are running SERIALLY and BEFORE the normal containers.
@@ -466,7 +466,7 @@ func singleNUMAContainerLevelHandler(lh logr.Logger, pod *v1.Pod, info *filterIn
 }
 ```
 
-这段完全对应 kubelet `scope_container.go` 的行为：先 init 容器、后 app 容器逐个准入，每个 app 容器选定 zone 后扣减，后面的容器看到的是扣减后的余量。扣减作用在本次 Filter 新建的 `NUMANodeList` 上（`createNUMANodeList` 每次重新生成），不会污染缓存。
+这段完全对应 kubelet `scope_container.go` 的行为：先 init 容器（第 6–15 行）、后 app 容器（第 17 行起）逐个准入，每个 app 容器选定 zone 后扣减，后面的容器看到的是扣减后的余量。扣减作用在本次 Filter 新建的 `NUMANodeList` 上（`createNUMANodeList` 每次重新生成），不会污染缓存。
 
 失败原因有三种：`cannot align init container`、`cannot align sidecar container`（`GetInitContainerKind` 根据 `restartPolicy: Always` 区分）、`cannot align container`。
 
@@ -476,7 +476,7 @@ func singleNUMAContainerLevelHandler(lh logr.Logger, pod *v1.Pod, info *filterIn
 
 `pod` 作用域不问每个容器落在哪，只问整个 Pod 能不能挤进同一组 zone。
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/filter.go
 func singleNUMAPodLevelHandler(lh logr.Logger, pod *v1.Pod, info *filterInfo) *fwk.Status {
 	resources := util.GetPodEffectiveRequest(pod)
@@ -491,7 +491,7 @@ func singleNUMAPodLevelHandler(lh logr.Logger, pod *v1.Pod, info *filterInfo) *f
 }
 ```
 
-`GetPodEffectiveRequest`（`pkg/util/resource.go`）对 app 容器求和、对 init 容器取最大值，两者再取较大者，最后加上 `Overhead`。
+`GetPodEffectiveRequest`（第 3 行；实现在 `pkg/util/resource.go`）对 app 容器求和、对 init 容器取最大值，两者再取较大者，最后加上 `Overhead`。
 
 上图下半部分是同一个 Pod 在两种作用域下的不同结论：两个各要 4 CPU 的容器，在 6+5 的余量下 container 作用域能放，pod 作用域放不下。这也说明了为什么作用域必须从 NRT 读，而不能由插件假设。
 
@@ -501,7 +501,7 @@ func singleNUMAPodLevelHandler(lh logr.Logger, pod *v1.Pod, info *filterInfo) *f
 
 Score 只对一类 Pod 有意义，入口处的过滤比 Filter 更干脆。
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/score.go
 func (tm *TopologyMatch) Score(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeInfo fwk.NodeInfo) (int64, *fwk.Status) {
 	nodeName := nodeInfo.Node().Name
@@ -534,7 +534,7 @@ func (tm *TopologyMatch) ScoreExtensions() fwk.ScoreExtensions {
 }
 ```
 
-非 Guaranteed Pod 所有节点 100 分，插件对它不起作用。没有 NRT 的节点、策略不匹配的节点都是 0 分。
+非 Guaranteed Pod 所有节点 100 分（第 6–9 行），插件对它不起作用。没有 NRT 的节点、策略不匹配的节点都是 0 分。
 
 和 Filter 对比一下：没有 NRT 的节点在 Filter 里被放行，在 Score 里被压到最低，对 Guaranteed Pod 来说，有 NRT 的节点会被优先选择。
 
@@ -544,7 +544,7 @@ func (tm *TopologyMatch) ScoreExtensions() fwk.ScoreExtensions {
 
 `MostAllocated`、`LeastAllocated`、`BalancedAllocation` 只在 `single-numa-node` 节点上生效，pod 作用域对 Pod 有效请求打分一次，container 作用域对每个容器（含 init 容器）各打一次再取算术平均。打分的核心在 `scoreForEachNUMANode`：
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/score.go
 func scoreForEachNUMANode(lh logr.Logger, requested v1.ResourceList, numaList NUMANodeList, score scoreStrategyFn, resourceToWeightMap resourceToWeightMap) int64 {
 	numaScores := make([]int64, len(numaList))
@@ -565,7 +565,7 @@ func scoreForEachNUMANode(lh logr.Logger, requested v1.ResourceList, numaList NU
 
 每种策略对单个 zone 的算法：
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/least_allocated.go
 func leastAllocatedScore(requested, numaCapacity resource.Quantity) int64 {
 	if numaCapacity.CmpInt64(0) == 0 {
@@ -607,13 +607,13 @@ func leastAllocatedScore(requested, numaCapacity resource.Quantity) int64 {
 
 结论是：这三种策略更适合「NUMA 布局相近、负载分布均匀」的集群，用来在节点之间粗粒度地偏好或回避拥挤；不要指望它们在节点内部做精确装箱。README 也明确说明，打分只影响节点选择，zone 的选择永远由 kubelet 决定。
 
-另一个细节：`numaScores[numa.NUMAID]` 用 NUMA ID 做下标，而切片长度是 zone 个数。如果某个节点只上报了 `node-0` 和 `node-2`，这一行会越界 panic。正常硬件的 NUMA 编号是连续的，但手工构造 NRT 测试时要注意。
+另一个细节：`numaScores[numa.NUMAID]` 用 NUMA ID 做下标，而切片长度是 zone 个数。如果某个节点只上报了 `node-0` 和 `node-2`，`scoreForEachNUMANode` 的第 12 行就会越界 panic。正常硬件的 NUMA 编号是连续的，但手工构造 NRT 测试时要注意。
 
 ### 6.3 LeastNUMANodes：偏好跨越最少 NUMA 的节点
 
 `LeastNUMANodes` 不检查策略，适用于所有 Topology Manager 策略（典型搭配是 `restricted` 或 `best-effort`，这时 Pod 允许跨 NUMA，但跨得越少越好）。它对 pod 作用域求有效请求、对 container 作用域逐容器求（同样扣减），算「至少需要几个 zone 才能放下」：
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/least_numa.go
 func numaNodesRequired(lh logr.Logger, qos v1.PodQOSClass, numaNodes NUMANodeList, resources v1.ResourceList) (bitmask.BitMask, bool) {
 	for bitmaskLen := 1; bitmaskLen <= len(numaNodes); bitmaskLen++ {
@@ -641,7 +641,7 @@ func normalizeScore(numaNodesCount int, isMinAvgDistance bool, highestNUMAID int
 }
 ```
 
-从 1 个 zone 开始枚举组合（`gonum` 的 `combin.Combinations`），找到能放下的最小组合数；同样组合数下，再用 zone 的 `costs`（即 ACPI SLIT 距离）计算组合内的平均距离，等于所有同规模组合中的最小平均距离时额外加半档分。
+从 1 个 zone 开始枚举组合（第 3–4 行，`gonum` 的 `combin.Combinations`），找到能放下的最小组合数；同样组合数下，再用 zone 的 `costs`（即 ACPI SLIT 距离）计算组合内的平均距离，等于所有同规模组合中的最小平均距离时额外加半档分。
 
 算例：`topologyManagerMaxNUMANodes` 没上报时取默认 8，每档 `100/8 = 12` 分。
 
@@ -689,7 +689,7 @@ DiscardReserved 只覆盖「Reserve 到 PostBind」这一小段，也就是绑�
 
 启动时 `NewOverReserve` 用一次 `List` 拿到全部 NRT，建立快照。此后**快照内容不会随 NRT 更新而自动刷新**，只有在 `FlushNodes` 时才替换。读取路径：
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/cache/overreserve.go
 func (ov *OverReserve) GetCachedNRTCopy(ctx context.Context, nodeName string, pod *corev1.Pod) (*topologyv1alpha2.NodeResourceTopology, CachedNRTInfo) {
 	ov.lock.Lock()
@@ -717,7 +717,7 @@ func (ov *OverReserve) GetCachedNRTCopy(ctx context.Context, nodeName string, po
 
 `UpdateNRT` 把这个节点上所有已预留 Pod 的有效请求从每个 zone 的 `Available` 里减掉，不够减时置 0：
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/cache/store.go
 func (rs *resourceStore) UpdateNRT(nrt *topologyv1alpha2.NodeResourceTopology, logKeysAndValues ...any) {
 	for key, res := range rs.data {
@@ -752,7 +752,7 @@ func (rs *resourceStore) UpdateNRT(nrt *topologyv1alpha2.NodeResourceTopology, l
 
 指纹（podfingerprint，pfp）是代理写进 NRT 属性 `nodeTopologyPodsFingerprint` 的值：对节点上 Pod 的 `namespace/name` 集合做 xxhash 得到的签名，前缀 `pfp0v001`。调度器在本地用 informer 里的 Pod 集合重新计算一遍：
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/cache/store.go
 func checkPodFingerprintForNode(lh logr.Logger, objs []podData, nodeName, pfpExpected string, onlyExclRes bool) error {
 	st := podfingerprint.MakeStatus(nodeName)
@@ -785,7 +785,7 @@ func checkPodFingerprintForNode(lh logr.Logger, objs []podData, nodeName, pfpExp
 
 调度器只对自己调度的 Pod 做了预留。如果别的调度器（典型场景是 NRT 插件跑在第二调度器里，默认调度器也在往同一批节点放 Pod）把 Pod 放到节点上，缓存的用量就错了，而且错的方向是乐观的，这是唯一不能接受的方向。
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/cache/foreign_pods.go
 func IsForeignPod(pod *corev1.Pod, nrtResources sets.Set[corev1.ResourceName]) bool {
 	if pod.Spec.NodeName == "" {
@@ -828,7 +828,7 @@ func IsForeignPod(pod *corev1.Pod, nrtResources sets.Set[corev1.ResourceName]) b
 
 watcher 对从未见过的 NRT 会发出 `WatchReasonNewlyAdded`，但 `processNRTEvent` 只处理 `WatchReasonAttrChanged`，其余原因只记一条 `unsupported NRT event` 日志：
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/cache/overreserve.go
 func (ov *OverReserve) processNRTEvent(nrtEv NRTEvent, lh logr.Logger) int {
 	switch nrtEv.Reason {
@@ -851,7 +851,7 @@ func (ov *OverReserve) processNRTEvent(nrtEv NRTEvent, lh logr.Logger) int {
 
 `preemptionMode: Enabled` 时，Filter 中间多了一段：
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/filter.go
 	victims, err := getVictimPods(cycleState, tm.preemptionMode)
 	// ...
@@ -882,7 +882,7 @@ func (ov *OverReserve) processNRTEvent(nrtEv NRTEvent, lh logr.Logger) int {
 
 Reserve、Unreserve、PostBind 都只是把调用转交给缓存：
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/reserve.go
 func (tm *TopologyMatch) Reserve(ctx context.Context, state fwk.CycleState, pod *corev1.Pod, nodeName string) *fwk.Status {
 	// ...
@@ -896,7 +896,7 @@ OverReserve 的 `PostBind` 是空实现，预留一直保留到 Flush；DiscardR
 
 被这个插件拒绝的 Pod 靠下面三类事件重新入队：
 
-```go
+```go {linenos=inline}
 // pkg/noderesourcetopology/plugin.go
 func (tm *TopologyMatch) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWithHint, error) {
 	// ...
@@ -911,7 +911,7 @@ func (tm *TopologyMatch) EventsToRegister(_ context.Context) ([]fwk.ClusterEvent
 
 `noderesourcetopologies.v1alpha2.topology.node.k8s.io` 这种「资源.版本.组」格式的名字会让 kube-scheduler 用 dynamic informer 监听这个 CRD（`eventhandlers.go` 里点号数量不少于 2 的 GVK 走 `dynInformerFactory`）。
 
-三个事件都没有提供 QueueingHint 函数，框架使用 `defaultQueueingHintFn`，一律返回 `Queue`。
+三个事件（第 6–8 行）都没有提供 QueueingHint 函数，框架使用 `defaultQueueingHintFn`，一律返回 `Queue`。
 
 实际效果：代理通常周期性地更新 NRT，每一次 Update 都会把所有被 NRT 插件拒绝的 Pod 移回活跃队列，不管更新的是哪个节点、资源有没有变化。
 

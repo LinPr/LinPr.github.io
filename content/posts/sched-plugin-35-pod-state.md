@@ -21,7 +21,7 @@ description: "PodState 是 scheduler-plugins 里的示例打分插件：节点�
 
 插件不到一百行，核心是一个函数：
 
-```go
+```go {linenos=inline}
 // pkg/podstate/pod_state.go
 type PodState struct {
 	handle fwk.Handle
@@ -41,9 +41,9 @@ func (ps *PodState) score(nodeInfo fwk.NodeInfo) (int64, *fwk.Status) {
 }
 ```
 
-原始分是「终止中的 Pod 数 − 被提名的 Pod 数」，可以为负。`NormalizeScore` 是标准的 min-max：
+原始分是「终止中的 Pod 数 − 被提名的 Pod 数」（第 16 行），可以为负。`NormalizeScore` 是标准的 min-max：
 
-```go
+```go {linenos=inline}
 // pkg/podstate/pod_state.go
 func (ps *PodState) NormalizeScore(ctx context.Context, state fwk.CycleState, pod *v1.Pod, scores fwk.NodeScoreList) *fwk.Status {
 	// Find highest and lowest scores.
@@ -65,7 +65,7 @@ func (ps *PodState) NormalizeScore(ctx context.Context, state fwk.CycleState, po
 }
 ```
 
-所有节点原始分相同时（最常见的情况：没有终止中的 Pod，也没有被提名的 Pod）全部 0 分，插件不影响结果。这段归一化与 [NodeResourcesAllocatable](/posts/sched-plugin-33-node-resources-allocatable/) 的逐字相同。
+所有节点原始分相同时（最常见的情况：没有终止中的 Pod，也没有被提名的 Pod）`oldRange == 0`（第 11–12 行），全部 0 分，插件不影响结果。这段归一化与 [NodeResourcesAllocatable](/posts/sched-plugin-33-node-resources-allocatable/) 的逐字相同。
 
 公式部分到此为止，剩下的是两个数从哪里来。
 
@@ -75,11 +75,11 @@ func (ps *PodState) NormalizeScore(ctx context.Context, state fwk.CycleState, po
 
 {{< figure src="/images/posts/sched-plugins/35-podstate-score.svg" caption="终止中的 Pod 来自调度周期的 NodeInfo 快照，被提名的 Pod 来自调度队列的 nominator；算例取自 pod_state_test.go 的最后一个用例" >}}
 
-终止中的 Pod 来自 `nodeInfo.GetPods()`，也就是本轮调度周期的 snapshot。一个 Pod 被删除后，API Server 设置 `deletionTimestamp`，kubelet 开始优雅终止，直到容器全部退出、kubelet 确认删除之前，这个 Pod 都还在 NodeInfo 里，它的 request 也仍然计入节点的已请求量。
+终止中的 Pod 来自 `nodeInfo.GetPods()`（第 10–14 行），也就是本轮调度周期的 snapshot。一个 Pod 被删除后，API Server 设置 `deletionTimestamp`，kubelet 开始优雅终止，直到容器全部退出、kubelet 确认删除之前，这个 Pod 都还在 NodeInfo 里，它的 request 也仍然计入节点的已请求量。
 
-被提名的 Pod 来自 `handle.NominatedPodsForNode`，调度队列内部的 nominator：
+被提名的 Pod 来自 `handle.NominatedPodsForNode`（第 9 行），调度队列内部的 nominator：
 
-```go
+```go {linenos=inline}
 // kubernetes@v1.36.4/pkg/scheduler/backend/queue/scheduling_queue.go
 func (p *PriorityQueue) NominatedPodsForNode(nodeName string) []fwk.PodInfo {
 	p.lock.RLock()
@@ -98,7 +98,7 @@ func (p *PriorityQueue) NominatedPodsForNode(nodeName string) []fwk.PodInfo {
 
 被提名的 Pod 是那些已经通过抢占在某个节点上「订了位置」、但还没有绑定的 Pod，它们带着 `status.nominatedNodeName`，不在 NodeInfo 里。
 
-注意这里每个元素都做了 `DeepCopy`，而插件只需要长度，每个节点每次打分都要为被提名的 Pod 各拷贝一份 Pod 对象。被提名的 Pod 通常不多，开销可以接受。
+注意这里每个元素都做了 `DeepCopy`（第 10 行），而插件只需要长度，每个节点每次打分都要为被提名的 Pod 各拷贝一份 Pod 对象。被提名的 Pod 通常不多，开销可以接受。
 
 ## 三、算例
 
@@ -126,9 +126,9 @@ README 的解释是：终止中的 Pod 最终会从节点上物理移除。结�
 
 被提名的 Pod 是抢占者：DefaultPreemption 为它驱逐了某个节点上的低优先级 Pod，并把它提名到这个节点，等受害者退出后它会在下一轮调度中落位。如果此时另一个 Pod 抢先占用了刚腾出的资源，抢占者可能又放不下，前一轮的驱逐就白做了。
 
-框架本身对此有一层硬保护：Filter 阶段的 `RunFilterPluginsWithNominatedPods` 会把优先级不低于当前 Pod 的被提名 Pod 临时加进 NodeInfo 再跑一遍 Filter：
+框架本身对此有一层硬保护：Filter 阶段的 `RunFilterPluginsWithNominatedPods` 会把优先级不低于当前 Pod、且 UID 不是自己的被提名 Pod 临时加进 NodeInfo 再跑一遍 Filter（第 3 行是这两个条件）：
 
-```go
+```go {linenos=inline}
 // kubernetes@v1.36.4/pkg/scheduler/framework/runtime/framework.go
 	for _, pi := range nominatedPodInfos {
 		if corev1.PodPriority(pi.GetPod()) >= corev1.PodPriority(pod) && pi.GetPod().UID != pod.UID {
@@ -146,9 +146,9 @@ DefaultPreemption 选中一个节点后，会同时制造两件事：受害者�
 
 **驱逐了多个受害者时，节点的原始分反而是正的，会被偏好。** 这和插件「避开被提名节点」的初衷恰好相反。框架的硬保护会在 Filter 时把优先级不低于当前 Pod 的抢占者计入节点，资源不够时新 Pod 会被直接拒绝；但只要还放得下，`PodState` 就会把新 Pod 吸引到这个正在为抢占者腾位置的节点上，进一步压缩它的余量。
 
-in-tree 也意识到了终止中受害者的意义：DefaultPreemption 的 `PodEligibleToPreemptOthers` 在 Pod 已有提名节点、且该节点上有因抢占而终止中的低优先级 Pod 时，拒绝再次抢占，让它等这些 Pod 退出：
+in-tree 也意识到了终止中受害者的意义：DefaultPreemption 的 `PodEligibleToPreemptOthers` 在 Pod 已有提名节点、且该节点上有因抢占而终止中的低优先级 Pod 时，拒绝再次抢占（第 2–7 行），让它等这些 Pod 退出：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go
 		if nodeInfo, _ := nodeInfos.Get(nomNodeName); nodeInfo != nil {
 			for _, p := range nodeInfo.GetPods() {
@@ -161,7 +161,7 @@ in-tree 也意识到了终止中受害者的意义：DefaultPreemption 的 `PodE
 		}
 ```
 
-（这段引自 Kubernetes master 提交 `aabdf5a2`。）它区分了「因抢占而终止」（`PodTerminatingByPreemption` 要求 `DisruptionTarget` condition 为 True 且 reason 为 `PreemptionByScheduler`）和一般的终止，而 `PodState` 只看 `DeletionTimestamp`，不做区分。
+（这段引自 Kubernetes master 提交 `aabdf5a2`。）它区分了「因抢占而终止」（`PodTerminatingByPreemption` 要求 `DisruptionTarget` condition 为 True 且 reason 为 `PreemptionByScheduler`，第 5 行）和一般的终止，而 `PodState` 只看 `DeletionTimestamp`，不做区分。
 
 ## 五、局限
 
@@ -169,7 +169,7 @@ in-tree 也意识到了终止中受害者的意义：DefaultPreemption 的 `PodE
 
 - 只数个数：一个请求 64 核的终止中 Pod 和一个请求 0.1 核的终止中 Pod 贡献相同；一个大的抢占者和一个小的抢占者扣分也相同。如果目标是「哪个节点很快会腾出足够的资源」，需要累加 request 而不是计数。
 - 不看优先级：高优先级 Pod 不必在乎低优先级的被提名 Pod（框架的 Filter 都不把它们算进来），但在 `PodState` 里同样被扣分。
-- 会把自己算进去：nominator 中的提名要到 assume 时才通过 `DeleteNominatedPodIfExists` 删除。一个之前抢占成功、带着 `nominatedNodeName` 的 Pod 重新进入调度时，它自己还在 nominator 里，提名节点因此被扣一分。框架会先单独评估提名节点（`evaluateNominatedNode`），通过就只剩一个可行节点、跳过打分，所以只有提名节点 Filter 不通过、需要对全部节点打分时，这个问题才会出现，而那时提名节点本来也不在候选里。**影响很小，但它说明插件没有像框架那样排除 `pod.UID`。**
+- 会把自己算进去：nominator 中的提名要到 assume 时才通过 `DeleteNominatedPodIfExists` 删除。一个之前抢占成功、带着 `nominatedNodeName` 的 Pod 重新进入调度时，它自己还在 nominator 里，提名节点因此被扣一分。框架会先单独评估提名节点（`evaluateNominatedNode`），通过就只剩一个可行节点、跳过打分，所以只有提名节点 Filter 不通过、需要对全部节点打分时，这个问题才会出现，而那时提名节点本来也不在候选里。**影响很小，但它说明插件没有像框架那样排除 `pod.UID`**（对比上一节框架代码第 3 行的 `pi.GetPod().UID != pod.UID`）。
 - 终止时间不可知：`deletionTimestamp` 只表示开始终止，Pod 可能有很长的 `terminationGracePeriodSeconds`，也可能因为 finalizer 卡住很久。偏好这样的节点并不总是有收益。
 - 数据范围：终止中的 Pod 必须仍在 NodeInfo 里，kubelet 确认删除后就消失了；被提名的 Pod 只来自本调度器的队列，其他调度器提名的 Pod 不在其中。
 

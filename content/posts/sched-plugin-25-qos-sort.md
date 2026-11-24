@@ -27,7 +27,7 @@ QOSSort 是 out-of-tree 插件里最小的一个：只实现 QueueSort 扩展点
 
 scheduler-plugins 不提供动态加载机制，插件是在编译期链接进二进制的。所以第一步要弄清的是：这个二进制由谁拼出来。仓库的入口 `cmd/scheduler/main.go` 直接复用了 kube-scheduler 的命令行：
 
-```go
+```go {linenos=inline}
 // cmd/scheduler/main.go
 func main() {
 	// Register custom plugins to the scheduler framework.
@@ -51,9 +51,9 @@ func main() {
 }
 ```
 
-`app` 是 `k8s.io/kubernetes/cmd/kube-scheduler/app`，也就是官方 kube-scheduler 的同一个包。`WithPlugin` 只做一件事：把插件名和工厂函数登记进一张 Registry。
+`app` 是 `k8s.io/kubernetes/cmd/kube-scheduler/app`，也就是官方 kube-scheduler 的同一个包。`WithPlugin` 只做一件事（第 4–8 行）：把插件名和工厂函数登记进一张 Registry。
 
-```go
+```go {linenos=inline}
 // cmd/kube-scheduler/app/server.go（k8s v1.36.4）
 // WithPlugin creates an Option based on plugin name and factory. Please don't remove this function: it is used to register out-of-tree plugins,
 // hence there are no references to it from the kubernetes scheduler code base.
@@ -64,9 +64,9 @@ func WithPlugin(name string, factory runtime.PluginFactory) Option {
 }
 ```
 
-`Setup` 把这些 Option 依次作用在一张空的 `outOfTreeRegistry` 上，再通过 `scheduler.WithFrameworkOutOfTreeRegistry` 传给 `scheduler.New`，后者把它合并进 in-tree Registry：
+`Setup` 把这些 Option 依次作用在一张空的 `outOfTreeRegistry` 上，再通过 `scheduler.WithFrameworkOutOfTreeRegistry` 传给 `scheduler.New`，后者把它合并进 in-tree Registry（第 2–5 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/scheduler.go（k8s v1.36.4）
 	registry := frameworkplugins.NewInTreeRegistry()
 	if err := registry.Merge(options.frameworkOutOfTreeRegistry); err != nil {
@@ -84,7 +84,7 @@ func WithPlugin(name string, factory runtime.PluginFactory) Option {
 
 插件编译进去不代表生效，还要在 `KubeSchedulerConfiguration` 的某个 Profile 里启用。QOSSort 的示例配置是这样的（仓库 `manifests/qos/scheduler-config.yaml` 仍写着 `v1beta3`，这个版本早已从 kube-scheduler 移除，scheduler-plugins 的 `apis/config` 下也只剩 `v1`，照抄时要改成 `v1`）：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: kubescheduler.config.k8s.io/v1
 kind: KubeSchedulerConfiguration
 profiles:
@@ -99,7 +99,7 @@ profiles:
 
 每个 Profile 有一个 `schedulerName`，调度器只处理 `spec.schedulerName` 命中自己某个 Profile 的 Pod：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/eventhandlers.go（k8s v1.36.4）
 func responsibleForPod(pod *v1.Pod, profiles profile.Map) bool {
 	return profiles.HandlesSchedulerName(pod.Spec.SchedulerName)
@@ -112,7 +112,7 @@ func responsibleForPod(pod *v1.Pod, profiles profile.Map) bool {
 
 `schedulerName` 能把 Pod 分到不同的插件链，但分不开队列。整个调度器进程只有一个 `SchedulingQueue`，它的比较函数在构造时就定死了：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/scheduler.go（k8s v1.36.4）
 	podQueue := internalqueue.NewSchedulingQueue(
 		profiles[options.profiles[0].SchedulerName].QueueSortFunc(),
@@ -123,7 +123,7 @@ func responsibleForPod(pod *v1.Pod, profiles profile.Map) bool {
 
 取的是第一个 Profile 的 `QueueSortFunc()`。为了让这个选择不产生歧义，配置校验要求所有 Profile 的 queueSort 完全一致，连插件参数也要一致：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/apis/config/validation/validation.go（k8s v1.36.4）
 	for i := 1; i < len(profiles); i++ {
 		var curr config.PluginSet
@@ -143,7 +143,7 @@ func responsibleForPod(pod *v1.Pod, profiles profile.Map) bool {
 
 在单个 Profile 内部，`newFramework` 还会检查 QueueSort 插件恰好一个：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/runtime/framework.go（k8s v1.36.4）
 	if len(f.queueSortPlugins) != 1 {
 		return nil, fmt.Errorf("only one queue sort plugin required for profile with scheduler name %q, but got %d", profile.SchedulerName, len(f.queueSortPlugins))
@@ -156,9 +156,9 @@ func responsibleForPod(pod *v1.Pod, profiles profile.Map) bool {
 
 {{< figure src="/images/posts/sched-plugins/25-out-of-tree-runtime.svg" caption="out-of-tree 插件的三个阶段：编译期注册工厂、启动时合并 Registry、配置期由 Profile 启用；排序队列全进程共享，所以 QueueSort 只能四选一（点击查看大图）" link="/images/posts/sched-plugins/25-out-of-tree-runtime.svg" >}}
 
-配置里那行 `disabled: "*"` 不是可有可无的。v1 默认插件全部放在 `multiPoint` 里，其中包括 `PrioritySort`。`expandMultiPointPlugins` 展开每个扩展点时，如果该扩展点的 `disabled` 含 `"*"`，就跳过 multiPoint 展开：
+配置里那行 `disabled: "*"` 不是可有可无的。v1 默认插件全部放在 `multiPoint` 里，其中包括 `PrioritySort`。`expandMultiPointPlugins` 展开每个扩展点时，如果该扩展点的 `disabled` 含 `"*"`，就跳过 multiPoint 展开（第 2–5 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/runtime/framework.go（k8s v1.36.4）
 		if disabledSet.Has("*") {
 			logger.V(4).Info("Skipped MultiPoint expansion because all plugins are disabled for extension point", "extension", pluginType)
@@ -174,7 +174,7 @@ func responsibleForPod(pod *v1.Pod, profiles profile.Map) bool {
 
 默认的出队顺序由 PrioritySort 决定，排序键是「优先级降序、入队时间升序」。在很多集群里，绝大多数业务 Pod 没有设置 PriorityClass，优先级都是 0，排序实际上退化成 FIFO。设想集群资源紧张时同时提交了下面两个 Pod：
 
-```yaml
+```yaml {linenos=inline}
 # batch-probe：BestEffort，不声明任何 requests/limits
 containers:
 - name: probe
@@ -197,7 +197,7 @@ containers:
 
 QOSSort 的入口只有三样东西：插件名、一个空结构体、一个工厂函数。
 
-```go
+```go {linenos=inline}
 // pkg/qos/queue_sort.go
 // Name is the name of the plugin used in the plugin registry and configurations.
 const Name = "QOSSort"
@@ -213,13 +213,13 @@ func New(_ context.Context, _ runtime.Object, _ fwk.Handle) (fwk.Plugin, error) 
 }
 ```
 
-空结构体，不读参数、不持有 `Handle`，也没有对应的 Args 类型和默认值。QueueSort 插件运行在队列里，此时还没有调度周期，因此也谈不上 CycleState。
+空结构体（第 6 行），`New`（第 11–13 行）不读参数、不持有 `Handle`，也没有对应的 Args 类型和默认值。QueueSort 插件运行在队列里，此时还没有调度周期，因此也谈不上 CycleState。
 
 ### 3.2 Less：三级比较
 
 框架只会调用它的 `Less`，排序规则全在这一个方法里。方法注释已经写清了三级键：
 
-```go
+```go {linenos=inline}
 // pkg/qos/queue_sort.go
 // Less is the function used by the activeQ heap algorithm to sort pods.
 // It sorts pods based on their priorities. When the priorities are equal, it uses
@@ -242,17 +242,17 @@ func (*Sort) Less(pInfo1, pInfo2 fwk.QueuedPodInfo) bool {
 
 `Less(a, b)` 返回 true 表示 a 应排在 b 前面。三级依次是：
 
-1. `PodPriority` 读 `spec.priority`，为 nil 时返回 0。这个字段由 Priority 准入插件根据 `priorityClassName` 填好，调度器不再解析 PriorityClass。
-2. 优先级相同，比较 QoS 等级。
-3. QoS 也相同，比较 `Timestamp`。这个时间戳不是 Pod 的创建时间，而是进入队列的时间：`AddUnschedulableIfNotPresent` 在 Pod 调度失败、重新放回队列时会执行 `pInfo.Timestamp = p.clock.Now()`。所以一个失败过的 Pod，重新回到 activeQ 后会排到同优先级、同 QoS 的新来者后面。
+1. `PodPriority`（第 7–8 行）读 `spec.priority`，为 nil 时返回 0。这个字段由 Priority 准入插件根据 `priorityClassName` 填好，调度器不再解析 PriorityClass。
+2. 优先级相同，比较 QoS 等级（第 13–16 行）。
+3. QoS 也相同，比较 `Timestamp`（第 17 行）。这个时间戳不是 Pod 的创建时间，而是进入队列的时间：`AddUnschedulablePodIfNotPresent` 在 Pod 调度失败、重新放回队列时会执行 `pInfo.Timestamp = p.clock.Now()`。所以一个失败过的 Pod，重新回到 activeQ 后会排到同优先级、同 QoS 的新来者后面。
 
 这三级构成一个字典序比较，键是 `(-priority, -qosRank, timestamp)`，满足严格弱序：`Less(a, a)` 为 false，传递性成立。这一点看似平常，[下一篇](/posts/sched-plugin-26-topological-sort/)的 TopologicalSort 就没有做到。
 
 ### 3.3 compQOS：QoS 等级从哪里来
 
-三级里唯一新增的是中间那层 QoS，它由 `compQOS` 算出来。函数本身只是查表：
+三级里唯一新增的是中间那层 QoS，它由 `compQOS` 算出来。函数本身只是查表（第 6–10 行的 `qosOrder`）：
 
-```go
+```go {linenos=inline}
 // pkg/qos/queue_sort.go
 func compQOS(p1, p2 *v1.Pod) int {
 	p1QOS, p2QOS := v1qos.GetPodQOS(p1), v1qos.GetPodQOS(p2)
@@ -276,7 +276,7 @@ func compQOS(p1, p2 *v1.Pod) int {
 
 `GetPodQOS` 来自 `k8s.io/kubernetes/pkg/apis/core/v1/helper/qos`，它优先读 `status.qosClass`：
 
-```go
+```go {linenos=inline}
 // pkg/apis/core/v1/helper/qos/qos.go（k8s v1.36.4）
 func GetPodQOS(pod *v1.Pod) v1.PodQOSClass {
 	if pod.Status.QOSClass != "" {
@@ -288,7 +288,7 @@ func GetPodQOS(pod *v1.Pod) v1.PodQOSClass {
 
 `status.qosClass` 由 API Server 在创建 Pod 时写入（`pkg/registry/core/pod/strategy.go` 的 `PrepareForCreate` 里 `pod.Status.QOSClass = qos.GetPodQOS(pod)`），之后不会变化：原地扩缩容的校验明确拒绝改变 QoS 的 resize（`Pod QOS Class may not change as a result of resizing`）。
 
-所以队列里的 Pod 几乎都走第一个分支，比较成本只是两次字段读取。只有绕过 API Server 构造的 Pod（比如单元测试）才会走 `ComputePodQOS`。
+所以队列里的 Pod 几乎都走第一个分支（第 3–4 行），比较成本只是两次字段读取。只有绕过 API Server 构造的 Pod（比如单元测试）才会走 `ComputePodQOS`。
 
 `ComputePodQOS` 的规则只看 cpu 和 memory 两种资源，结果分三类：
 
@@ -312,7 +312,7 @@ QOSSort 不实现任何其它扩展点，也不需要 `EventsToRegister`：框�
 
 既然差别只在排序键上，和 PrioritySort 直接对照最清楚。v1.36.4 的 PrioritySort 只有两级比较：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/queuesort/priority_sort.go（k8s v1.36.4）
 func (pl *PrioritySort) Less(pInfo1, pInfo2 fwk.QueuedPodInfo) bool {
 	p1 := corev1helpers.PodPriority(pInfo1.GetPodInfo().GetPod())
@@ -325,7 +325,7 @@ func (pl *PrioritySort) Less(pInfo1, pInfo2 fwk.QueuedPodInfo) bool {
 
 这个比较函数不只用于 activeQ。v1.36.4 的 backoffQ 在 `SchedulerPopFromBackoffQ`（1.33 起 Beta，默认开启）打开时，用 `lessBackoffCompletedWithPriority` 排序：先比退避到期时间，到期时间落在同一个对齐窗口时，再调用 activeQ 的 Less：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/backoff_queue.go（k8s v1.36.4）
 func (bq *backoffQueue) lessBackoffCompletedWithPriority(pInfo1, pInfo2 *framework.QueuedPodInfo) bool {
 	bo1 := bq.getBackoffTime(pInfo1)
@@ -342,7 +342,7 @@ func (bq *backoffQueue) lessBackoffCompletedWithPriority(pInfo1, pInfo2 *framewo
 
 到了 Kubernetes master，QueueSort 接口本身变了。`aabdf5a2` 中的定义是：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/kube-scheduler/framework/interface.go（k8s master aabdf5a2）
 type QueueSortPlugin interface {
 	Plugin
@@ -373,7 +373,7 @@ QOSSort 现在拿到的是 `QueuedPodInfo`，升级到这套接口后需要先�
 
 kubelet 根据 QoS 设置容器的 `oom_score_adj`：
 
-```go
+```go {linenos=inline}
 // pkg/kubelet/qos/policy.go（k8s master aabdf5a2）
 const (
 	// ...
@@ -399,7 +399,7 @@ Guaranteed 是 -997，BestEffort 是 1000，Burstable 按内存 request 占节�
 
 但 kubelet 自己的驱逐（node-pressure eviction）并不直接按 QoS 排序。内存压力下的排序是：
 
-```go
+```go {linenos=inline}
 // pkg/kubelet/eviction/helpers.go（k8s master aabdf5a2）
 func rankMemoryPressure(pods []*v1.Pod, stats statsFunc) {
 	orderedBy(exceedMemoryRequests(stats), priority, memory(stats)).Sort(pods)

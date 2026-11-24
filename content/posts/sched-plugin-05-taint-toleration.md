@@ -29,7 +29,7 @@ description: "TaintToleration 是默认 Profile 里权重最高的打分插件�
 
 一个典型的组合：
 
-```yaml
+```yaml {linenos=inline}
 # 节点：GPU 专用，且是抢占式实例
 spec:
   taints:
@@ -55,7 +55,7 @@ spec:
 
 插件本身不实现匹配逻辑，它调用 API 类型上的方法：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/api/core/v1/toleration.go
 func (t *Toleration) ToleratesTaint(logger klog.Logger, taint *Taint, enableComparisonOperators bool) bool {
 	if len(t.Effect) > 0 && t.Effect != taint.Effect {
@@ -87,10 +87,10 @@ func (t *Toleration) ToleratesTaint(logger klog.Logger, taint *Taint, enableComp
 
 四条规则，按顺序：
 
-1. effect：toleration 的 effect 为空表示匹配所有 effect，否则必须相等。
-2. key：toleration 的 key 为空表示匹配所有 key（API 校验要求此时 operator 必须是 `Exists`），否则必须相等。
-3. operator：空或 `Equal` 比较 value；`Exists` 不看 value。
-4. `Lt`/`Gt`：把两边的 value 解析成 int64 做数值比较。`Gt` 的含义是「污点的值大于容忍的值」时容忍，`Lt` 相反。解析失败（不是十进制整数）一律视为不容忍。
+1. effect：toleration 的 effect 为空表示匹配所有 effect，否则必须相等（第 3–5 行）。
+2. key：toleration 的 key 为空表示匹配所有 key（API 校验要求此时 operator 必须是 `Exists`），否则必须相等（第 7–9 行）。
+3. operator：空或 `Equal` 比较 value；`Exists` 不看 value（第 12–17 行）。
+4. `Lt`/`Gt`：把两边的 value 解析成 int64 做数值比较（第 18–23 行）。`Gt` 的含义是「污点的值大于容忍的值」时容忍，`Lt` 相反。解析失败（不是十进制整数）一律视为不容忍。
 
 第四条是 `TaintTolerationComparisonOperators` 引入的新能力（1.35 Alpha，默认关闭），gate 关闭时 API Server 拒绝创建带 `Lt`/`Gt` 的 Pod，调度器也把它们当作不匹配。它的用途是表达「SLA 等级不低于某个值的节点」这类数值阈值，测试里的用例就是用一个数值型的 SLA 污点。
 
@@ -98,7 +98,7 @@ func (t *Toleration) ToleratesTaint(logger klog.Logger, taint *Taint, enableComp
 
 `TolerationsTolerateTaint` 是在容忍列表上的「任一匹配」：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/component-helpers/scheduling/corev1/helpers.go
 func TolerationsTolerateTaint(logger klog.Logger, tolerations []v1.Toleration, taint *v1.Taint, enableComparisonOperators bool) bool {
 	for i := range tolerations {
@@ -114,7 +114,7 @@ func TolerationsTolerateTaint(logger klog.Logger, tolerations []v1.Toleration, t
 
 匹配规则只有这四条。回到插件本身，看它怎么拿这套规则做过滤。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/tainttoleration/taint_toleration.go
 // TaintToleration is a plugin that checks if a pod tolerates a node's taints.
 type TaintToleration struct {
@@ -137,7 +137,7 @@ const (
 
 Filter：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/tainttoleration/taint_toleration.go
 func (pl *TaintToleration) Filter(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeInfo fwk.NodeInfo) *fwk.Status {
 	if pl.enableInPlacePodVerticalScalingSchedulerPreemption && resource.IsPodResizeDeferred(pod) {
@@ -158,7 +158,7 @@ func (pl *TaintToleration) Filter(ctx context.Context, state fwk.CycleState, pod
 }
 ```
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/helper/taint.go
 func DoNotScheduleTaintsFilterFunc() func(t *v1.Taint) bool {
 	return func(t *v1.Taint) bool {
@@ -168,7 +168,7 @@ func DoNotScheduleTaintsFilterFunc() func(t *v1.Taint) bool {
 }
 ```
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/component-helpers/scheduling/corev1/helpers.go
 func FindMatchingUntoleratedTaint(logger klog.Logger, taints []v1.Taint, tolerations []v1.Toleration, inclusionFilter taintsFilterFunc, enableComparisonOperators bool) (v1.Taint, bool) {
 	filteredTaints := getFilteredTaints(taints, inclusionFilter)
@@ -181,7 +181,7 @@ func FindMatchingUntoleratedTaint(logger klog.Logger, taints []v1.Taint, tolerat
 }
 ```
 
-流程是：先按 effect 过滤，只留下 `NoSchedule` 和 `NoExecute`；再逐个检查是否被 Pod 的某个容忍覆盖；遇到第一个不被容忍的就返回。时间复杂度是 O(污点数 × 容忍数)，两者通常都是个位数，没有任何预计算，所以插件的 PreFilter 不往 CycleState 里写东西。
+流程是：先按 effect 过滤，只留下 `NoSchedule` 和 `NoExecute`（`DoNotScheduleTaintsFilterFunc` 第 5 行）；再逐个检查是否被 Pod 的某个容忍覆盖（第 4–8 行）；遇到第一个不被容忍的就返回（第 6 行）。Filter 本身先调这个函数（第 9–14 行），不被容忍时返回失败（第 17 行）。时间复杂度是 O(污点数 × 容忍数)，两者通常都是个位数，没有任何预计算，所以插件的 PreFilter 不往 CycleState 里写东西。
 
 {{< figure src="/images/posts/sched-plugins/05-taint-filter-score.svg" link="/images/posts/sched-plugins/05-taint-filter-score.svg" caption="同一组节点污点，按 effect 分给 Filter 和 Score：Filter 只看 NoSchedule/NoExecute，Score 只数不被容忍的 PreferNoSchedule（点击查看大图）" >}}
 
@@ -191,7 +191,7 @@ func FindMatchingUntoleratedTaint(logger klog.Logger, taints []v1.Taint, tolerat
 
 **`NoSchedule` 和 `NoExecute` 在调度时没有区别。** 两者都会淘汰节点，且失败码相同。区别只在 Pod 已经运行之后。
 
-**失败原因字符串和常量不一致。** Filter 返回的是字面量 `node(s) had untolerated taint(s)`，而导出的常量 `ErrReasonNotMatch` 是 `node(s) had taints that the pod didn't tolerate`。在整个代码库里，这个常量只被 kubelet 使用（`pkg/kubelet/lifecycle/predicate.go` 的准入检查和 `kubelet.go` 里的已知拒绝原因列表）。
+**失败原因字符串和常量不一致。** Filter 返回的是字面量 `node(s) had untolerated taint(s)`（第 17 行），而导出的常量 `ErrReasonNotMatch` 是 `node(s) had taints that the pod didn't tolerate`（第 15 行）。在整个代码库里，这个常量只被 kubelet 使用（`pkg/kubelet/lifecycle/predicate.go` 的准入检查和 `kubelet.go` 里的已知拒绝原因列表）。
 
 所以用 `didn't tolerate` 去搜调度器事件是搜不到的，调度器的事件里是 `untolerated taint(s)`；后者出现在 kubelet 拒绝 Pod 的消息里。
 
@@ -205,7 +205,7 @@ Filter 只认硬污点，`PreferNoSchedule` 在它眼里不存在。这个 effec
 
 PreScore 先把 Pod 的容忍裁剪一次，之后的每个节点 Score 就少做几次比较。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/tainttoleration/taint_toleration.go
 // preScoreState computed at PreScore and used at Score.
 type preScoreState struct {
@@ -240,7 +240,7 @@ func (pl *TaintToleration) PreScore(ctx context.Context, cycleState fwk.CycleSta
 }
 ```
 
-CycleState 的 key 是 `PreScoreTaintToleration`，值是 Pod 容忍里 effect 为空或 `PreferNoSchedule` 的子集。**effect 为 `NoSchedule` 的容忍反正匹配不上 `PreferNoSchedule` 污点（规则 1），提前剔除只是为了让每个节点的 Score 少做几次比较**：PreScore 每个调度周期跑一次，Score 每个可行节点跑一次。
+CycleState 的 key 是 `PreScoreTaintToleration`（第 13 行拼出来的），值是 Pod 容忍里 effect 为空或 `PreferNoSchedule` 的子集（第 13–22 行挑出，第 25–32 行写进状态）。**effect 为 `NoSchedule` 的容忍反正匹配不上 `PreferNoSchedule` 污点（规则 1），提前剔除只是为了让每个节点的 Score 少做几次比较**：PreScore 每个调度周期跑一次，Score 每个可行节点跑一次。
 
 `Clone` 直接返回自身，不做拷贝。CycleState 在抢占模拟时会被克隆，共享同一份数据安全的前提是 PreScore 写入之后再也没人修改它。这个切片只依赖 Pod 本身，不依赖节点上的 Pod，确实是不变的。
 
@@ -250,7 +250,7 @@ CycleState 的 key 是 `PreScoreTaintToleration`，值是 Pod 容忍里 effect �
 
 Score 只数一种东西：这个节点上有几个不被容忍的 `PreferNoSchedule` 污点。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/tainttoleration/taint_toleration.go
 // CountIntolerableTaintsPreferNoSchedule gives the count of intolerable taints of a pod with effect PreferNoSchedule
 func (pl *TaintToleration) countIntolerableTaintsPreferNoSchedule(logger klog.Logger, taints []v1.Taint, tolerations []v1.Toleration) (intolerableTaints int) {
@@ -280,9 +280,9 @@ func (pl *TaintToleration) NormalizeScore(ctx context.Context, _ fwk.CycleState,
 }
 ```
 
-Score 的原始分是「不被容忍的 `PreferNoSchedule` 污点个数」，越大越差。框架要求最终分数越大越好，所以 NormalizeScore 用 `reverse=true` 翻转：
+Score 的原始分是「不被容忍的 `PreferNoSchedule` 污点个数」（第 3–15 行数出这个数），越大越差。框架要求最终分数越大越好，所以 NormalizeScore 用 `reverse=true` 翻转（第 26 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/helper/normalize_score.go
 func DefaultNormalizeScore(maxPriority int64, reverse bool, scores fwk.NodeScoreList) *fwk.Status {
 	var maxCount int64
@@ -315,7 +315,7 @@ func DefaultNormalizeScore(maxPriority int64, reverse bool, scores fwk.NodeScore
 }
 ```
 
-**公式是 `100 − 100 × raw / max(raw)`，整数除法向下取整。** 框架随后乘以权重 3。
+**公式是 `100 − 100 × raw / max(raw)`，整数除法向下取整**（第 22–25 行；`maxCount` 在第 3–8 行求出）。框架随后乘以权重 3。
 
 {{< figure src="/images/posts/sched-plugins/05-taint-score-and-roles.svg" link="/images/posts/sched-plugins/05-taint-score-and-roles.svg" caption="左：四个可行节点的软污点打分算例；右：NoSchedule、PreferNoSchedule、NoExecute 在调度器、kubelet、taint-eviction-controller 之间的分工（点击查看大图）" >}}
 
@@ -350,7 +350,7 @@ func DefaultNormalizeScore(maxPriority int64, reverse bool, scores fwk.NodeScore
 
 插件的 hint 判断方式由事件类型决定，先看它订阅了什么。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/tainttoleration/taint_toleration.go
 func (pl *TaintToleration) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWithHint, error) {
 	return []fwk.ClusterEventWithHint{
@@ -381,11 +381,11 @@ func (pl *TaintToleration) isSchedulableAfterNodeChange(logger klog.Logger, pod 
 }
 ```
 
-节点事件复用了 Filter 的判断，只是分别作用在旧节点和新节点上。**只有当这个 Pod 之前过不去、现在过得去时，才返回 `Queue`。**
+节点事件复用了 Filter 的判断，只是分别作用在旧节点（第 16–18 行）和新节点（第 20 行）上。**只有当这个 Pod 之前过不去、现在过得去时，才返回 `Queue`**（第 22–25 行）。
 
 由此可以推出两种情况：
 
-1. 新增节点时没有旧节点，`wasUntolerated` 默认为 `true`，所以只要新节点没有它不容忍的硬污点就会唤醒；
+1. 新增节点时没有旧节点，`wasUntolerated` 默认为 `true`（第 15 行），所以只要新节点没有它不容忍的硬污点就会唤醒；
 2. 判断只看硬污点，`PreferNoSchedule` 的变化不会让任何 Pod 从不可调度变成可调度。
 
 和上一篇的 `NodeUnschedulable` 对比，这个 hint 针对的是具体 Pod：它拿 Pod 的容忍去比较。一个节点删掉了 `dedicated=gpu:NoSchedule`，只会唤醒那些因为这个污点被拒绝、并且没有别的不被容忍污点的 Pod；对本来就容忍 GPU 污点的 Pod，`wasUntolerated` 为假，返回 `QueueSkip`。
@@ -394,7 +394,7 @@ hint 只判断事件中的这一个节点。它不知道 Pod 当初是被哪个�
 
 Pod 容忍变化的 hint 无条件返回 `Queue`：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/tainttoleration/taint_toleration.go
 func (pl *TaintToleration) isSchedulableAfterTargetPodTolerationChange(logger klog.Logger, pod *v1.Pod, oldObj, newObj interface{}) (fwk.QueueingHint, error) {
 	// The updated Pod is the unschedulable Pod.
@@ -403,7 +403,7 @@ func (pl *TaintToleration) isSchedulableAfterTargetPodTolerationChange(logger kl
 }
 ```
 
-`NodeUnschedulable` 在同样的事件上会检查新容忍是否覆盖 unschedulable 污点，而这里不检查。原因是 `TaintToleration` 关心的污点集合是开放的，要判断新容忍是否有用，得知道 Pod 当初被哪些节点的哪些污点拒绝，而这些信息没有保存在 Pod 上。容忍只能追加、不能修改或删除，这种更新本来就少见，直接唤醒的代价很小。
+`NodeUnschedulable` 在同样的事件上会检查新容忍是否覆盖 unschedulable 污点，而这里不检查（第 4–5 行只有一句日志和一个 `Queue`）。原因是 `TaintToleration` 关心的污点集合是开放的，要判断新容忍是否有用，得知道 Pod 当初被哪些节点的哪些污点拒绝，而这些信息没有保存在 Pod 上。容忍只能追加、不能修改或删除，这种更新本来就少见，直接唤醒的代价很小。
 
 到此，调度器一侧的污点逻辑就完整了：Filter 看硬污点，Score 数软污点，hint 判断事件。但 `NoExecute` 还有一半工作不在这里。
 
@@ -415,7 +415,7 @@ func (pl *TaintToleration) isSchedulableAfterTargetPodTolerationChange(logger kl
 
 绕过调度器（写了 `nodeName`）的 Pod，到了节点上会经过 kubelet 的准入检查。第 03 篇引用过 `generalFilter`，它对污点的检查是：
 
-```go
+```go {linenos=inline}
 // pkg/kubelet/lifecycle/predicate.go
 	// Check taint/toleration except for static pods
 	if !types.IsStaticPod(pod) {
@@ -429,13 +429,13 @@ func (pl *TaintToleration) isSchedulableAfterTargetPodTolerationChange(logger kl
 	}
 ```
 
-只看 `NoExecute`，而且跳过静态 Pod。**`NoSchedule` 是调度层面的约定，Pod 既然没有经过调度器，就不受它约束**；`NoExecute` 是「不容忍就不能在这里运行」，kubelet 不接纳这样的 Pod，否则它刚启动就会被驱逐。静态 Pod 由节点本地的清单文件管理，通常是控制面组件，不能因为节点被打了污点就拒绝启动。
+只看 `NoExecute`（第 6 行），而且跳过静态 Pod（第 3 行）。**`NoSchedule` 是调度层面的约定，Pod 既然没有经过调度器，就不受它约束**；`NoExecute` 是「不容忍就不能在这里运行」，kubelet 不接纳这样的 Pod，否则它刚启动就会被驱逐。静态 Pod 由节点本地的清单文件管理，通常是控制面组件，不能因为节点被打了污点就拒绝启动。
 
 ### 6.2 taint-eviction-controller
 
 已经运行的 Pod 由 kube-controller-manager 里的 `taint-eviction-controller` 处理。它只关心 `NoExecute`：
 
-```go
+```go {linenos=inline}
 // pkg/controller/tainteviction/taint_eviction.go
 func getNoExecuteTaints(taints []v1.Taint) []v1.Taint {
 	result := []v1.Taint{}
@@ -450,7 +450,7 @@ func getNoExecuteTaints(taints []v1.Taint) []v1.Taint {
 
 对节点上的每个 Pod，它判断这组 `NoExecute` 污点是否全部被容忍，以及容忍里的 `tolerationSeconds`：
 
-```go
+```go {linenos=inline}
 // pkg/controller/tainteviction/taint_eviction.go
 	allTolerated, usedTolerations := v1helper.GetMatchingTolerations(logger, taints, tolerations)
 	if !allTolerated {
@@ -476,9 +476,9 @@ func getNoExecuteTaints(taints []v1.Taint) []v1.Taint {
 
 驱逐时机由三种情况决定：
 
-1. 有不被容忍的 `NoExecute` 污点，立即删除；
-2. 全部被容忍时，取所有用到的容忍里最小的 `tolerationSeconds` 作为宽限期，到期删除；
-3. 没有任何容忍设置 `tolerationSeconds`，永久容忍。
+1. 有不被容忍的 `NoExecute` 污点，立即删除（第 2–9 行）；
+2. 全部被容忍时，取所有用到的容忍里最小的 `tolerationSeconds` 作为宽限期，到期删除（第 10–21 行）；
+3. 没有任何容忍设置 `tolerationSeconds`，永久容忍（第 12–16 行）。
 
 `tolerationSeconds` 小于等于 0 视为立即删除。
 
@@ -496,7 +496,7 @@ node-lifecycle-controller 在节点 `Ready=False` 时会打两个同名污点：
 
 新节点还有一个和上一篇 cordon 类似的异步窗口：节点对象刚创建时 node-lifecycle-controller 还没来得及打 `not-ready:NoSchedule`，调度器可能把 Pod 放到一个还没准备好的节点上。这个窗口是由 API Server 的 `TaintNodesByCondition` 准入插件（`plugin/pkg/admission/nodetaint`，默认启用）在创建 Node 时同步补上这个污点来关闭的：
 
-```go
+```go {linenos=inline}
 // plugin/pkg/admission/nodetaint/admission.go
 	// Taint node with NotReady taint at creation. This is needed to make sure
 	// that nodes are added to the cluster with the NotReady taint. Otherwise,

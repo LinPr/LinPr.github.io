@@ -21,7 +21,7 @@ LROC 实现了 PreScore 和 Score（`NormalizeScore` 为空实现）。它不在
 
 先看一个典型的 Burstable Pod：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: v1
 kind: Pod
 metadata:
@@ -47,7 +47,7 @@ LROC 的 README 把这两项称为 limit risk 和 load risk，按权重相加后
 
 和上一篇一样，LROC 的参数在 `TrimaranSpec` 之外只多了两个字段。
 
-```go
+```go {linenos=inline}
 // apis/config/types.go
 // LowRiskOverCommitmentArgs holds arguments used to configure LowRiskOverCommitment plugin.
 type LowRiskOverCommitmentArgs struct {
@@ -62,7 +62,7 @@ type LowRiskOverCommitmentArgs struct {
 }
 ```
 
-```go
+```go {linenos=inline}
 // apis/config/v1/defaults.go
 // SetDefaults_LowRiskOverCommitmentArgs sets the default parameters for LowRiskOverCommitment plugin
 func SetDefaults_LowRiskOverCommitmentArgs(args *LowRiskOverCommitmentArgs) {
@@ -89,7 +89,7 @@ func SetDefaults_LowRiskOverCommitmentArgs(args *LowRiskOverCommitmentArgs) {
 
 `New` 把配置里给的权重叠加到一个预填了 CPU、内存默认值的新 map 上：
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/lowriskovercommitment/lowriskovercommitment.go
 	// create map of resource risk limit weights
 	m := make(map[v1.ResourceName]float64)
@@ -104,9 +104,9 @@ func SetDefaults_LowRiskOverCommitmentArgs(args *LowRiskOverCommitmentArgs) {
 
 ## 三、PreScore 与 CycleState
 
-LROC 比前两个插件多一个 PreScore：一个 Pod 只会落到一个节点上，它的 request 和 limit 对每个节点都是同一份，没必要在 Score 里重复计算。于是这项准备工作放在 PreScore 里做一次，结果写进 CycleState。
+LROC 比前两个插件多一个 PreScore：一个 Pod 只会落到一个节点上，它的 request 和 limit 对每个节点都是同一份，没必要在 Score 里重复计算。于是这项准备工作放在 PreScore 里做一次，结果写进 CycleState（第 16–17 行的 `CreatePodResourcesStateData` 与 `cycleState.Write`）。
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/lowriskovercommitment/lowriskovercommitment.go
 const (
 	// Name : name of plugin
@@ -128,7 +128,7 @@ func (pl *LowRiskOverCommitment) PreScore(ctx context.Context, cycleState fwk.Cy
 }
 ```
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/lowriskovercommitment/lowriskovercommitment.go
 // CreatePodResourcesStateData : calculate pod resource requests and limits and store as plugin state data
 func CreatePodResourcesStateData(pod *v1.Pod) *PodResourcesStateData {
@@ -154,15 +154,15 @@ func (s *PodResourcesStateData) Clone() fwk.StateData {
 }
 ```
 
-PreScore 每个调度周期只执行一次：计算 Pod 的 request 和 limit（口径与上一篇的 `GetEffectiveResource` 相同：容器求和、与 init 容器取 max、加 overhead），再用 `SetMaxLimits` 保证每种资源的 limit 不小于 request。没写 CPU limit 的容器，limit 被视为等于 request，而不是无穷大。
+PreScore 每个调度周期只执行一次：计算 Pod 的 request 和 limit（口径与上一篇的 `GetEffectiveResource` 相同：容器求和、与 init 容器取 max、加 overhead），再用 `SetMaxLimits` 保证每种资源的 limit 不小于 request（第 4–7 行）。没写 CPU limit 的容器，limit 被视为等于 request，而不是无穷大。
 
 `Clone` 直接返回自身。这样做是安全的，因为数据写入后只读不改，抢占模拟时复制 CycleState 也不需要深拷贝。Score 读不到这个 key 时（比如 PreScore 被跳过），会现场重新计算一遍，不会报错。
 
 ## 四、Score 与 computeRank
 
-Score 本身很短：两个提前返回，剩下的交给 `computeRank`。
+Score 本身很短：两个提前返回，剩下的交给 `computeRank`（第 17 行）。
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/lowriskovercommitment/lowriskovercommitment.go
 	// exclude scoring for best effort pods; this plugin is not concerned about best effort pods
 	podRequests := &podResources.podRequests
@@ -186,7 +186,7 @@ Score 本身很短：两个提前返回，剩下的交给 `computeRank`。
 
 Score 有两个提前返回 0 分的出口：BestEffort Pod，以及节点没有指标。前者对所有节点都给 0 分，相当于这个插件对 BestEffort Pod **保持中立**，不影响排序；后者是让这个节点在这一维垫底。
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/lowriskovercommitment/lowriskovercommitment.go
 func (pl *LowRiskOverCommitment) computeRank(logger klog.Logger, metrics []watcher.Metric, nodeInfo fwk.NodeInfo, pod *v1.Pod,
 	podRequests *framework.Resource, podLimits *framework.Resource) float64 {
@@ -201,9 +201,9 @@ func (pl *LowRiskOverCommitment) computeRank(logger klog.Logger, metrics []watch
 }
 ```
 
-`GetNodeRequestsAndLimits` 遍历 `NodeInfo` 里的所有 Pod，最后把待调度 Pod 也加进去，在加它之前保存一份「不含本 Pod」的快照：
+`GetNodeRequestsAndLimits` 遍历 `NodeInfo` 里的所有 Pod，最后把待调度 Pod 也加进去（第 2 行的 `append(podsOnNode, pod)`），在加它之前保存一份「不含本 Pod」的快照（第 6–10 行）：
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/resourcestats.go
 	for _, p := range append(podsOnNode, pod) {
 		var requested *framework.Resource
@@ -235,7 +235,7 @@ func (pl *LowRiskOverCommitment) computeRank(logger klog.Logger, metrics []watch
 	setMin(&nodeRequestMinusPod.Memory, capMem)
 ```
 
-得到五个量，下文记为：C = Allocatable，R / L = 含本 Pod 的 request / limit 之和，R⁻ / L⁻ = 不含本 Pod 的版本。R 和 R⁻ 被截到不超过 C，L 和 L⁻ 不截断。
+得到五个量，下文记为：C = Allocatable，R / L = 含本 Pod 的 request / limit 之和，R⁻ / L⁻ = 不含本 Pod 的版本。R 和 R⁻ 被截到不超过 C（第 25–29 行），L 和 L⁻ 不截断。
 
 `NodeInfo` 来自调度器的快照，**包含已经 assume 但还没绑定完成的 Pod**。所以这一半数据没有 TLP 那种滞后问题，上一个刚被放到这个节点的 Pod，下一个周期就能看到。这也是 LROC 不需要 `PodAssignEventHandler` 的原因。
 
@@ -243,13 +243,13 @@ func (pl *LowRiskOverCommitment) computeRank(logger klog.Logger, metrics []watch
 
 ## 五、computeRisk：两部分风险
 
-`computeRank` 对 CPU 和内存各调用一次 `computeRisk`，这部分是整套模型的核心。它把风险拆成静态和动态两半，分别计算后加权。
+`computeRank` 对 CPU 和内存各调用一次 `computeRisk`（第 7–8 行），这部分是整套模型的核心。它把风险拆成静态和动态两半，分别计算后加权。
 
 ### 5.1 riskLimit：limit 超出容量的比例
 
-先看只依赖 Pod spec 的那一半，代码只有一个分支。
+先看只依赖 Pod spec 的那一半，代码只有一个分支（第 3–5 行）。
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/lowriskovercommitment/lowriskovercommitment.go
 	// (1) riskLimit : calculate overcommit potential load
 	if limit > capacity {
@@ -257,7 +257,7 @@ func (pl *LowRiskOverCommitment) computeRank(logger klog.Logger, metrics []watch
 	}
 ```
 
-```text
+```text {linenos=inline}
 riskLimit = (L − C) / (L − R)    当 L > C
           = 0                     当 L ≤ C
 ```
@@ -270,7 +270,7 @@ riskLimit = (L − C) / (L − R)    当 L > C
 
 另一半风险要看实测负载，代码长得多。先完整看一遍，再分步拆。
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/lowriskovercommitment/lowriskovercommitment.go
 	// (2) riskLoad : calculate measured overcommitment
 	zeroRequest := &framework.Resource{}
@@ -310,13 +310,13 @@ riskLimit = (L − C) / (L − R)    当 L > C
 
 分步来看。
 
-第一步，μ 和 σ。用 `CreateResourceStats` 时传入的是零 request，所以 μ 就是节点实际平均用量占 Allocatable 的比例，不加本 Pod。σ 先乘以 `√smoothingWindowSize`。原因是：如果观测到的序列是对 n 个独立样本做滑动平均得到的，平均值的方差是原始方差的 1/n，标准差是 1/√n；乘以 √n 可以把标准差还原到原始尺度。Prometheus 的 `instance:node_cpu:ratio` 这类 recording rule 本身就是在若干分钟窗口上算出的速率，默认值 5 对应的就是这种平滑。
+第一步，μ 和 σ。用 `CreateResourceStats` 时传入的是零 request（第 3–4 行的 `zeroRequest`），所以 μ 就是节点实际平均用量占 Allocatable 的比例，不加本 Pod。σ 先乘以 `√smoothingWindowSize`（第 9 行）。原因是：如果观测到的序列是对 n 个独立样本做滑动平均得到的，平均值的方差是原始方差的 1/n，标准差是 1/√n；乘以 √n 可以把标准差还原到原始尺度。Prometheus 的 `instance:node_cpu:ratio` 这类 recording rule 本身就是在若干分钟窗口上算出的速率，默认值 5 对应的就是这种平滑。
 
-第二步，限制 σ 不超过 Beta 分布允许的最大值。[0, 1] 上均值为 μ 的分布，方差最大是 μ(1 − μ)，此时概率质量全部集中在 0 和 1 两点。`GetMaxVariance` 返回这个上界，代码再乘以 0.99 后开方，作为 σ 的上限，保证下一步矩匹配一定有解（α、β > 0）。
+第二步，限制 σ 不超过 Beta 分布允许的最大值。[0, 1] 上均值为 μ 的分布，方差最大是 μ(1 − μ)，此时概率质量全部集中在 0 和 1 两点。`GetMaxVariance` 返回这个上界，代码再乘以 0.99 后开方，作为 σ 的上限（第 11 行），保证下一步矩匹配一定有解（α、β > 0）。
 
 第三步，矩匹配出 Beta(α, β)：
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/lowriskovercommitment/beta.go
 // MatchMoments : Match the first two moments: m1 and m2
 func (b *BetaDistribution) MatchMoments(m1, m2 float64) bool {
@@ -334,17 +334,17 @@ func (b *BetaDistribution) MatchMoments(m1, m2 float64) bool {
 
 推导过程：Beta(α, β) 的均值是 `α/(α+β)`，方差是 `αβ / ((α+β)²(α+β+1))`。令 ν = α + β，则均值 μ = α/ν，方差 = μ(1−μ)/(ν+1)。反解得到：
 
-```text
+```text {linenos=inline}
 ν = μ(1 − μ) / σ² − 1
 α = μ · ν
 β = (1 − μ) · ν
 ```
 
-这正是代码里的 `temp`（即 ν）。ν > 0 等价于 σ² < μ(1−μ)，也就是第二步保证的条件。
+这正是 `MatchMoments` 里的 `temp`（即 ν，第 8 行）。ν > 0 等价于 σ² < μ(1−μ)，也就是第二步保证的条件（第 5 行的判断）。
 
 第四步，计算 allocProb：
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/lowriskovercommitment/beta.go
 // ComputeProbability : The probability that the resource utilization is less than or equal to a given threshold value
 func ComputeProbability(mu, sigma, threshold float64) (float64, *BetaDistribution) {
@@ -372,15 +372,15 @@ func ComputeProbability(mu, sigma, threshold float64) (float64, *BetaDistributio
 
 为什么用这个阈值？新 Pod 被调度上来后，它的 request 是要被保证的。如果已有 Pod 的实际用量已经超过了它们自己的 request 总和，超出的那部分就是在借用「未分配」的容量，而新 Pod 的 request 正好要占用这部分容量。所以**1 − allocProb 就是「新 Pod 会和已有 Pod 的突发负载争抢」的概率**。
 
-几个特殊情况：μ = 0 时直接认为概率为 1；σ = 0 时退化成确定值，μ ≤ 阈值取 1，否则取 0；矩匹配失败时返回 0（风险为 1）。
+几个特殊情况：μ = 0 时直接认为概率为 1；σ = 0 时退化成确定值，μ ≤ 阈值取 1，否则取 0（第 4–9 行）；矩匹配失败时返回 0（风险为 1，第 13–15 行）。
 
 第五步，按 limit 做条件化。如果已有 Pod 的 limit 之和 L⁻ 小于容量，那么它们的用量不可能超过 L⁻/C（CPU 会被节流，内存会被 OOM kill）。这时实际用量的分布应该在 L⁻/C 处被截断：
 
-```text
+```text {linenos=inline}
 P(X ≤ R⁻/C | X ≤ L⁻/C) = P(X ≤ R⁻/C) / P(X ≤ L⁻/C)      （R⁻ ≤ L⁻）
 ```
 
-代码就是做了这个除法，然后截到 [0, 1]。L⁻ = 0 时（节点上只有 BestEffort Pod，或者没有 Pod），代码注释写的是「zero over zero」，直接令 allocProb = 1。
+代码就是做了这个除法，然后截到 [0, 1]（上面 riskLoad 代码第 26–27 行）。L⁻ = 0 时（节点上只有 BestEffort Pod，或者没有 Pod），代码注释写的是「zero over zero」，直接令 allocProb = 1（第 21–22 行）。
 
 第六步，`riskLoad = 1 − allocProb`。
 
@@ -388,9 +388,9 @@ P(X ≤ R⁻/C | X ≤ L⁻/C) = P(X ≤ R⁻/C) / P(X ≤ L⁻/C)      （R⁻ 
 
 ### 5.3 合成
 
-两部分算完，按权重合成，再把 CPU 和内存两个结果取较差者。
+两部分算完，按权重合成（第 3–5 行），再把 CPU 和内存两个结果取较差者（`computeRank` 里的 `rank := 1 - max(riskCPU, riskMemory)`）。
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/lowriskovercommitment/lowriskovercommitment.go
 	// combine two components of risk into a total risk as a weighted sum
 	w := pl.riskLimitWeightsMap[resourceName]
@@ -401,7 +401,7 @@ P(X ≤ R⁻/C | X ≤ L⁻/C) = P(X ≤ R⁻/C) / P(X ≤ L⁻/C)      （R⁻ 
 
 完整公式：
 
-```text
+```text {linenos=inline}
 totalRisk_r = clamp(w_r · riskLimit_r + (1 − w_r) · riskLoad_r, 0, 1)    r ∈ {cpu, memory}
 rank  = 1 − max(totalRisk_cpu, totalRisk_memory)
 score = round(100 × rank)
@@ -448,7 +448,7 @@ LROC 选 A。B 的负载更低、request 更少，但已有 Pod 的 limit 之和
 
 ## 七、边界情况与坑
 
-**缺少某种资源的指标时，该资源看起来更安全。** `CreateResourceStats` 返回 `ok == false` 时，riskLoad 保持初始值 0，totalRisk 只剩 `w × riskLimit`。比如 SignalFx 只配置了 CPU 指标时，内存风险最多只有 0.5 × riskLimit。
+**缺少某种资源的指标时，该资源看起来更安全。** `CreateResourceStats` 返回 `ok == false` 时（5.2 节代码第 5 行的 `if ok` 不成立），riskLoad 保持初始值 0，totalRisk 只剩 `w × riskLimit`。比如 SignalFx 只配置了 CPU 指标时，内存风险最多只有 0.5 × riskLimit。
 
 而节点完全没有指标时，Score 直接返回 0 分。两种「缺数据」的处理方向相反。
 

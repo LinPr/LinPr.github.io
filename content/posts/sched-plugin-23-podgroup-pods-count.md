@@ -21,9 +21,9 @@ description: "PodGroupPodsCount 是 PlacementScore 扩展点上的打分插件�
 
 ## 一、位置、开关与权重
 
-PodGroupPodsCount 和 TopologyPlacementGenerator 由同一个函数加入默认 Profile，`TopologyAwareWorkloadScheduling` feature gate 控制（1.36 Alpha，1.38 Beta，默认关闭）：
+PodGroupPodsCount 和 TopologyPlacementGenerator 由同一个函数加入默认 Profile（第 3–4 行），`TopologyAwareWorkloadScheduling` feature gate 控制（1.36 Alpha，1.38 Beta，默认关闭）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/apis/config/v1/default_plugins.go
 func applyTopologyAwareWorkloadScheduling(config *v1.Plugins) {
 	config.MultiPoint.Enabled = append(config.MultiPoint.Enabled, v1.Plugin{Name: names.TopologyPlacementGenerator})
@@ -31,9 +31,9 @@ func applyTopologyAwareWorkloadScheduling(config *v1.Plugins) {
 }
 ```
 
-**它是默认插件里少数显式写了 `Weight: 1` 的。** 插件本身极简，没有参数，也不读写任何 CycleState：
+**它是默认插件里少数显式写了 `Weight: 1` 的。** 插件本身极简（第 3–6 行），没有参数，也不读写任何 CycleState：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podgrouppodscount/podgroup_pods_count.go
 // PodGroupPodsCount is a placement score plugin that favors placements that can accommodate more pods from the considered PodGroup.
 type PodGroupPodsCount struct {
@@ -60,9 +60,9 @@ PlacementScore 插件并不是每次组调度都会跑。回顾第 22 篇的搜�
 - NominatedNodeName 快速路径命中：直接采用，不打分；
 - 只找到一个可行 placement：`findBestPodGroupPlacement` 在 `len(successfulResults) == 1` 时直接返回它。
 
-**只有在「有多个可行 placement」时，打分才会发生**：`findBestPlacement` 才会调 `RunPlacementScorePlugins`：
+**只有在「有多个可行 placement」时，打分才会发生**：`findBestPlacement`（第 3 行）才会调 `RunPlacementScorePlugins`：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/schedule_one_podgroup.go
 func (sched *Scheduler) findBestPlacement(ctx context.Context, schedFwk framework.Framework, podGroupCycleState fwk.PodGroupCycleState, podGroupInfo *framework.PodGroupInfo, placementPodGroupAssignments []*fwk.PodGroupAssignments, placementStates []fwk.PlacementCycleState) (*fwk.Placement, *fwk.Status) {
 	scores, status := schedFwk.RunPlacementScorePlugins(ctx, podGroupCycleState, podGroupInfo, placementPodGroupAssignments, placementStates)
@@ -86,11 +86,11 @@ func (sched *Scheduler) findBestPlacement(ctx context.Context, schedFwk framewor
 }
 ```
 
-同分时用一个随机数决胜，和单 Pod 调度的 `selectHost` 是同一个目的：避免多个组总是挤进同一个 rack。
+同分时用一个随机数决胜（第 8–18 行），和单 Pod 调度用 `NewSortedScoredNodes` 建最大堆、同分时按 `Randomizer` 决胜是同一个目的：避免多个组总是挤进同一个 rack。
 
 打分插件拿到的输入是 `PodGroupAssignments`：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/kube-scheduler/framework/types.go
 // PodGroupAssignments holds the temporary assignments of pods in a pod group to nodes for a placement.
 // Can be used in the pod group scheduling cycle to determine the best placement for a pod group.
@@ -107,9 +107,9 @@ type PodGroupAssignments struct {
 
 ## 三、打分：已调度数 + 提议数
 
-打分本身只有一行加法。
+打分本身只有一行加法（第 12 行）。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podgrouppodscount/podgroup_pods_count.go
 // ScorePlacement calculates a score for a given Placement.
 // Both scheduled (assumed/assigned) pods and the proposed assignments are taken into consideration
@@ -127,9 +127,9 @@ func (pl *PodGroupPodsCount) ScorePlacement(ctx context.Context, state fwk.Place
 
 **原始分数就是「这个组一共会有多少个 Pod 在跑」**：snapshot 里已经调度的（assigned + assumed），加上这个 placement 里新放下的。
 
-已调度数从哪来？不开 CompositePodGroup 时读本组的 `PodGroupState`；开了以后用 `helper.GetPodGroupStates` 遍历以当前组为根的整棵子树，把每个叶子 PodGroup 的 `ScheduledPodsCount()` 加起来：
+已调度数从哪来？不开 CompositePodGroup 时读本组的 `PodGroupState`（第 13–17 行）；开了以后用 `helper.GetPodGroupStates` 遍历以当前组为根的整棵子树（第 3–12 行），把每个叶子 PodGroup 的 `ScheduledPodsCount()` 加起来：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podgrouppodscount/podgroup_pods_count.go
 func (pl *PodGroupPodsCount) getScheduledPodsCount(podGroup fwk.PodGroupInfo) (int, error) {
 	if pl.fts.EnableCompositePodGroup {
@@ -158,7 +158,7 @@ func (pl *PodGroupPodsCount) getScheduledPodsCount(podGroup fwk.PodGroupInfo) (i
 
 ## 四、归一化：除以最大值，而不是 minCount
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podgrouppodscount/podgroup_pods_count.go
 // NormalizePlacementScore normalizes the scores to a range of [MinScore, MaxScore].
 // The normalization is based on the maximum count among all candidate placements.
@@ -185,7 +185,7 @@ func (pl *PodGroupPodsCount) NormalizePlacementScore(ctx context.Context, state 
 }
 ```
 
-`fwk.MinScore` 是 0，`fwk.MaxScore` 是 100，**公式简化为 `score × 100 / maxCount`，整数除法向下取整。**
+`fwk.MinScore` 是 0，`fwk.MaxScore` 是 100，**公式简化为 `score × 100 / maxCount`（第 20–22 行），整数除法向下取整。**
 
 为什么不用 `(score - minCount) / (max - minCount)`？假设 `minCount: 4`，三个候选分别能放 6、5、4 个 Pod：
 
@@ -197,7 +197,7 @@ func (pl *PodGroupPodsCount) NormalizePlacementScore(ctx context.Context, state 
 
 后者把「只差一个 Pod」放大成 50 分的差距，足以压过 NodeResourcesFit 那一侧的任何差别。测试里专门有一个用例「some minimal score that is far from a group of scores located closely」验证归一化不会把这种分布拉开。现在的公式让 PodGroupPodsCount 的分差和 Pod 数的相对差距成正比，另一个打分插件还有发言权。
 
-`maxCount == 0` 的分支值得多看一眼。被打分的 placement 都是「可行」的，可行意味着 PlacementFeasible 返回了 Success。GangScheduling 只有在 `Scheduled >= minCount` 时才返回 Success，而 minCount 至少是 1（Basic 策略也按 1 计），所以 `scheduled + proposed` 至少是 1，`maxCount` 不可能是 0。
+`maxCount == 0` 的分支（第 13–18 行）值得多看一眼。被打分的 placement 都是「可行」的，可行意味着 PlacementFeasible 返回了 Success。GangScheduling 只有在 `Scheduled >= minCount` 时才返回 Success，而 minCount 至少是 1（Basic 策略也按 1 计），所以 `scheduled + proposed` 至少是 1，`maxCount` 不可能是 0。
 
 TODO 注释承认这是一个跨插件的隐含假设：如果有人在 Profile 里关掉了 GangScheduling，`RunPlacementFeasiblePlugins` 没有插件可跑，所有 placement 都会被视为可行，此时一个 0 个 Pod 的 placement 就可能让这里报错，整个组调度以 Error 结束。
 
@@ -205,9 +205,9 @@ TODO 注释承认这是一个跨插件的隐含假设：如果有人在 Profile 
 
 ### 5.1 NodeResourcesFit 也是 PlacementScore 插件
 
-开启 TAS 时，NodeResourcesFit 会额外构造一个固定为 MostAllocated 策略的 scorer：
+开启 TAS 时，NodeResourcesFit 会额外构造一个固定为 MostAllocated 策略的 scorer（第 2–11 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/noderesources/fit.go
 	if fts.EnableTopologyAwareWorkloadScheduling {
 		placementScorer, err := getScorer(&config.ScoringStrategy{
@@ -223,7 +223,7 @@ TODO 注释承认这是一个跨插件的隐含假设：如果有人在 Profile 
 
 它把一个 placement 里所有节点的可分配量、已分配量和本组提议的请求量加总，算一次 MostAllocated：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/noderesources/resource_allocation.go
 func (r *resourceAllocationScorer) scorePlacement(
 	ctx context.Context,
@@ -292,9 +292,9 @@ NodeResourcesFit（MostAllocated）：
 
 从源码能看到的理由有三条。
 
-第一条是和 NodeResourcesFit 对称。默认 Profile 里 NodeResourcesFit 在 `MultiPoint` 下的权重是 1。框架计算放置打分权重时，用的是同一份配置：
+第一条是和 NodeResourcesFit 对称。默认 Profile 里 NodeResourcesFit 在 `MultiPoint` 下的权重是 1。框架计算放置打分权重时，用的是同一份配置（第 2–6 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/runtime/framework.go
 	placementScoreWeights, err := getValidScoreWeights(f, reflect.TypeFor[fwk.PlacementScorePlugin](), append(profile.Plugins.PlacementScore.Enabled, profile.Plugins.MultiPoint.Enabled...))
 	if err != nil {
@@ -311,7 +311,7 @@ NodeResourcesFit（MostAllocated）：
 
 ### 5.4 RunPlacementScorePlugins 的三段并行
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/runtime/framework.go
 		// Run ScorePlacement method for each placement in parallel.
 		f.Parallelizer().Until(ctx, len(podGroupAssignments), func(index int) {
@@ -367,7 +367,7 @@ kube-scheduler 现在有两层打分：
 | 对象 | 一个 Pod 的候选节点 | 一个组的候选 placement |
 | 输入 | `NodeInfo` | `PodGroupAssignments`（placement + 提议的 Pod→节点映射） |
 | 默认插件 | TaintToleration、NodeAffinity、NodeResourcesFit（LeastAllocated）等 | PodGroupPodsCount、NodeResourcesFit（MostAllocated） |
-| 选择方式 | `selectHost`，同分随机 | `findBestPlacement`，同分随机 |
+| 选择方式 | `NewSortedScoredNodes` 最大堆，同分随机 | `findBestPlacement`，同分随机 |
 | 剪枝 | `percentageOfNodesToScore` | `percentageOfPlacementsToScore` |
 
 一个组的最终落点由两层共同决定：PlacementScore 选出 rack，rack 内每个 Pod 的节点由单 Pod Score 决定。**默认配置下两层的资源倾向相反，组之间装箱、组内部打散。** 如果业务希望组内也尽量紧凑（比如减少跨节点通信），需要把单 Pod 的 NodeResourcesFit 策略改成 MostAllocated，但这会影响所有 Pod 的调度行为，最好放在单独的 Profile 里。

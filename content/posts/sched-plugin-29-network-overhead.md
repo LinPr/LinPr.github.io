@@ -32,7 +32,7 @@ NetworkOverhead 把这两件事拆成两份数据：
 
 KEP 给出的典型配置把 NetworkOverhead 的权重设为 5，并启用 TopologicalSort 做队列排序：
 
-```yaml
+```yaml {linenos=inline}
 # manifests/networktopology/scheduler-config.yaml
 apiVersion: kubescheduler.config.k8s.io/v1
 kind: KubeSchedulerConfiguration
@@ -75,7 +75,7 @@ profiles:
 
 AppGroup 的结构在第 26 篇已经拆过，NetworkOverhead 用到的是 `spec.workloads[*].dependencies`：
 
-```go
+```go {linenos=inline}
 // github.com/diktyo-io/appgroup-api@v1.0.1-alpha/pkg/apis/appgroup/v1alpha1/types.go
 type DependenciesInfo struct {
 	// Workload reference Info.
@@ -100,7 +100,7 @@ type DependenciesInfo struct {
 
 依赖列表的提取方式：
 
-```go
+```go {linenos=inline}
 // pkg/networkaware/util/util.go
 // GetDependencyList : get workload dependencies established in the AppGroup CR
 func GetDependencyList(pod *v1.Pod, ag *agv1alpha1.AppGroup) []agv1alpha1.DependenciesInfo {
@@ -130,7 +130,7 @@ func GetDependencyList(pod *v1.Pod, ag *agv1alpha1.AppGroup) []agv1alpha1.Depend
 
 依赖图只说了「谁调用谁、最多容忍多少代价」，代价本身要另外一张表提供。
 
-```go
+```go {linenos=inline}
 // github.com/diktyo-io/networktopology-api@v1.0.1-alpha/pkg/apis/networktopology/v1alpha1/types.go
 type NetworkTopologySpec struct {
 	// The manual defined weights of the cluster
@@ -167,7 +167,7 @@ type TopologyInfo struct {
 
 再往下是 `OriginInfo{Origin, CostList}` 和 `CostInfo{Destination, BandwidthCapacity, BandwidthAllocated, NetworkCost}`。层级是：
 
-```
+```text {linenos=inline}
 weights[]            按 name 区分代价来源（UserDefined、NetperfCosts……）
 └─ topologyList[]    按 topologyKey 区分层级（region、zone）
    └─ originList[]   起点（某个 region 名或 zone 名）
@@ -176,7 +176,7 @@ weights[]            按 name 区分代价来源（UserDefined、NetperfCosts…
 
 `topologyKey` 只认两个值，分别等于节点的标准 label：
 
-```go
+```go {linenos=inline}
 // github.com/diktyo-io/networktopology-api@v1.0.1-alpha/pkg/apis/networktopology/v1alpha1/types.go
 const (
 	// NetworkTopologyRegion corresponds to "topology.kubernetes.io/region"
@@ -208,7 +208,7 @@ CRD 把 `configmapName`、`weights[].topologyList` 列为必填，照着这份�
 
 先看插件持有的字段和它固定的几个常量。
 
-```go
+```go {linenos=inline}
 // pkg/networkaware/networkoverhead/networkoverhead.go
 const (
 	// Name : name of plugin used in the plugin registry and configurations.
@@ -239,11 +239,11 @@ type NetworkOverhead struct {
 }
 ```
 
-三个常量定义了代价模型里的固定值：同节点 0、同 zone 1、未知或无法计算时 100。
+三个常量（第 7、10、13 行）定义了代价模型里的固定值：同节点 0、同 zone 1、未知或无法计算时 100。
 
 参数与默认值：
 
-```go
+```go {linenos=inline}
 // apis/config/v1/types.go
 type NetworkOverheadArgs struct {
 	metav1.TypeMeta `json:",inline"`
@@ -259,7 +259,7 @@ type NetworkOverheadArgs struct {
 }
 ```
 
-```go
+```go {linenos=inline}
 // apis/config/v1/defaults.go
 func SetDefaults_NetworkOverheadArgs(obj *NetworkOverheadArgs) {
 	if len(obj.Namespaces) == 0 {
@@ -284,7 +284,7 @@ func SetDefaults_NetworkOverheadArgs(obj *NetworkOverheadArgs) {
 
 这个插件和前面几个的最大区别，是它把全部计算压在 PreFilter 里，Filter 和 Score 只查表。CycleState 里的结构就是为此设计的。
 
-```go
+```go {linenos=inline}
 // pkg/networkaware/networkoverhead/networkoverhead.go
 // PreFilterState computed at PreFilter and used at Filter and Score.
 type PreFilterState struct {
@@ -325,15 +325,15 @@ func (no *PreFilterState) Clone() fwk.StateData {
 }
 ```
 
-Filter 和 Score 只是查表：`satisfiedMap`、`violatedMap`、`finalCostMap` 三张以节点名为 key 的 map 在 PreFilter 里一次算好。
+Filter 和 Score 只是查表：`satisfiedMap`、`violatedMap`、`finalCostMap` 三张以节点名为 key 的 map（第 25–32 行）在 PreFilter 里一次算好。
 
-`Clone` 直接返回自身指针，没有深拷贝。这在 Filter/Score 只读的前提下是安全的，但也意味着抢占模拟里复制出来的 CycleState 与原状态共享同一份数据；配合下面 AddPod/RemovePod 什么也不做，抢占模拟对这个插件的结果没有任何影响。
+`Clone` 直接返回自身指针（第 35–38 行），没有深拷贝。这在 Filter/Score 只读的前提下是安全的，但也意味着抢占模拟里复制出来的 CycleState 与原状态共享同一份数据；配合下面 AddPod/RemovePod 什么也不做，抢占模拟对这个插件的结果没有任何影响。
 
 ### 3.3 PreFilter
 
 PreFilter 的代码很长，但结构是「一串提前返回 + 一段节点循环」。
 
-```go
+```go {linenos=inline}
 // pkg/networkaware/networkoverhead/networkoverhead.go
 func (no *NetworkOverhead) PreFilter(ctx context.Context, state fwk.CycleState, pod *corev1.Pod, nodes []fwk.NodeInfo) (*fwk.PreFilterResult, *fwk.Status) {
 	// Init PreFilter State
@@ -404,9 +404,11 @@ func (no *NetworkOverhead) PreFilter(ctx context.Context, state fwk.CycleState, 
 | 列出 Pod 出错 | 不参与（注意是 `Success`，不是 `Error`） |
 | AppGroup 名下一个 Pod 都没有 / 都还没绑定节点 | 不参与 |
 
-`scheduledList` 来自 Pod lister，取的是带 `appgroup.diktyo.x-k8s.io=<agName>` label、`spec.nodeName` 非空的 Pod：
+四条分支分别对应上文代码块的第 12–15 行、第 30–32 行、第 37–39 行、第 42–44 行。
 
-```go
+`scheduledList` 来自 Pod lister，取的是带 `appgroup.diktyo.x-k8s.io=<agName>` label、`spec.nodeName` 非空的 Pod（第 7 行的判断）：
+
+```go {linenos=inline}
 // pkg/networkaware/util/util.go
 func GetScheduledList(pods []*v1.Pod) ScheduledList {
 	// scheduledList: Deployment name, replicaID, hostname
@@ -432,7 +434,7 @@ func GetScheduledList(pods []*v1.Pod) ScheduledList {
 
 后半段对快照里的**每一个节点**（而不是 PreFilter 参数 `nodes`）构造代价表、计算满足/违反数和累计代价：
 
-```go
+```go {linenos=inline}
 // pkg/networkaware/networkoverhead/networkoverhead.go
 	for _, nodeInfo := range nodeList {
 		// retrieve region and zone labels
@@ -472,7 +474,7 @@ func GetScheduledList(pods []*v1.Pod) ScheduledList {
 
 **代价表的构造。** 每个节点的 `costMap` 只装与它自己相关的条目，key 是 `CostKey{Origin, Destination}`：
 
-```go
+```go {linenos=inline}
 // pkg/networkaware/networkoverhead/networkoverhead.go
 func (no *NetworkOverhead) populateCostMap(
 	costMap map[networkawareutil.CostKey]int64,
@@ -510,7 +512,7 @@ func (no *NetworkOverhead) populateCostMap(
 }
 ```
 
-查找全部是二分：`FindTopologyKey` 在 `topologyList` 上按 key 二分，`FindOriginCosts` 在 `originList` 上按 origin 二分。
+查找全部是二分：`FindTopologyKey` 在 `topologyList` 上按 key 二分（第 14 行），`FindOriginCosts` 在 `originList` 上按 origin 二分（第 22 行）。
 
 二分要求有序，手工填写的代价表不一定有序，所以在 `weightsName` 不是 `NetperfCosts` 时，PreFilter 开头的 `sortNetworkTopologyCosts` 先按 `topologyKey` 排一次，`populateCostMap` 再对 `originList` 按 origin 排序；`NetperfCosts` 则信任 controller 已经排好。
 
@@ -520,9 +522,9 @@ func (no *NetworkOverhead) populateCostMap(
 
 ### 3.4 逐对判定：满足、违反，还是不计
 
-`checkMaxNetworkCostRequirements` 和 `getAccumulatedCost` 的外层都是同一个双重循环：遍历 `scheduledList` 里的每个已绑定 Pod，再遍历当前 Pod 的每个依赖，selector 对上的才处理。判定树如下：
+`checkMaxNetworkCostRequirements` 和 `getAccumulatedCost` 的外层都是同一个双重循环：遍历 `scheduledList` 里的每个已绑定 Pod，再遍历当前 Pod 的每个依赖，selector 对上的才处理。判定树如下（同一节点上的一对直接算满足，第 11–14 行）：
 
-```go
+```go {linenos=inline}
 // pkg/networkaware/networkoverhead/networkoverhead.go（checkMaxNetworkCostRequirements）
 	for _, podAllocated := range scheduledList { // For each pod already allocated
 		if podAllocated.Hostname != "" { // if hostname not empty...
@@ -601,7 +603,7 @@ func (no *NetworkOverhead) populateCostMap(
 
 PreFilter 算出了每个节点的满足数和违反数，Filter 只做一件事：把它们拿来投票。
 
-```go
+```go {linenos=inline}
 // pkg/networkaware/networkoverhead/networkoverhead.go
 func (no *NetworkOverhead) Filter(ctx context.Context,
 	cycleState fwk.CycleState,
@@ -637,11 +639,11 @@ func (no *NetworkOverhead) Filter(ctx context.Context,
 }
 ```
 
-`maxNetworkCost` 不是硬约束。只有违反数严格多于满足数时才过滤，一半满足一半违反的节点照样通过。返回码是 `Unschedulable`，失败信息形如 `Node n-3 does not meet several network requirements from Workload dependencies: Satisfied: 1 Violated: 2`。
+`maxNetworkCost` 不是硬约束。只有违反数严格多于满足数时才过滤，一半满足一半违反的节点照样通过。返回码是 `Unschedulable`（第 28–31 行），失败信息形如 `Node n-3 does not meet several network requirements from Workload dependencies: Satisfied: 1 Violated: 2`。
 
 `Unschedulable` 意味着 PostFilter 阶段的抢占会把这些节点当作候选。但抢占模拟是通过 `AddPod`/`RemovePod` 在 CycleState 上增删 Pod 再重跑 Filter，而 NetworkOverhead 的这两个方法什么也不做：
 
-```go
+```go {linenos=inline}
 // pkg/networkaware/networkoverhead/networkoverhead.go
 // AddPod from pre-computed data in cycleState.
 // no current need for the NetworkOverhead plugin
@@ -660,7 +662,7 @@ Filter 读的又是 PreFilter 算好的计数，所以驱逐任何 Pod 都不会
 
 过滤只留下「违反不多于满足」的节点，剩下的排序靠累计代价。
 
-```go
+```go {linenos=inline}
 // pkg/networkaware/networkoverhead/networkoverhead.go
 func (no *NetworkOverhead) Score(ctx context.Context,
 	cycleState fwk.CycleState,
@@ -711,9 +713,9 @@ func (no *NetworkOverhead) NormalizeScore(ctx context.Context,
 }
 ```
 
-Score 返回的原始值是累计代价，可以远大于 100，框架只在 NormalizeScore 之后检查分数范围。归一化公式是：
+Score 返回的原始值是累计代价（第 15 行），可以远大于 100，框架只在 NormalizeScore 之后检查分数范围。归一化公式是：
 
-```
+```text {linenos=inline}
 score = 100 − int64( 100 × (cost − min) / (max − min) )
 ```
 
@@ -729,7 +731,7 @@ score = 100 − int64( 100 × (cost − min) / (max − min) )
 
 NetworkTopology（`weightsName: UserDefined`）：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: networktopology.diktyo.x-k8s.io/v1alpha1
 kind: NetworkTopology
 metadata:
@@ -829,7 +831,7 @@ n-3、n-4 被 Filter 拒绝，参与打分的是 n-1、n-2、n-5、n-6：
 
 NetworkOverhead 实现了 PreFilter 和 Filter，却没有实现 `EnqueueExtensions`。v1.36.4 的框架对这种插件注册一个默认的扩展：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/runtime/framework.go（k8s v1.36.4）
 	ext, ok := p.(fwk.EnqueueExtensions)
 	if !ok {

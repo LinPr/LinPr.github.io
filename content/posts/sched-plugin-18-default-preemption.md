@@ -29,7 +29,7 @@ description: "DefaultPreemption 是默认 Profile 里唯一会驱逐别人的插
 
 第三条是最容易被忽视的。一个典型的能触发抢占的场景：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
@@ -59,7 +59,7 @@ spec:
 
 插件字段不多，但每一个都对应一种扩展方式：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go
 type DefaultPreemption struct {
 	fh   fwk.Handle
@@ -77,11 +77,11 @@ type DefaultPreemption struct {
 }
 ```
 
-几个导出字段说明了它的扩展方式：`New` 返回的是具体类型 `*DefaultPreemption` 而不是 `fwk.Plugin`，源码注释写着「The plugin type is retained to allow modification」。自建调度器可以包一层 `New`，替换 `IsEligiblePod`（额外的受害者资格过滤）和 `MoreImportantVictim`（受害者排序），不必复制整个插件。
+几个导出字段说明了它的扩展方式：`New` 返回的是具体类型 `*DefaultPreemption` 而不是 `fwk.Plugin`，源码注释写着「The plugin type is retained to allow modification」。自建调度器可以包一层 `New`，替换 `IsEligiblePod`（额外的受害者资格过滤，第 12 行）和 `MoreImportantVictim`（受害者排序，第 14 行），不必复制整个插件。
 
 `Executor` 来自 `fh.PreemptionManager().Executor()`，是整个调度器共享的一个实例，负责真正的删除动作和异步抢占的簿记。`Evaluator` 是 `preemption.NewEvaluator(Name, fh, &pl, pl.fts)`——注意第三个参数传的是插件自己，`Evaluator` 通过 `preemption.Interface` 回调插件的五个方法：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/preemption/preemption.go
 type Interface interface {
 	GetOffsetAndNumCandidates(nodes int32) (int32, int32)
@@ -98,7 +98,7 @@ type Interface interface {
 
 两个参数，都服务于第五节的候选数量计算：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/apis/config/v1/defaults.go
 func SetDefaults_DefaultPreemptionArgs(obj *configv1.DefaultPreemptionArgs) {
 	if obj.MinCandidateNodesPercentage == nil {
@@ -118,7 +118,7 @@ func SetDefaults_DefaultPreemptionArgs(obj *configv1.DefaultPreemptionArgs) {
 
 入口只转发一次调用，其余都在 `Evaluator` 里：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go
 func (pl *DefaultPreemption) PostFilter(ctx context.Context, state fwk.CycleState, pod *v1.Pod, m fwk.NodeToStatusReader) (*fwk.PostFilterResult, *fwk.Status) {
 	defer func() {
@@ -134,7 +134,7 @@ func (pl *DefaultPreemption) PostFilter(ctx context.Context, state fwk.CycleStat
 }
 ```
 
-插件只是给消息加了一个 `preemption: ` 前缀，所以 `kubectl describe pod` 里看到的 `preemption: 0/5 nodes are available: ...` 就是从这里来的。
+插件只是给消息加了一个 `preemption: ` 前缀（第 9–11 行），所以 `kubectl describe pod` 里看到的 `preemption: 0/5 nodes are available: ...` 就是从这里来的。
 
 `Evaluator.Preempt` 的注释列出了四种返回组合，它们决定了 `nominatedNodeName` 的命运：
 
@@ -145,9 +145,9 @@ func (pl *DefaultPreemption) PostFilter(ctx context.Context, state fwk.CycleStat
 | `<非 nil, Unschedulable>` | 抢占也救不了 | 按 result 处理，通常是清空 |
 | `<非 nil, Success>` | 找到了 | 写入选中的节点 |
 
-返回值经 `schedulingAlgorithm` 包成 `ScheduleResult.nominatingInfo`，最终在 `handleSchedulingFailure` 里写进队列的 nominator 和 API：
+返回值经 `schedulingAlgorithm` 包成 `ScheduleResult.nominatingInfo`，最终在 `handleSchedulingFailure` 里写进队列的 nominator 和 API（第 2–9 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/schedule_one.go
 	if sched.SchedulingQueue != nil {
 		sched.SchedulingQueue.AddNominatedPod(logger, nominatedPodInfo, nominatingInfo)
@@ -169,7 +169,7 @@ func (pl *DefaultPreemption) PostFilter(ctx context.Context, state fwk.CycleStat
 
 `evaluate` 的第一步是从 PodLister 重新取一次 Pod，然后问插件「这个 Pod 有没有资格抢占」：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go
 func (pl *DefaultPreemption) PodEligibleToPreemptOthers(_ context.Context, pod *v1.Pod, nominatedNodeStatus *fwk.Status) (bool, string) {
 	if pod.Spec.PreemptionPolicy != nil && *pod.Spec.PreemptionPolicy == v1.PreemptNever {
@@ -201,9 +201,9 @@ func (pl *DefaultPreemption) PodEligibleToPreemptOthers(_ context.Context, pod *
 
 两条拒绝规则：
 
-**`preemptionPolicy: Never`**。这种 Pod 在队列里仍然按高优先级排在前面，但永远不驱逐别人。适合「我很重要、想先被调度，但不愿意为此打断别人」的批处理任务。`spec.preemptionPolicy` 由 PriorityClass 的同名字段在准入时填入。
+**`preemptionPolicy: Never`**（第 3–5 行）。这种 Pod 在队列里仍然按高优先级排在前面，但永远不驱逐别人。适合「我很重要、想先被调度，但不愿意为此打断别人」的批处理任务。`spec.preemptionPolicy` 由 PriorityClass 的同名字段在准入时填入。
 
-**提名节点上还有因抢占而终止的 Pod**。判断「因抢占而终止」用的是 `PodTerminatingByPreemption`：`DeletionTimestamp` 非空，并且有一个 `DisruptionTarget=True`、`reason=PreemptionByScheduler` 的 condition。这个 condition 正是第九节 Executor 在删除受害者之前打上去的。上一轮抢占的受害者还在优雅退出，此时再抢占一次只会多杀一批 Pod。返回 `<nil, Unschedulable>`，提名保持不变，Pod 等受害者的删除事件。
+**提名节点上还有因抢占而终止的 Pod**（第 16–25 行）。判断「因抢占而终止」用的是 `PodTerminatingByPreemption`：`DeletionTimestamp` 非空，并且有一个 `DisruptionTarget=True`、`reason=PreemptionByScheduler` 的 condition。这个 condition 正是第九节 Executor 在删除受害者之前打上去的。上一轮抢占的受害者还在优雅退出，此时再抢占一次只会多杀一批 Pod。返回 `<nil, Unschedulable>`，提名保持不变，Pod 等受害者的删除事件。
 
 例外是提名节点在本轮 Filter 中是 `UnschedulableAndUnresolvable`，比如节点被打了 `NoSchedule` 污点。等受害者退出也没用了，允许重新抢占。
 
@@ -211,9 +211,9 @@ func (pl *DefaultPreemption) PodEligibleToPreemptOthers(_ context.Context, pod *
 
 ## 五、候选节点：只看 Unschedulable，按比例抽样
 
-候选不是所有失败的节点，只是其中状态为 `Unschedulable` 的那部分：
+候选不是所有失败的节点，只是其中状态为 `Unschedulable` 的那部分（第 5 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/preemption/preemption.go
 func (ev *Evaluator) findCandidates(ctx context.Context, state fwk.CycleState, allNodes []fwk.NodeInfo, pod *v1.Pod, m fwk.NodeToStatusReader) ([]fwk.PreemptionCandidate, *framework.NodeToStatus, error) {
 	// ...
@@ -241,7 +241,7 @@ func (ev *Evaluator) findCandidates(ctx context.Context, state fwk.CycleState, a
 
 候选数量：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go
 func (pl *DefaultPreemption) calculateNumCandidates(numNodes int32) int32 {
 	n := (numNodes * pl.args.MinCandidateNodesPercentage) / 100
@@ -275,7 +275,7 @@ func (pl *DefaultPreemption) calculateNumCandidates(numNodes int32) int32 {
 
 模拟对每个候选节点并行跑一遍，通过的进候选列表：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/preemption/preemption.go
 	checkNode := func(i int) {
 		nodeInfo := potentialNodes[(int(offset)+i)%len(potentialNodes)]
@@ -309,7 +309,7 @@ func (pl *DefaultPreemption) calculateNumCandidates(numNodes int32) int32 {
 几个细节：
 
 - 每个节点拿到的是 `state.Clone()` 和 `nodeInfo.Snapshot()`，互不干扰。这就是各插件 `CycleState.Clone` 必须深拷贝的原因——抢占模拟会在副本上调用 `RemovePod`/`AddPod`。
-- 提前停止的条件是「**至少有一个不违反 PDB 的候选**，且总数达到 `candidatesNum`」。如果找到的全是违反 PDB 的候选，模拟会继续，直到遍历完或找到一个不违反的。
+- 提前停止的条件是「**至少有一个不违反 PDB 的候选**，且总数达到 `candidatesNum`」（第 20–22 行）。如果找到的全是违反 PDB 的候选，模拟会继续，直到遍历完或找到一个不违反的。
 - 两个候选列表都是容量为 `candidatesNum` 的定长数组，用 `atomic.AddInt32` 分配下标，溢出的直接丢弃。并行执行时可能略微超出阈值后才 cancel。
 - 模拟成功但受害者为空（不驱逐任何 Pod 就放得下）不算候选，状态被改成 `UnschedulableAndUnresolvable`——这种情况说明 Filter 失败的原因与本节点上的 Pod 无关。唯一的例外是存在支持抢占的 extender，它可能自己添加受害者。
 
@@ -319,7 +319,7 @@ func (pl *DefaultPreemption) calculateNumCandidates(numNodes int32) int32 {
 
 这是整个抢占算法的核心。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go
 	var potentialVictims []*preemption.DomainVictim
 	for _, victim := range allPossibleVictims {
@@ -349,15 +349,15 @@ func (pl *DefaultPreemption) calculateNumCandidates(numNodes int32) int32 {
 	}
 ```
 
-第一步：筛出优先级严格低于抢占者、且 `IsEligiblePod` 通过的受害者。**同优先级不会互相抢占**。
+第一步（第 2–7 行）：筛出优先级严格低于抢占者、且 `IsEligiblePod` 通过的受害者。**同优先级不会互相抢占**。
 
-第二步：把它们全部从 NodeInfo 移除，每移除一个都调用 `RunPreFilterExtensionRemovePod`，让 `PodTopologySpread`、`InterPodAffinity`、`NodePorts` 这类插件更新各自的 CycleState。
+第二步：把它们全部从 NodeInfo 移除（第 15–20 行），每移除一个都调用 `RunPreFilterExtensionRemovePod`，让 `PodTopologySpread`、`InterPodAffinity`、`NodePorts` 这类插件更新各自的 CycleState。
 
-第三步：跑一次完整的 Filter。全部移除后还放不下，这个节点就没救了，直接返回。注释里特别说明：如果抢占者对某个受害者有 Pod 亲和，移除受害者反而会让 Filter 失败，这种情况出于性能考虑不支持。
+第三步：跑一次完整的 Filter（第 25–27 行）。全部移除后还放不下，这个节点就没救了，直接返回。注释里特别说明：如果抢占者对某个受害者有 Pod 亲和，移除受害者反而会让 Filter 失败，这种情况出于性能考虑不支持。
 
 `RunFilterPluginsWithNominatedPods` 不是普通的 `RunFilterPlugins`。它会把提名到本节点、优先级不低于抢占者的其他 Pod 临时加进来跑一遍，全部通过后再不加它们跑一遍，两次都通过才算通过。这保证抢占者不会抢走为更高优先级 Pod 腾出的位置。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go
 	sort.Slice(potentialVictims, func(i, j int) bool {
 		return pl.MoreImportantVictim(potentialVictims[i], potentialVictims[j])
@@ -400,7 +400,7 @@ func (pl *DefaultPreemption) calculateNumCandidates(numNodes int32) int32 {
 	}
 ```
 
-第四步：按重要性从高到低排序，按 PDB 分成两组，**先尝试放回违反 PDB 的那组**，再放回不违反的。每放回一个跑一次 Filter，放得下就赦免，放不下就再移除并记为受害者。
+第四步：按重要性从高到低排序，按 PDB 分成两组（第 2–6 行），**先尝试放回违反 PDB 的那组**，再放回不违反的。每放回一个跑一次 Filter，放得下就赦免，放不下就再移除并记为受害者。
 
 {{< figure src="/images/posts/sched-plugins/18-select-victims.svg" caption="SelectVictimsOnNode 算例：p-b 比 p-a 更重要，但 p-a 受 PDB 保护，先被尝试放回并赦免，最终受害者是 p-b 和 p-c（点击查看大图）" link="/images/posts/sched-plugins/18-select-victims.svg" >}}
 
@@ -412,7 +412,7 @@ func (pl *DefaultPreemption) calculateNumCandidates(numNodes int32) int32 {
 
 两个受害者谁更该被保留，由这个函数按五个级别依次比较：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/preemption/util.go
 func MoreImportantVictim(vi1, vi2 Victim) bool {
 	if vi1.Priority() != vi2.Priority() {
@@ -445,7 +445,7 @@ func MoreImportantVictim(vi1, vi2 Victim) bool {
 
 PDB 的余量是这样一个个扣下去的：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/preemption/util.go
 	podIsViolating := func(pod *v1.Pod) bool {
 		for i, pdb := range pdbs {
@@ -475,17 +475,17 @@ PDB 的余量是这样一个个扣下去的：
 	}
 ```
 
-每个 PDB 的余量从 `status.disruptionsAllowed` 开始，受害者按重要性降序逐个扣减，扣到负数的 Pod 才算违反。这意味着：同一个 PDB 下有两个受害者、余量为 1 时，更重要的那个先扣掉余量，不算违反；不那么重要的那个被判为违反，于是会被优先尝试赦免。最终结果倾向于驱逐更重要的那个——这是贪心顺序带来的一个副作用。
+每个 PDB 的余量从 `status.disruptionsAllowed` 开始，受害者按重要性降序逐个扣减，扣到负数的 Pod 才算违反（第 19–22 行）。这意味着：同一个 PDB 下有两个受害者、余量为 1 时，更重要的那个先扣掉余量，不算违反；不那么重要的那个被判为违反，于是会被优先尝试赦免。最终结果倾向于驱逐更重要的那个——这是贪心顺序带来的一个副作用。
 
-已经在 `status.disruptedPods` 里的 Pod 不扣减，因为它已经被 Eviction API 处理过、计入过余量了。PodGroup 受害者只要有一个成员违反，整个组都算违反，`ViolateCount` 是违反成员的个数。
+已经在 `status.disruptedPods` 里的 Pod 不扣减（第 14–16 行），因为它已经被 Eviction API 处理过、计入过余量了。PodGroup 受害者只要有一个成员违反，整个组都算违反，`ViolateCount` 是违反成员的个数。
 
 到这一步，每个候选节点都有了一份「要驱逐谁、违反几个 PDB」的答案。如果候选不止一个，就要在这些答案之间做选择。
 
 ## 七、选一个节点：五级排序
 
-多个候选节点时，用五级打分逐级淘汰，第一个分出胜负的级别决定结果：
+多个候选节点时，用五级打分逐级淘汰（第 2–14 行的 `scoreFuncs`），第一个分出胜负的级别决定结果：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/preemption/preemption.go
 		scoreFuncs = []func(string) int64{
 			// A node with a minimum number of PDB is preferable.
@@ -539,7 +539,7 @@ extender 处理完，剩下的就是执行。
 
 删除之前，先看受害者处在哪个阶段：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/preemption/executor.go
 		if waitingPod := e.fh.GetWaitingPod(victim.UID); waitingPod != nil {
 			if waitingPod.Preempt(pluginName, "preempted") {
@@ -578,7 +578,7 @@ extender 处理完，剩下的就是执行。
 
 受害者处理完，还要处理被抢占节点上已经存在的提名：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/preemption/executor.go
 	nominatedPods := getLowerPriorityNominatedPods(logger, fh, preemptor.Priority(), c.Nodes())
 	if err := clearNominatedNodeName(ctx, cs, fh.APICacher(), nominatedPods...); err != nil {
@@ -590,9 +590,9 @@ extender 处理完，剩下的就是执行。
 
 ### 9.3 同步与异步
 
-同步还是异步，只差在 `ActuatePodPreemption` 的一行分支：
+同步还是异步，只差在 `ActuatePodPreemption` 的一行分支（第 4–7 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/preemption/executor.go
 func (e *Executor) ActuatePodPreemption(ctx context.Context, candidate fwk.PreemptionCandidate, preemptorPod *v1.Pod, pluginName string) *fwk.Status {
 	podPreemptor := &podExecutorPreemptor{Pod: preemptorPod}
@@ -614,7 +614,7 @@ func (e *Executor) ActuatePodPreemption(ctx context.Context, candidate fwk.Preem
 
 解决办法是 `preempting` 集合加 PreEnqueue：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go
 func (pl *DefaultPreemption) PreEnqueue(ctx context.Context, p *v1.Pod) *fwk.Status {
 	if !pl.fts.EnableAsyncPreemption {
@@ -630,7 +630,7 @@ func (pl *DefaultPreemption) PreEnqueue(ctx context.Context, p *v1.Pod) *fwk.Sta
 
 `prepareCandidateAsync` 在启动 goroutine 之前把抢占者 UID 放进 `preempting`，goroutine 结束时删除。goroutine 内部的顺序有讲究：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/preemption/executor.go
 		preemptLastVictim := true
 		if len(victimPods) > 1 {
@@ -657,13 +657,13 @@ func (pl *DefaultPreemption) PreEnqueue(ctx context.Context, p *v1.Pod) *fwk.Sta
 		e.mu.Unlock()
 ```
 
-前 n-1 个受害者并行删，最后一个单独删，并在删之前登记到 `lastVictimsPendingPreemption`。**这么拆是为了堵住一个删除事件早于簿记的竞态。**
+前 n-1 个受害者并行删，最后一个单独删，并在删之前登记到 `lastVictimsPendingPreemption`（第 3–16 行）。**这么拆是为了堵住一个删除事件早于簿记的竞态。**
 
 源码注释描述的竞态是：最后一个 DELETE 请求返回后、goroutine 执行 `preempting.Delete` 之前，受害者的删除事件可能已经到达队列。此时 PreEnqueue 看到抢占者还在 `preempting` 里，就会把它挡住；等 `preempting.Delete` 执行时，删除事件已经消费过了，没有新事件来唤醒它，抢占者卡在不可调度池里。
 
 有了 `lastVictimsPendingPreemption`，`isRunningPreemption` 就能区分这种情况：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/preemption/executor.go
 	victim, ok := e.lastVictimsPendingPreemption[uid]
 	if !ok {
@@ -684,15 +684,15 @@ func (pl *DefaultPreemption) PreEnqueue(ctx context.Context, p *v1.Pod) *fwk.Sta
 	return true
 ```
 
-只要最后一个受害者已经开始删除（或已消失），就认为抢占完成，不再阻挡。
+只要最后一个受害者已经开始删除（或已消失），就认为抢占完成，不再阻挡（第 13–16 行）。
 
 另外两个兜底：goroutine 出错时，或者最后一个受害者是在内存中被抢占的（不会产生删除事件），goroutine 结束时调用 `fh.Activate` 主动把抢占者移回 activeQ。
 
 ### 10.1 EventsToRegister：注册了事件，却总是 Skip
 
-异步模式下，它只注册一个事件：
+异步模式下，它只注册一个事件（第 3–8 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go
 func (pl *DefaultPreemption) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWithHint, error) {
 	if pl.fts.EnableAsyncPreemption {
@@ -707,7 +707,7 @@ func (pl *DefaultPreemption) EventsToRegister(_ context.Context) ([]fwk.ClusterE
 
 `isPodSchedulableAfterAssignedPodDeletion` 永远返回 `QueueSkip`。这看起来矛盾，但要结合队列的逻辑看。被 PreEnqueue 挡住的 Pod 处于「gated」状态，队列有一个优化：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
 		if entity.Gated() && !framework.ClusterEventIsWildCard(event) && !framework.MatchAnyClusterEvent(event, entity.GetGatingPluginEvents()) {
 			// This event doesn't interest the gating plugin of this Pod,
@@ -718,13 +718,13 @@ func (pl *DefaultPreemption) EventsToRegister(_ context.Context) ([]fwk.ClusterE
 		schedulingHint := p.isEntityWorthRequeuing(logger, entity, event, oldObj, newObj, hintKeys)
 ```
 
-gated 的 Pod 只会被**gating 插件注册过的事件**考虑。注册 `AssignedPod/Delete`，是为了让受害者删除事件能「穿过」这层过滤；穿过之后，`isPodWorthRequeuing` 询问的是 Pod 的 `UnschedulablePlugins`（比如 `NodeResourcesFit`）的 hint，由它们判断删除是否真的腾出了空间。`DefaultPreemption` 自己不做这个判断，所以返回 Skip。
+gated 的 Pod 只会被**gating 插件注册过的事件**考虑。注册 `AssignedPod/Delete`，是为了让受害者删除事件能「穿过」这层过滤；穿过之后，`isEntityWorthRequeuing`（第 8 行）询问的是 Pod 的 `UnschedulablePlugins`（比如 `NodeResourcesFit`）的 hint，由它们判断删除是否真的腾出了空间。`DefaultPreemption` 自己不做这个判断，所以返回 Skip。
 
 ## 十一、nominatedNodeName 的后续：下一轮怎么用
 
 抢占者带着 `nominatedNodeName` 回到队列。下一轮调度时，`findNodesThatFitPod` 先单独评估提名节点：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/algorithm.go
 	// "NominatedNodeName" can potentially be set in a previous scheduling cycle as a result of preemption.
 	// This node is likely the only candidate that will fit the pod, and hence we try it first before iterating over all nodes.
@@ -738,7 +738,7 @@ gated 的 Pod 只会被**gating 插件注册过的事件**考虑。注册 `Assig
 	}
 ```
 
-提名节点通过 Filter 就直接选它，跳过其他节点和打分。没通过就走正常流程，可能落到别的节点上——提名只是一个提示，不是承诺。
+提名节点通过 Filter 就直接选它，跳过其他节点和打分（第 5–11 行）。没通过就走正常流程，可能落到别的节点上——提名只是一个提示，不是承诺。
 
 提名在等待期间也有作用：其他 Pod 调度时，`RunFilterPluginsWithNominatedPods` 会把提名到该节点、优先级不低于自己的 Pod 当作已经在节点上，防止低优先级 Pod 抢走刚腾出的空间。
 
@@ -754,7 +754,7 @@ gated 的 Pod 只会被**gating 插件注册过的事件**考虑。注册 `Assig
 
 ## 十三、边界情况与坑
 
-**同优先级不抢占。** 条件是 `victim.Priority() < PodPriority(preemptor)`，严格小于。没设 PriorityClass 的 Pod 优先级都是 0，彼此之间永远不会抢占。
+**同优先级不抢占。** 条件是 `victim.Priority() < corev1helpers.PodPriority(preemptor)`，严格小于。没设 PriorityClass 的 Pod 优先级都是 0，彼此之间永远不会抢占。
 
 **PDB 不能阻止抢占。** 它只影响受害者选择和节点排序。真正需要防护的工作负载要靠优先级，而不是 PDB。
 

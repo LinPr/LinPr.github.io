@@ -15,9 +15,9 @@ description: "ImageLocality 给已经缓存了 Pod 所需镜像的节点加分�
 
 [上一篇](/posts/sched-plugin-19-balanced-allocation/)的 `NodeResourcesBalancedAllocation` 关心资源配比。默认 Profile 里最后一个打分插件 `ImageLocality` 关心的是另一种成本：Pod 被调度到一个没有镜像的节点上，kubelet 要先把镜像拉下来，几 GB 的模型推理镜像可能要拉好几分钟。如果某个可行节点上已经有这个镜像，Pod 可以几乎立刻启动。
 
-本文基于 Kubernetes master 提交 `aabdf5a2`。`ImageLocality` 只实现了 Score 一个扩展点，没有 PreScore、没有 NormalizeScore，权重 1，没有参数，也没有 feature gate。它是少数几个直接注册 `New`、不经过 `runtime.FactoryAdapter` 注入 feature 开关的插件：
+本文基于 Kubernetes master 提交 `aabdf5a2`。`ImageLocality` 实现了 Score 和 `SignPlugin` 两个扩展点，没有 PreScore、没有 NormalizeScore，权重 1，没有参数，也没有 feature gate。它是少数几个直接注册 `New`、不经过 `runtime.FactoryAdapter` 注入 feature 开关的插件：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/imagelocality/image_locality.go
 func New(_ context.Context, _ runtime.Object, h fwk.Handle) (fwk.Plugin, error) {
 	return &ImageLocality{handle: h}, nil
@@ -28,9 +28,9 @@ func New(_ context.Context, _ runtime.Object, h fwk.Handle) (fwk.Plugin, error) 
 
 ## 一、打分公式
 
-Score 是这个插件唯一实现的方法，三步就能走完：累加节点上已有的镜像、按铺开程度缩放、夹到阈值后映射成 0 到 100 分。代码里正好对应三个函数：
+Score 是这个插件唯一实现的打分方法（第 10–21 行），三步就能走完：累加节点上已有的镜像、按铺开程度缩放、夹到阈值后映射成 0 到 100 分。代码里正好对应三个函数：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/imagelocality/image_locality.go
 // The two thresholds are used as bounds for the image score range. They correspond to a reasonable size range for
 // container images compressed and stored in registries; 90%ile of images on dockerhub drops into this range.
@@ -56,7 +56,7 @@ func (pl *ImageLocality) Score(ctx context.Context, state fwk.CycleState, pod *v
 
 ### 1.1 累加：哪些镜像算数
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/imagelocality/image_locality.go
 func sumImageScores(nodeInfo fwk.NodeInfo, pod *v1.Pod, totalNumNodes int) (int64, int) {
 	var sum int64
@@ -88,11 +88,11 @@ func sumImageScores(nodeInfo fwk.NodeInfo, pod *v1.Pod, totalNumNodes int) (int6
 }
 ```
 
-三类镜像来源：init 容器、应用容器，以及 `image` 类型的卷（`ImageVolume` 已在 1.36 GA，可以把一个 OCI 镜像作为只读卷挂进 Pod，常用于分发模型权重）。只有节点上存在的镜像才会累加分数，但**每一个来源都计入 `imageCount`**，不管节点上有没有。两个容器用同一个镜像，会被累加两次，`imageCount` 也计两次。
+三类镜像来源：init 容器（第 5–9 行）、应用容器（第 11–15 行），以及 `image` 类型的卷（第 19–27 行）（`ImageVolume` 已在 1.36 GA，可以把一个 OCI 镜像作为只读卷挂进 Pod，常用于分发模型权重）。只有节点上存在的镜像才会累加分数，但**每一个来源都计入 `imageCount`**（第 17 行、第 26 行），不管节点上有没有。两个容器用同一个镜像，会被累加两次，`imageCount` 也计两次。
 
 ### 1.2 按铺开程度缩放
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/imagelocality/image_locality.go
 // scaledImageScore returns an adaptively scaled score for the given state of an image.
 // The size of the image is used as the base score, scaled by a factor which considers how much nodes the image has "spread" to.
@@ -104,11 +104,11 @@ func scaledImageScore(imageState *fwk.ImageStateSummary, totalNumNodes int) int6
 }
 ```
 
-单个镜像的贡献是 `大小 × 拥有它的节点数 / 节点总数`。
+单个镜像的贡献是 `大小 × 拥有它的节点数 / 节点总数`（第 7–8 行）。
 
 ### 1.3 夹到阈值并映射到 0~100
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/imagelocality/image_locality.go
 func calculatePriority(sumScores int64, imageCount int) int64 {
 	maxThreshold := maxContainerThreshold * int64(imageCount)
@@ -122,11 +122,11 @@ func calculatePriority(sumScores int64, imageCount int) int64 {
 }
 ```
 
-下限固定是 23MiB（常量名叫 `mb`，实际是 1024×1024 字节），上限是 1000MiB 乘以镜像来源数。**夹好之后线性映射到 0~100，整数除法向下取整。**
+下限固定是 23MiB（常量名叫 `mb`，实际是 1024×1024 字节，第 5–7 行），上限是 1000MiB 乘以镜像来源数。**夹好之后线性映射到 0~100（第 4–8 行夹取，第 10 行映射），整数除法向下取整。**
 
 把三步写成一个式子：
 
-```text
+```text {linenos=inline}
 sum   = Σ（节点上已有的镜像） size × numNodes / totalNodes
 max   = 1000MiB × imageCount
 score = 100 × (clamp(sum, 23MiB, max) − 23MiB) / (max − 23MiB)
@@ -178,7 +178,7 @@ score = 100 × (clamp(sum, 23MiB, max) − 23MiB) / (max − 23MiB)
 
 调度器知道节点上有哪些镜像，靠的是 `node.status.images`，由 kubelet 定期更新：
 
-```go
+```go {linenos=inline}
 // pkg/kubelet/nodestatus/setters.go
 // Images returns a Setter that updates the images on the node.
 // imageListFunc is expected to return a list of images sorted in descending order by image size.
@@ -216,8 +216,8 @@ func Images(nodeStatusMaxImages int32,
 
 两个上限：
 
-- `nodeStatusMaxImages`，kubelet 配置项，默认 50（`pkg/kubelet/apis/config/v1beta1/defaults.go`），设为 -1 表示不限制。镜像列表按大小降序排列（镜像管理器用 `sliceutils.ByImageSize` 排序），截断后只剩最大的 50 个。
-- 每个镜像最多 5 个名字（`MaxNamesPerImageInNodeStatus = 5`），先放 digest 形式，再放 tag 形式。
+- `nodeStatusMaxImages`，kubelet 配置项，默认 50（`pkg/kubelet/apis/config/v1beta1/defaults.go`），设为 -1 表示不限制。镜像列表按大小降序排列（镜像管理器用 `sliceutils.ByImageSize` 排序），截断后只剩最大的 50 个（第 11–14 行）。
+- 每个镜像最多 5 个名字（`MaxNamesPerImageInNodeStatus = 5`，第 20–23 行），先放 digest 形式，再放 tag 形式。
 
 这两个上限是为了控制 Node 对象的大小：Node 对象被所有 kube-proxy、CNI 插件、调度器 watch，每次 kubelet 更新状态都要序列化传输。**代价是 `ImageLocality` 看不到小镜像。** 在一个缓存了上百个镜像的节点上，排在 50 名之后的镜像对调度器是不可见的。好在小镜像拉取本来就快，打分阈值下限 23MiB 也决定了它们贡献不了多少分，所以截断的影响主要落在「节点上镜像很多，而目标镜像不在最大的 50 个里」这种情况。
 
@@ -225,7 +225,7 @@ func Images(nodeStatusMaxImages int32,
 
 ### 4.2 名字归一化
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/imagelocality/image_locality.go
 // normalizedImageName returns the CRI compliant name for a given image.
 // TODO: cover the corner cases of missed matches, e.g,
@@ -240,7 +240,7 @@ func normalizedImageName(name string) string {
 }
 ```
 
-唯一的归一化是补 `:latest`：最后一个 `:` 出现在最后一个 `/` 之前（或者根本没有 `:`），说明没写 tag。`registry:5000/app` 这种带端口的仓库地址也能正确处理，因为端口里的 `:` 在 `/` 之前。digest 形式 `app@sha256:abc...` 里有 `:` 且在最后一个 `/` 之后，不会被补。
+唯一的归一化是补 `:latest`（第 8–10 行）：最后一个 `:` 出现在最后一个 `/` 之前（或者根本没有 `:`），说明没写 tag。`registry:5000/app` 这种带端口的仓库地址也能正确处理，因为端口里的 `:` 在 `/` 之前。digest 形式 `app@sha256:abc...` 里有 `:` 且在最后一个 `/` 之后，不会被补。
 
 **除此之外，调度器只做字符串的精确匹配，不解析 registry 前缀。** Pod 写 `nginx:1.27`，节点上报的是 `docker.io/library/nginx:1.27`（containerd 的常见行为），两者匹配不上，TODO 注释里列的就是这类情况。所以 Pod 里统一写完整的镜像名（带 registry 前缀），`ImageLocality` 才能准确工作。
 
@@ -248,7 +248,7 @@ func normalizedImageName(name string) string {
 
 节点加入或更新时，缓存维护一张全局表：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/cache/cache.go
 func (cache *cacheImpl) addNodeImageStates(node *v1.Node, nodeInfo *framework.NodeInfo) {
 	newSum := make(map[string]*fwk.ImageStateSummary)
@@ -276,11 +276,11 @@ func (cache *cacheImpl) addNodeImageStates(node *v1.Node, nodeInfo *framework.No
 }
 ```
 
-`cache.imageStates` 以镜像名为 key，值里记录大小和拥有它的节点集合。每个 `NodeInfo.ImageStates` 只是指向这些共享条目的指针。一个镜像的每个名字（digest、各个 tag）都是独立的条目，Pod 用哪个名字都能查到。
+`cache.imageStates` 以镜像名为 key，值里记录大小和拥有它的节点集合（第 8–17 行）。每个 `NodeInfo.ImageStates` 只是指向这些共享条目的指针。一个镜像的每个名字（digest、各个 tag）都是独立的条目，Pod 用哪个名字都能查到。
 
 生成调度快照时，`NodeInfo.SnapshotConcrete` 调用 `ImageStateSummary.Snapshot()`，把节点集合压缩成一个数字：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/kube-scheduler/framework/types.go
 // Snapshot returns a copy without Nodes field of ImageStateSummary
 func (iss *ImageStateSummary) Snapshot() *ImageStateSummary {
@@ -293,7 +293,7 @@ func (iss *ImageStateSummary) Snapshot() *ImageStateSummary {
 
 这里有两个读代码才看得到的细节：
 
-- **`Size` 来自第一个上报它的节点。** 条目创建后，后续节点只往 `Nodes` 里加名字，不更新 `Size`。同一个镜像名在不同架构的节点上大小可能不同（多架构镜像），调度器用的是先到者的值。
+- **`Size` 来自第一个上报它的节点**（`addNodeImageStates` 第 9–14 行）。条目创建后，后续节点只往 `Nodes` 里加名字，不更新 `Size`。同一个镜像名在不同架构的节点上大小可能不同（多架构镜像），调度器用的是先到者的值。
 - **`NumNodes` 是在节点自己的 `NodeInfo` 被重新快照时才刷新的。** 增量快照只复制 `Generation` 变了的 `NodeInfo`。镜像被拉到节点 B 上，B 的快照会更新；但节点 A 快照里的这个镜像的 `NumNodes` 要等 A 自己发生变化（Pod 增减、节点更新）才会刷新。不同节点看到的 `spread` 可能短暂不一致。好在 Pod 的调度、删除频繁地触发节点变化，这种不一致通常很快就会被抹平。
 
 ## 五、边界情况与坑
@@ -331,7 +331,7 @@ kubelet 的镜像垃圾回收在磁盘使用率超过 `imageGCHighThresholdPerce
 
 ## 七、小结
 
-- `ImageLocality` 只实现 Score，权重 1，没有参数，打分看节点上已有的镜像，来源包括 init 容器、应用容器和镜像卷。
+- `ImageLocality` 实现 Score 和 `SignPlugin`，权重 1，没有参数，打分看节点上已有的镜像，来源包括 init 容器、应用容器和镜像卷。
 - 单个镜像的贡献是 `size × numNodes / totalNodes`；总和夹到 `[23MiB, 1000MiB × 镜像来源数]` 后线性映射到 0~100。
 - 按铺开比例缩放是为了避免 node heating：稀有镜像几乎不加分，副本不会因为镜像本地性扎堆。
 - 数据来自 `node.status.images`，kubelet 默认只报最大的 50 个镜像、每个镜像最多 5 个名字；名字匹配只补 `:latest`，Pod 与节点上报的写法要一致。

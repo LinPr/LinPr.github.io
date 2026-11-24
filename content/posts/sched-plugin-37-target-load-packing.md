@@ -31,7 +31,7 @@ Trimaran 的 KEP（`kep/61-Trimaran-real-load-aware-scheduling`）给出的动�
 
 TLP 的目标是让每个被使用的节点的实际 CPU 利用率都接近一个目标值 T（默认 40%）。低于 T 的节点优先装满，超过 T 的节点开始被「惩罚」。下面这个 Pod，在 TLP 看来会占用 1 核，而不是它的 request 500m，原因在 3.2 节：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: v1
 kind: Pod
 metadata:
@@ -58,7 +58,7 @@ spec:
 
 Trimaran 不直接查询 Prometheus，而是通过 PayPal 开源的 load-watcher 中转。load-watcher 返回的数据结构如下：
 
-```go
+```go {linenos=inline}
 // github.com/paypal/load-watcher@v0.2.4/pkg/watcher/watcher.go
 const (
 	BaseUrl         = "/watcher"
@@ -97,7 +97,7 @@ type WatcherMetrics struct {
 }
 ```
 
-一个节点对应一组 `Metric`，用 `Type`（CPU/Memory/…）和 `Operator`（AVG/STD/Latest）区分。`Value` 是**百分比**。`Window.End` 是这份数据的采集时刻，后面的滞后补偿会用到它。
+一个节点对应一组 `Metric`，用 `Type`（CPU/Memory/…）和 `Operator`（AVG/STD/Latest）区分。`Value` 是**百分比**（第 28 行）。`Window.End` 是这份数据的采集时刻（第 20 行），后面的滞后补偿会用到它。
 
 `Watcher` 内部维护 15m、10m、5m 三个窗口，每个窗口一个 goroutine，每分钟拉一次，每个窗口只保留最近 5 份结果。对外的 `GetLatestWatcherMetrics("15m")` 优先返回 15 分钟窗口的最新一份，没有时再依次退到 10 分钟、5 分钟。
 
@@ -107,7 +107,7 @@ load-watcher v0.2.4 支持三种指标源，它们给出的数据差别很大，
 
 Prometheus provider 对每个窗口发 `avg_over_time` 和 `stddev_over_time` 两类查询，指标名固定：
 
-```go
+```go {linenos=inline}
 // github.com/paypal/load-watcher@v0.2.4/pkg/watcher/internal/metricsprovider/prometheus.go
 	promStd                      = "stddev_over_time"
 	promAvg                      = "avg_over_time"
@@ -117,7 +117,7 @@ Prometheus provider 对每个窗口发 `avg_over_time` 和 `stddev_over_time` �
 	hostMetricKey                = "instance"
 ```
 
-```go
+```go {linenos=inline}
 // github.com/paypal/load-watcher@v0.2.4/pkg/watcher/internal/metricsprovider/prometheus.go
 	if host == allHosts {
 		promQuery = fmt.Sprintf("%s(%s[%s])", method, metric, rollup)
@@ -134,7 +134,7 @@ Prometheus provider 对每个窗口发 `avg_over_time` 和 `stddev_over_time` �
 
 KubernetesMetricsServer（默认）。读 `metrics.k8s.io` 的 `NodeMetrics`，用节点 `Capacity` 换算成百分比，`Operator` 是 `Latest`，**没有标准差**：
 
-```go
+```go {linenos=inline}
 // github.com/paypal/load-watcher@v0.2.4/pkg/watcher/internal/metricsprovider/k8s.go
 		var cpuFetchedMetric watcher.Metric
 		cpuFetchedMetric.Type = watcher.CPU
@@ -151,7 +151,7 @@ SignalFx provider 走 SignalFx 的 HTTP API，`addMetadata` 把 `Operator` 统�
 
 四个插件的参数里都内嵌了 `TrimaranSpec`（`Peaks` 例外，第 40 篇再说）：
 
-```go
+```go {linenos=inline}
 // apis/config/types.go
 // Denote the spec of the metric provider
 type MetricProviderSpec struct {
@@ -176,7 +176,7 @@ type TrimaranSpec struct {
 
 默认值逻辑：
 
-```go
+```go {linenos=inline}
 // apis/config/v1/defaults.go
 // SetDefaultTrimaranSpec sets the default parameters for common Trimaran plugins
 func SetDefaultTrimaranSpec(args *TrimaranSpec) {
@@ -189,11 +189,11 @@ func SetDefaultTrimaranSpec(args *TrimaranSpec) {
 }
 ```
 
-`DefaultMetricProviderType` 是 `KubernetesMetricsServer`，`DefaultInsecureSkipVerify` 是 `true`。也就是说，**用 Prometheus 时默认跳过 TLS 证书校验**。如果 Prometheus 走 HTTPS，并且你在意中间人风险，需要显式写 `insecureSkipVerify: false`。
+`DefaultMetricProviderType` 是 `KubernetesMetricsServer`，`DefaultInsecureSkipVerify` 是 `true`。也就是说，**用 Prometheus 时默认跳过 TLS 证书校验**（第 7–8 行只在 provider 是 Prometheus 时设这个默认值）。如果 Prometheus 走 HTTPS，并且你在意中间人风险，需要显式写 `insecureSkipVerify: false`。
 
-选择哪种接入方式只看有没有 `watcherAddress`：
+选择哪种接入方式只看有没有 `watcherAddress`（第 2 行的分支）：
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/collector.go
 	if trimaranSpec.WatcherAddress != "" {
 		client, err = loadwatcherapi.NewServiceClient(trimaranSpec.WatcherAddress)
@@ -211,7 +211,7 @@ func SetDefaultTrimaranSpec(args *TrimaranSpec) {
 - 服务模式：load-watcher 作为独立 Deployment 运行，插件每次刷新发一个 `GET <watcherAddress>/watcher`，超时 55 秒。
 - 库模式：`NewLibraryClient` 在调度器进程里 new 一个 `Watcher` 并调用 `StartWatching()`。需要注意，`StartWatching` 不只是启动拉取 goroutine，它还会在 `:2020` 端口起一个 HTTP server，并把 `/watcher`、`/watcher/health` 注册到 `http.DefaultServeMux`：
 
-```go
+```go {linenos=inline}
 // github.com/paypal/load-watcher@v0.2.4/pkg/watcher/watcher.go
 	http.HandleFunc(BaseUrl, w.handler)
 	http.HandleFunc(HealthCheckUrl, w.healthCheckHandler)
@@ -229,7 +229,7 @@ func SetDefaultTrimaranSpec(args *TrimaranSpec) {
 
 指标在 load-watcher 里是每分钟刷新的，插件不能每次打分都去问一遍，于是每个插件实例各持有一个 Collector，把结果缓存在本地。
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/collector.go
 const (
 	metricsUpdateIntervalSeconds = 30
@@ -250,11 +250,11 @@ type Collector struct {
 }
 ```
 
-`NewCollector` 先同步调用一次 `updateMetrics`。这次失败只打日志，不会让插件创建失败。之后起一个 ticker，每 30 秒刷新一次。`updateMetrics` 只在成功时替换快照，失败时**保留旧快照**。快照本身没有过期判断：如果 load-watcher 或 Prometheus 挂了一小时，插件会一直用一小时前的数据打分，日志里只有「Load watcher client failed」。
+`NewCollector` 先同步调用一次 `updateMetrics`。这次失败只打日志，不会让插件创建失败。之后起一个 ticker，每 30 秒刷新一次（间隔来自第 3 行的 `metricsUpdateIntervalSeconds`）。`updateMetrics` 只在成功时替换快照，失败时**保留旧快照**。快照本身没有过期判断：如果 load-watcher 或 Prometheus 挂了一小时，插件会一直用一小时前的数据打分，日志里只有「Load watcher client failed」。
 
 Score 时通过 `GetNodeMetrics` 读取：
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/collector.go
 func (collector *Collector) GetNodeMetrics(logger klog.Logger, nodeName string) ([]watcher.Metric, *watcher.WatcherMetrics) {
 	allMetrics := collector.getAllMetrics()
@@ -272,7 +272,7 @@ func (collector *Collector) GetNodeMetrics(logger klog.Logger, nodeName string) 
 }
 ```
 
-`getAllMetrics` 在读锁下把结构体复制一份再返回。这里是浅拷贝，`NodeMetricsMap` 仍指向同一个 map，但 `updateMetrics` 每次都是整体替换 `collector.metrics`，不会原地修改旧 map，所以读到的旧 map 不会被并发写。四个插件对 `metrics == nil` 的处理一致：直接返回 `fwk.MinNodeScore`（0）。新加入、还没被采集到的节点会在这一维得 0 分。
+`getAllMetrics` 在读锁下把结构体复制一份再返回。这里是浅拷贝，`NodeMetricsMap` 仍指向同一个 map，但 `updateMetrics` 每次都是整体替换 `collector.metrics`，不会原地修改旧 map，所以读到的旧 map 不会被并发写。四个插件对 `metrics == nil` 的处理一致：直接返回 `fwk.MinNodeScore`（0）（第 5–8 行是快照从未填充，第 10–13 行是节点不在 `NodeMetricsMap` 里）。新加入、还没被采集到的节点会在这一维得 0 分。
 
 ### 2.5 PodAssignEventHandler：补偿「刚调度、指标还没反映」
 
@@ -280,7 +280,7 @@ func (collector *Collector) GetNodeMetrics(logger klog.Logger, nodeName string) 
 
 `PodAssignEventHandler` 用 informer 实时记录「哪些 Pod 刚被绑定到哪个节点」：
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/handler.go
 const (
 	// This is the maximum staleness of metrics possible by load watcher
@@ -304,9 +304,9 @@ type podInfo struct {
 }
 ```
 
-注册方式是在调度器共享的 Pod informer 上挂一个 `FilteringResourceEventHandler`，过滤条件是 `isAssigned`（`Spec.NodeName` 非空）。这里需要先了解 client-go 的语义：当一个对象从「不满足过滤条件」变成「满足」时，`FilteringResourceEventHandler.OnUpdate` 会把它转换成对内层 handler 的 `OnAdd` 调用：
+注册方式是在调度器共享的 Pod informer 上挂一个 `FilteringResourceEventHandler`，过滤条件是 `isAssigned`（`Spec.NodeName` 非空）。这里需要先了解 client-go 的语义：当一个对象从「不满足过滤条件」变成「满足」时，`FilteringResourceEventHandler.OnUpdate` 会把它转换成对内层 handler 的 `OnAdd` 调用（第 8–9 行）：
 
-```go
+```go {linenos=inline}
 // k8s.io/client-go@v0.36.4/tools/cache/controller.go
 func (r FilteringResourceEventHandler) OnUpdate(oldObj, newObj interface{}) {
 	newer := r.FilterFunc(newObj)
@@ -323,7 +323,7 @@ func (r FilteringResourceEventHandler) OnUpdate(oldObj, newObj interface{}) {
 
 Pod 被绑定就是 `NodeName` 从空变成非空，所以实际走的是 `OnAdd → updateCache`。`PodAssignEventHandler.OnUpdate` 里「`NodeName` 变化才更新」的分支几乎不会触发，因为 `NodeName` 一旦设置就不能再修改。
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/handler.go
 func (p *PodAssignEventHandler) updateCache(pod *v1.Pod) {
 	if pod.Spec.NodeName == "" {
@@ -338,7 +338,7 @@ func (p *PodAssignEventHandler) updateCache(pod *v1.Pod) {
 
 时间戳取的是 informer 收到事件时的 `time.Now()`，不是 Pod 的创建时间或启动时间。由于是按时间追加，每个节点的切片天然按时间升序排列，`cleanupCache` 因此可以直接二分查找：
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/handler.go
 // Deletes podInfo entries that are older than metricsAgentReportingIntervalSeconds. Also deletes node entry if empty
 func (p *PodAssignEventHandler) cleanupCache() {
@@ -359,7 +359,7 @@ func (p *PodAssignEventHandler) cleanupCache() {
 }
 ```
 
-清理每 5 分钟跑一次，删除 60 秒以前的条目。注意 `idx == len(cache)` 表示**所有条目都已过期**，此时代码却直接 `continue`，一条都没删。结果是，一个节点只要在最近 60 秒内没有新 Pod，它的旧条目就会一直留着，直到将来某次清理时它恰好有新条目，或者旧 Pod 被删除（`OnDelete` 按 UID 移除）。这些残留条目不影响打分的正确性，因为 Score 读取时还会按时间窗口再过滤一次（见 3.3 节），但缓存会比设计意图大一些。
+清理每 5 分钟跑一次，删除 60 秒以前的条目。注意 `idx == len(cache)` 表示**所有条目都已过期**，此时代码却直接 `continue`（第 12–14 行），一条都没删。结果是，一个节点只要在最近 60 秒内没有新 Pod，它的旧条目就会一直留着，直到将来某次清理时它恰好有新条目，或者旧 Pod 被删除（`OnDelete` 按 UID 移除）。这些残留条目不影响打分的正确性，因为 Score 读取时还会按时间窗口再过滤一次（见 3.3 节），但缓存会比设计意图大一些。
 
 `OnDelete` 里直接写了 `pod := obj.(*v1.Pod)`。而 `AddToHandle` 的 `FilterFunc` 会放行 `DeletedFinalStateUnknown`（informer 断线期间漏掉删除事件时产生的墓碑对象），所以墓碑会原样传进 `OnDelete`，类型断言失败会 panic。这条路径很少触发，但确实存在。
 
@@ -373,9 +373,9 @@ func (p *PodAssignEventHandler) cleanupCache() {
 
 ### 3.1 参数与 New
 
-TLP 的参数在公共的 `TrimaranSpec` 之外还有三个字段。
+TLP 的参数在公共的 `TrimaranSpec` 之外还有三个字段（第 9、11、13 行，`TrimaranSpec` 内嵌在第 7 行）。
 
-```go
+```go {linenos=inline}
 // apis/config/types.go
 // TargetLoadPackingArgs holds arguments used to configure TargetLoadPacking plugin.
 type TargetLoadPackingArgs struct {
@@ -402,7 +402,7 @@ type TargetLoadPackingArgs struct {
 
 `New` 的关键部分：
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/targetloadpacking/targetloadpacking.go
 var (
 	requestsMilliCores           = cfgv1.DefaultRequestsMilliCores
@@ -427,13 +427,13 @@ func New(ctx context.Context, obj runtime.Object, handle fwk.Handle) (fwk.Plugin
 }
 ```
 
-三个参数被写进了**包级变量**，而不是插件结构体。调度器为每个 Profile 各创建一个插件实例，如果两个 Profile 都启用了 TLP 且参数不同，后创建的实例会覆盖前一个的 T 和倍数，两个 Profile 实际上会用同一套参数。（这种配置在库模式下本来就会因为 2.3 节的端口注册冲突而起不来，服务模式下则会遇到这个参数覆盖问题。）
+三个参数被写进了**包级变量**（声明在第 2–6 行，赋值在第 15–17 行），而不是插件结构体。调度器为每个 Profile 各创建一个插件实例，如果两个 Profile 都启用了 TLP 且参数不同，后创建的实例会覆盖前一个的 T 和倍数，两个 Profile 实际上会用同一套参数。（这种配置在库模式下本来就会因为 2.3 节的端口注册冲突而起不来，服务模式下则会遇到这个参数覆盖问题。）
 
 ### 3.2 预测一个容器会用多少 CPU
 
 打分的第一步是估计一个 Pod 会吃掉多少 CPU。这个估计只依赖容器的 request 和 limit，规则是三层兜底：
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/targetloadpacking/targetloadpacking.go
 // PredictUtilisation predict utilization for a container based on its requests/limits
 func PredictUtilisation(container *v1.Container) int64 {
@@ -446,7 +446,7 @@ func PredictUtilisation(container *v1.Container) int64 {
 }
 ```
 
-三层兜底按优先级是：limit、request × 1.5、1000m。用 limit 而不用 request 的原因在 KEP 里有说明：limit 是更强的上界，按上界预测，利用率更不容易冲过目标值。代价是 limit 远大于 request 的 Pod 会被视为「很重」。
+三层兜底按优先级是：limit、request × 1.5、1000m（第 4–9 行的 `if / else if / return`）。用 limit 而不用 request 的原因在 KEP 里有说明：limit 是更强的上界，按上界预测，利用率更不容易冲过目标值。代价是 limit 远大于 request 的 Pod 会被视为「很重」。
 
 Pod 级的预测只累加 `Spec.Containers`，再加上 `Spec.Overhead` 里的 CPU。**init 容器不参与预测**，Pod 级资源（`spec.resources`）也不会被读取。
 
@@ -454,7 +454,7 @@ Pod 级的预测只累加 `Spec.Containers`，再加上 `Spec.Overhead` 里的 C
 
 有了单个 Pod 的预测用量，Score 把节点当前指标、补偿缓存和这个预测值合起来，算出节点的分数。整个过程分为四步。
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/targetloadpacking/targetloadpacking.go
 func (pl *TargetLoadPacking) Score(ctx context.Context, cycleState fwk.CycleState, pod *v1.Pod, nodeInfo fwk.NodeInfo) (int64, *fwk.Status) {
 	// ...
@@ -498,11 +498,11 @@ func (pl *TargetLoadPacking) Score(ctx context.Context, cycleState fwk.CycleStat
 	nodeCPUUtilMillis := (nodeCPUUtilPercent / 100) * nodeCPUCapMillis
 ```
 
-第一步，取节点当前 CPU 利用率。接受 `AVG` 或 `Latest`，循环里没有 `break`，所以多个匹配时**最后一个生效**。Prometheus 下 CPU 只有一个 AVG，不会出现歧义。然后用节点 **`Capacity`**（不是 `Allocatable`）把百分比换算成毫核。
+第一步，取节点当前 CPU 利用率。接受 `AVG` 或 `Latest`（第 29 行），循环里没有 `break`，所以多个匹配时**最后一个生效**。Prometheus 下 CPU 只有一个 AVG，不会出现歧义。然后用节点 **`Capacity`**（不是 `Allocatable`）把百分比换算成毫核（第 40–41 行）。
 
 第二步，计算缓存里「指标还没反映」的 Pod 用量：
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/targetloadpacking/targetloadpacking.go
 	var missingCPUUtilMillis int64 = 0
 	pl.eventHandler.RLock()
@@ -523,13 +523,13 @@ func (pl *TargetLoadPacking) Score(ctx context.Context, cycleState fwk.CycleStat
 	pl.eventHandler.RUnlock()
 ```
 
-判断条件用时间戳 t 和快照的 `Window.End` 比较：t 晚于 End，或者 t 在 End 之前 60 秒以内，就认为指标里还没有这个 Pod，按 3.2 节的规则补加它的预测用量。注释里说得很直白：指标代理的上报周期假设为 60 秒，一个 Pod 真正体现在指标里可能需要 0 到 120 秒，这里取平均值 60 秒，偶尔重复计算一次「问题不大」。
+判断条件用时间戳 t 和快照的 `Window.End` 比较（第 9–10 行）：t 晚于 End，或者 t 在 End 之前 60 秒以内，就认为指标里还没有这个 Pod，按 3.2 节的规则补加它的预测用量。注释里说得很直白：指标代理的上报周期假设为 60 秒，一个 Pod 真正体现在指标里可能需要 0 到 120 秒，这里取平均值 60 秒，偶尔重复计算一次「问题不大」。
 
 `info.Pod.Spec.Overhead.Cpu()` 在 `Overhead` 为 nil 时也是安全的，因为 `ResourceList` 是 map 类型，对 nil map 调用 `Cpu()` 会返回零值 Quantity。
 
 第三、四步，算出预测利用率并套用分段函数：
 
-```go
+```go {linenos=inline}
 // pkg/trimaran/targetloadpacking/targetloadpacking.go
 	var predictedCPUUsage float64
 	if nodeCPUCapMillis != 0 {
@@ -551,13 +551,13 @@ func (pl *TargetLoadPacking) Score(ctx context.Context, cycleState fwk.CycleStat
 }
 ```
 
-所有路径都返回 `Success`（或 nil），即使拿不到指标也不会让调度失败，最多给 0 分。`NormalizeScore` 是空实现，原始分数就是最终分数，再乘以权重。
+所有路径都返回 `Success`（或 nil）（第 8、12、18 行），即使拿不到指标也不会让调度失败，最多给 0 分。`NormalizeScore` 是空实现，原始分数就是最终分数，再乘以权重。
 
 ### 3.4 打分曲线的推导
 
 记节点当前利用率为 A（%），Pod 预测用量为 B，滞后补偿为 M，容量为 Cap，目标为 T：
 
-```text
+```text {linenos=inline}
 U = (A × Cap / 100 + B + M) / Cap × 100
 
             ⎧ (100 − T) × U / T + T        0 ≤ U ≤ T
@@ -613,7 +613,7 @@ B 从 96 分跌到 35 分，A 以 74 分胜出。如果没有补偿，接下来�
 
 **指标长时间停更时补偿会失效。** Collector 失败时保留旧快照，`Window.End` 停在过去某个时刻。按 3.3 节的条件，End 之后绑定的 Pod 都应该被补加，但 `cleanupCache` 判断过期用的是**当前时间**，不是 `Window.End`。只要清理时该节点还有 60 秒内的新条目，更早的条目就会被一并删除。这些 Pod 既没有出现在旧指标里，也不再被补偿。
 
-**新节点和采集失败的节点得 0 分。** 代码里的 TODO 写着「长时间拿不到指标就退回按 allocation 装箱」，但目前没有实现。新扩容的节点在被 load-watcher 采集到之前（库模式下最多约 1.5 分钟：Watcher 每分钟拉一次，Collector 每 30 秒刷新一次），在 TLP 这一维上一直垫底。
+**新节点和采集失败的节点得 0 分。** 3.3 节 Score 代码第 13 行的 TODO 写着「长时间拿不到指标就退回按 allocation 装箱」，但目前没有实现。新扩容的节点在被 load-watcher 采集到之前（库模式下最多约 1.5 分钟：Watcher 每分钟拉一次，Collector 每 30 秒刷新一次），在 TLP 这一维上一直垫底。
 
 **容量口径。** TLP 用 `Capacity` 做分母；metrics-server provider 也用 `Capacity` 换算百分比，两者一致。第 38、39 篇的插件则用 `Allocatable` 乘以同一个百分比来还原绝对用量，口径略有不同。
 
@@ -621,7 +621,7 @@ B 从 96 分跌到 35 分，A 以 74 分胜出。如果没有补偿，接下来�
 
 按当前 API，应在 Profile 里禁用 `NodeResourcesBalancedAllocation`，并把 `NodeResourcesFit` 的打分策略改成 `MostAllocated`，或者给它很低的权重：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: kubescheduler.config.k8s.io/v1
 kind: KubeSchedulerConfiguration
 profiles:

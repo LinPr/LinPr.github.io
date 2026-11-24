@@ -31,9 +31,9 @@ description: "NodeResourcesAllocatable 只根据节点 allocatable 的加权和�
 
 ## 二、参数与默认值
 
-`NodeResourcesAllocatableArgs` 只有两个字段，一个决定看哪些资源，一个决定偏好哪一头：
+`NodeResourcesAllocatableArgs` 只有两个配置字段（`TypeMeta` 之外），一个决定看哪些资源（`Resources`，第 10 行），一个决定偏好哪一头（`Mode`，第 13 行）：
 
-```go
+```go {linenos=inline}
 // apis/config/types.go
 type NodeResourcesAllocatableArgs struct {
 	metav1.TypeMeta `json:",inline"`
@@ -64,9 +64,9 @@ type NodeResourcesAllocatableArgs struct {
 
 ### 3.1 工厂
 
-工厂要做的事只有一件：把 Profile 里的 args 和默认值合并，装进 `resourceAllocationScorer`。
+工厂要做的事只有一件：把 Profile 里的 args 和默认值合并，装进 `resourceAllocationScorer`。默认值先在 `var mode config.ModeType` 和 `resToWeightMap := defaultResourcesToWeightMap`（第 5–6 行）里铺好，`allocArgs != nil` 时才被参数覆盖，最后连同闭包一起装进结构体（第 29–37 行）。
 
-```go
+```go {linenos=inline}
 // pkg/noderesources/allocatable.go
 func NewAllocatable(ctx context.Context, allocArgs runtime.Object, h fwk.Handle) (fwk.Plugin, error) {
 	logger := klog.FromContext(ctx).WithValues("plugin", AllocatableName)
@@ -113,9 +113,9 @@ func NewAllocatable(ctx context.Context, allocArgs runtime.Object, h fwk.Handle)
 
 ### 3.2 打分
 
-打分分两层：外层的 `score` 负责取数，真正加权的是构造时传进来的闭包。
+打分分两层：外层的 `score` 负责取数（第 15–17 行），真正加权的是构造时传进来的闭包（第 19 行）。
 
-```go
+```go {linenos=inline}
 // pkg/noderesources/resource_allocation.go
 func (r *resourceAllocationScorer) score(
 	logger klog.Logger,
@@ -142,7 +142,7 @@ func (r *resourceAllocationScorer) score(
 
 `calculateResourceAllocatableRequest` 会算出节点的 allocatable 和「已请求 + 本 Pod 请求」两个值，CPU/内存用 `GetNonZeroRequested`（未声明 request 的容器按 100m/200Mi 计），ephemeral-storage 和扩展资源用 `GetRequested`。但真正打分的闭包根本不看 `requested`：
 
-```go
+```go {linenos=inline}
 // pkg/noderesources/allocatable.go
 func resourceScorer(logger klog.Logger, resToWeightMap resourceToWeightMap, mode config.ModeType) func(resourceToValueMap, resourceToValueMap) int64 {
 	return func(requested, allocable resourceToValueMap) int64 {
@@ -170,7 +170,7 @@ func score(logger klog.Logger, capacity int64, mode config.ModeType) int64 {
 }
 ```
 
-所以原始分是 `±Σ(allocatable_i × w_i) / Σw_i`，`Least` 为负、`Most` 为正。**它只跟节点自己的 allocatable 有关，与节点上已经运行了什么、与本 Pod 请求多少都无关**，`requested` 的计算是从 in-tree 结构继承来的、在这里没有用处的开销。
+所以原始分是 `±Σ(allocatable_i × w_i) / Σw_i`，`Least` 为负、`Most` 为正（第 7–11 行累加，第 15–20 行定符号）。**它只跟节点自己的 allocatable 有关，与节点上已经运行了什么、与本 Pod 请求多少都无关**，`requested` 的计算是从 in-tree 结构继承来的、在这里没有用处的开销。
 
 测试用例 `resources requested with more than the node` 也印证了这一点：Pod 请求超过节点容量，分数照样按规格给。插件不管能不能放下，那是 Filter 阶段 `NodeResourcesFit` 的事。
 
@@ -180,7 +180,7 @@ func score(logger klog.Logger, capacity int64, mode config.ModeType) int64 {
 
 原始分的量纲是字节当量，必须先映射到框架约定的 0~100，框架才会拿去和其他插件加权：
 
-```go
+```go {linenos=inline}
 // pkg/noderesources/allocatable.go
 func (alloc *Allocatable) NormalizeScore(ctx context.Context, state fwk.CycleState, pod *v1.Pod, scores fwk.NodeScoreList) *fwk.Status {
 	// Find highest and lowest scores.
@@ -210,7 +210,7 @@ func (alloc *Allocatable) NormalizeScore(ctx context.Context, state fwk.CycleSta
 }
 ```
 
-标准的 min-max 线性映射：本轮可行节点中原始分最高的得 100，最低的得 0。所有节点规格相同时 `oldRange == 0`，全部 0 分，插件对同构集群不起作用，这是合理的。
+标准的 min-max 线性映射（第 22 行）：本轮可行节点中原始分最高的得 100，最低的得 0。所有节点规格相同时 `oldRange == 0`（第 19–20 行），全部 0 分，插件对同构集群不起作用，这是合理的。
 
 ## 四、算例
 
@@ -248,7 +248,7 @@ memheavy 只有 8 核，却排在 16 核的 medium 后面（Least 模式下 61 <
 
 in-tree [NodeResourcesFit](/posts/sched-plugin-08-node-resources-fit/) 的打分策略（`LeastAllocated` 默认、`MostAllocated`、`RequestedToCapacityRatio`）都基于「本 Pod 放上去之后的已请求量 / allocatable」这个比例：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/noderesources/least_allocated.go
 func leastRequestedScore(requested, capacity int64) int64 {
 	if capacity == 0 {
@@ -262,7 +262,7 @@ func leastRequestedScore(requested, capacity int64) int64 {
 }
 ```
 
-它回答的是「这个节点还有多空」，`NodeResourcesAllocatable` 回答的是「这个节点有多大」。两者正交：
+它回答的是「这个节点还有多空」（`(capacity - requested) * fwk.MaxNodeScore / capacity`，第 10 行），`NodeResourcesAllocatable` 回答的是「这个节点有多大」。两者正交：
 
 | | NodeResourcesFit 打分 | NodeResourcesAllocatable |
 | --- | --- | --- |

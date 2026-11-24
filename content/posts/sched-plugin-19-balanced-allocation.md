@@ -17,7 +17,7 @@ description: "NodeResourcesBalancedAllocation 让各种资源在节点上被均�
 
 本文基于 Kubernetes master 提交 `aabdf5a2`。它在默认 Profile 的 `MultiPoint` 里排在 `DefaultPreemption` 之后，权重 1，只实现 PreScore 和 Score，没有 feature gate，默认启用：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/apis/config/v1/default_plugins.go
 {Name: names.DefaultPreemption},
 {Name: names.NodeResourcesBalancedAllocation, Weight: ptr.To[int32](1)},
@@ -36,7 +36,7 @@ description: "NodeResourcesBalancedAllocation 让各种资源在节点上被均�
 
 ## 二、结构体与参数
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/noderesources/balanced_allocation.go
 type BalancedAllocation struct {
 	handle fwk.Handle
@@ -52,7 +52,7 @@ var _ fwk.SignPlugin = &BalancedAllocation{}
 
 参数只有一个字段：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/apis/config/types_pluginargs.go
 type NodeResourcesBalancedAllocationArgs struct {
 	metav1.TypeMeta
@@ -65,7 +65,7 @@ type NodeResourcesBalancedAllocationArgs struct {
 
 默认值是 CPU 和内存：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/apis/config/v1/defaults.go
 func SetDefaults_NodeResourcesBalancedAllocationArgs(obj *configv1.NodeResourcesBalancedAllocationArgs) {
 	if len(obj.Resources) == 0 {
@@ -81,9 +81,9 @@ func SetDefaults_NodeResourcesBalancedAllocationArgs(obj *configv1.NodeResources
 }
 ```
 
-`ResourceSpec` 有 `Weight` 字段，但校验规则要求它**必须为 1**：
+`ResourceSpec` 有 `Weight` 字段，但校验规则要求它**必须为 1**（第 2–4 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/apis/config/validation/validation_pluginargs.go
 		if resource.Weight != 1 {
 			allErrs = append(allErrs, field.Invalid(path.Child("resources").Index(i).Child("weight"), resource.Weight, "must be 1"))
@@ -94,7 +94,7 @@ func SetDefaults_NodeResourcesBalancedAllocationArgs(obj *configv1.NodeResources
 
 工厂函数：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/noderesources/balanced_allocation.go
 	return &BalancedAllocation{
 		handle: h,
@@ -114,8 +114,8 @@ func SetDefaults_NodeResourcesBalancedAllocationArgs(obj *configv1.NodeResources
 
 和 `NodeResourcesFit` 的打分器相比有两处关键差异：
 
-- `useRequested: true`：节点一侧用 `NodeInfo.Requested` 而不是 `NonZeroRequested`；Pod 一侧计算请求量时不设置 `NonMissingContainerRequests`，没写 requests 的容器就按 0 算，不会被替换成 100m/200MiB。
-- feature 开关全部传进了打分器：`enablePodLevelResources` 等字段在这里被正确设置，Pod 级 resources 会参与打分计算。（`NodeResourcesFit` 通过 `getScorer` 构造的打分器没有设置这些字段，第 08 篇的边界情况里讨论过这个差异。）
+- `useRequested: true`（第 10 行）：节点一侧用 `NodeInfo.Requested` 而不是 `NonZeroRequested`；Pod 一侧计算请求量时不设置 `NonMissingContainerRequests`，没写 requests 的容器就按 0 算，不会被替换成 100m/200MiB。
+- feature 开关全部传进了打分器（第 6–13 行）：`enablePodLevelResources` 等字段在这里被正确设置，Pod 级 resources 会参与打分计算。（`NodeResourcesFit` 通过 `getScorer` 构造的打分器没有设置这些字段，第 08 篇的边界情况里讨论过这个差异。）
 
 为什么要用真实请求而不是非零请求？`NodeResourcesFit` 用非零默认值，是为了让 BestEffort Pod 在 `LeastAllocated` 下被摊开。均衡度关心的是比例关系，凭空给每个容器加上 100m CPU 和 200MiB 内存会扭曲这个比例：一个只请求 4Gi 内存、没写 CPU 的 Pod，在非零口径下变成了「100m CPU + 4Gi」，均衡度的判断就偏了。
 
@@ -123,7 +123,7 @@ func SetDefaults_NodeResourcesBalancedAllocationArgs(obj *configv1.NodeResources
 
 参数就位之后，PreScore 先把打分要用的请求量算出来，再决定这个 Pod 要不要参与打分。跳过的判定和「BestEffort」这个名字有关，含义却和 QoS 分类不同。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/noderesources/balanced_allocation.go
 func (ba *BalancedAllocation) PreScore(ctx context.Context, cycleState fwk.CycleState, pod *v1.Pod, nodes []fwk.NodeInfo) *fwk.Status {
 	podRequests := ba.calculatePodResourceRequestList(pod, ba.resources)
@@ -158,9 +158,9 @@ CycleState 里存的是 `balancedAllocationPreScoreState`，key 为 `"PreScoreNo
 
 ## 四、Score：均衡度的改善量
 
-跳过的 Pod 不在这个周期里打分。留下的 Pod，Score 的逻辑很短：取 PreScore 存下的请求量，交给和 `NodeResourcesFit` 共享的打分实现。
+跳过的 Pod 不在这个周期里打分。留下的 Pod，Score 的逻辑很短：取 PreScore 存下的请求量，交给和 `NodeResourcesFit` 共享的打分实现（第 17 行）。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/noderesources/balanced_allocation.go
 func (ba *BalancedAllocation) Score(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeInfo fwk.NodeInfo) (int64, *fwk.Status) {
 	s, err := getBalancedAllocationPreScoreState(state)
@@ -183,7 +183,7 @@ func (ba *BalancedAllocation) Score(ctx context.Context, state fwk.CycleState, p
 
 `ba.score` 是共享的 `resourceAllocationScorer.score`：先由 `calculateNodeAllocatableRequest` 从节点取出三个向量 `requested`（放上 Pod 之后）、`allocated`（放之前）、`allocatable`，再交给 `scorer` 函数。`NodeResourcesFit` 的三种策略只用了 `requested` 和 `allocatable`，`allocated` 这个参数就是为均衡度打分准备的：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/noderesources/balanced_allocation.go
 func balancedResourceScorer(requested, allocated, allocatable []int64) int64 {
 	// Compute the score for the node with pending pod requests
@@ -202,13 +202,13 @@ func balancedResourceScorer(requested, allocated, allocatable []int64) int64 {
 }
 ```
 
-**最终分比较的是放上这个 Pod 前后均衡度的差，而不是放上之后的绝对值。** 下面把两个分量分开看：先看「放上之后」的单次均衡分怎么算，再看差值如何映射回 50 到 100。
+**最终分比较的是放上这个 Pod 前后均衡度的差（第 4–6 行、第 15 行），而不是放上之后的绝对值。** 下面把两个分量分开看：先看「放上之后」的单次均衡分怎么算，再看差值如何映射回 50 到 100。
 
 ### 4.1 单次均衡分：标准差
 
 单次均衡分只衡量一件事：一组请求占比彼此有多接近。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/noderesources/balanced_allocation.go
 func balancedResourceScore(requested, allocatable []int64) int64 {
 	var resourceToFractions []float64
@@ -247,7 +247,7 @@ func balancedResourceScore(requested, allocatable []int64) int64 {
 }
 ```
 
-每种资源算一个请求占比，超过 1 截断为 1（节点被超额请求时）。然后计算这些占比的总体标准差：
+每种资源算一个请求占比（第 5–15 行），超过 1 截断为 1（节点被超额请求时）。然后计算这些占比的总体标准差：
 
 - 两种资源时，均值是 `(f₁+f₂)/2`，每个点到均值的距离都是 `|f₁−f₂|/2`，标准差就是 `|f₁−f₂|/2`。代码把这个特例单独写出来，省掉开方。
 - 三种及以上，按定义算。
@@ -263,7 +263,7 @@ func balancedResourceScore(requested, allocatable []int64) int64 {
 
 如果只看「放上之后」的均衡分，图中的节点 Y（放之后 92）会胜过节点 X（放之后 85）。但 Y 原本是完美均衡的 100 分，这个偏内存的 Pod 让它变差了；X 原本 CPU 偏高、内存闲置，这个 Pod 正好把它往均衡方向拉了一把。当前实现比较的是改善量：
 
-```text
+```text {linenos=inline}
 Δ     = scoreWithPod − scoreWithoutPod        ∈ [−50, 50]
 score = 50 + (50 + Δ) / 2                     ∈ [50, 100]
 ```
@@ -291,7 +291,7 @@ score = 50 + (50 + Δ) / 2                     ∈ [50, 100]
 
 公式和映射都定了，还剩一个输入问题：配置的资源里，哪些真正进入标准差。`calculateNodeAllocatableRequest` 是两个插件共用的：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/noderesources/resource_allocation.go
 	for i := range r.resources {
 		resource := v1.ResourceName(r.resources[i].Name)
@@ -311,7 +311,7 @@ score = 50 + (50 + Δ) / 2                     ∈ [50, 100]
 	}
 ```
 
-被跳过的资源在三个向量里都保持 0，`balancedResourceScore` 看到 `allocatable[i] == 0` 就不把它算进标准差。所以：
+被跳过的资源在三个向量里都保持 0（第 6–13 行），`balancedResourceScore` 看到 `allocatable[i] == 0` 就不把它算进标准差。所以：
 
 - 在 `resources` 里配了 `nvidia.com/gpu`，不请求 GPU 的 Pod 打分时只看 CPU 和内存，GPU 维度不影响结果。
 - 节点没有 GPU（allocatable 为 0），这一维也被跳过，GPU 节点和非 GPU 节点按不同的维度数计算标准差。

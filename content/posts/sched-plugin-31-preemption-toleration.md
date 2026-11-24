@@ -21,7 +21,7 @@ in-tree 的 [DefaultPreemption](/posts/sched-plugin-18-default-preemption/) 已�
 
 `PreemptionToleration` 只实现了一个扩展点：`PostFilter`。它不在默认 Profile 里，没有 feature gate，README 标注的成熟度是 Alpha。启用方式是在 scheduler-plugins 编译的调度器里替换掉 `DefaultPreemption`：
 
-```yaml
+```yaml {linenos=inline}
 # pkg/preemptiontoleration/README.md
 profiles:
 - schedulerName: default-scheduler
@@ -43,7 +43,7 @@ KEP（`kep/205-preemption-toleration`）给了两个这条规则覆盖不到的�
 
 第一个场景：低优先级但不愿被打断。有些作业用的是不支持断点续跑的工具，被驱逐就意味着从头再来。给它一个高优先级可以避免被抢，但它会反过来抢占别人，而这类作业本质上只应该在集群有空闲时运行。管理员想要的是这样一种优先级：调度时排在 `high` 后面，一旦跑起来，`high` 抢不动它，只有 `system-critical` 能抢。
 
-```yaml
+```yaml {linenos=inline}
   system-critical: 10000
              high:  9000
 low-non-preempted:  8000 # this priority class can tolerate preemption from priorities less than 10000
@@ -58,7 +58,7 @@ low-non-preempted:  8000 # this priority class can tolerate preemption from prio
 
 这两个场景用的是同一套机制：把条件写在 `PriorityClass` 的 annotation 上。先定义 key。
 
-```go
+```go {linenos=inline}
 // pkg/preemptiontoleration/preemption_toleration_policy.go
 const (
 	AnnotationKeyPrefix                     = "preemption-toleration.scheduling.x-k8s.io/"
@@ -67,7 +67,7 @@ const (
 )
 ```
 
-```go
+```go {linenos=inline}
 // pkg/preemptiontoleration/preemption_toleration_policy.go
 type Policy struct {
 	// MinimumPreemptablePriority specifies the minimum priority value that can preempt this priority class.
@@ -89,7 +89,7 @@ type Policy struct {
 
 解析函数很直白：
 
-```go
+```go {linenos=inline}
 // pkg/preemptiontoleration/preemption_toleration_policy.go
 func parsePreemptionTolerationPolicy(
 	pc schedulingv1.PriorityClass,
@@ -122,11 +122,11 @@ func parsePreemptionTolerationPolicy(
 }
 ```
 
-默认值是 `value + 1` 和 `0`。两个都不写时，任何比受害者优先级高的抢占者都满足门槛，行为与默认抢占完全一致，所以把插件换上去不会改变没有加 annotation 的 `PriorityClass` 的行为。
+默认值是 `value + 1`（第 9 行）和 `0`（第 20 行）。两个都不写时，任何比受害者优先级高的抢占者都满足门槛，行为与默认抢占完全一致，所以把插件换上去不会改变没有加 annotation 的 `PriorityClass` 的行为。
 
 用 KEP 的两个场景对应：
 
-```yaml
+```yaml {linenos=inline}
 # 不愿被 high 打断：只有 ≥10000 能抢，且永远不过期
 kind: PriorityClass
 metadata:
@@ -152,7 +152,7 @@ value: 8000
 
 策略解析出来之后，判定本身只剩一个问题：给定一个受害者和一个抢占者，前者该不该被保护。回答它的是插件的核心函数，源码注释特意说明导出它是为了让其他 PostFilter 插件复用这套容忍策略：
 
-```go
+```go {linenos=inline}
 // pkg/preemptiontoleration/preemption_toleration.go
 func ExemptedFromPreemption(
 	logger klog.Logger,
@@ -215,15 +215,15 @@ func ExemptedFromPreemption(
 
 - 没有 `priorityClassName`：直接不豁免。只有在集群里没有 `globalDefault: true` 的 `PriorityClass` 时才会出现这种 Pod，否则 Priority 准入插件会给它填上默认的类名。
 - Lister 查不到 `PriorityClass`：返回 error，而且这个 error 会一路上抛，让当前节点的 `SelectVictimsOnNode` 以 `Error` 状态结束。`PriorityClass` 被删除、但还有 Pod 引用它的情况下就会触发。测试 `TestExemptedFromPreemptionWithNonExitingPriorityClass` 覆盖了这一路径。
-- 抢占者 `preemptionPolicy: Never`：豁免所有人。这个分支在插件内部实际走不到，因为 Evaluator 的第一步 `PodEligibleToPreemptOthers` 已经把这类抢占者拦下了；它的存在是因为函数是导出的，其他插件调用时不一定先做了资格检查。
+- 抢占者 `preemptionPolicy: Never`：豁免所有人（第 17–23 行）。这个分支在插件内部实际走不到，因为 Evaluator 的第一步 `PodEligibleToPreemptOthers` 已经把这类抢占者拦下了；它的存在是因为函数是导出的，其他插件调用时不一定先做了资格检查。
 - 解析失败：不豁免，只打一条错误日志。annotation 写成 `"10k"` 之类的值，策略就等于没写，调度器之外看不到任何提示。
-- 门槛比较用 `>=`：抢占者优先级恰好等于 `minimum-preemptable-priority` 时，不豁免，可以直接抢。测试 `when preemptor's priority is equal to MinimumPreemptablePriorityClass, it should return false` 明确了这一点。
-- 没有 `PodScheduled=True`：豁免。节点上的 Pod 一般都已经有这个 condition（绑定时由 API server 写入），没有的主要是调度器缓存里被 assume、尚未完成绑定的 Pod。插件选择保护它们：一个刚刚做出的调度决定不应该马上被推翻。
-- 时间比较：`scheduledAt` 用的是 `PodScheduled` condition 的 `LastTransitionTime`，不是容器启动时间，也不是 `status.startTime`。Pod 绑定后拉镜像花了 5 分钟，那 10 分钟的容忍期里真正在跑的只有 5 分钟。如果「保证运行时间」是硬需求，`toleration-seconds` 要把镜像拉取和启动时间算进去。
+- 门槛比较用 `>=`（第 34–37 行）：抢占者优先级恰好等于 `minimum-preemptable-priority` 时，不豁免，可以直接抢。测试 `when preemptor's priority is equal to MinimumPreemptablePriorityClass, it should return false` 明确了这一点。
+- 没有 `PodScheduled=True`：豁免（第 44–47 行）。节点上的 Pod 一般都已经有这个 condition（绑定时由 API server 写入），没有的主要是调度器缓存里被 assume、尚未完成绑定的 Pod。插件选择保护它们：一个刚刚做出的调度决定不应该马上被推翻。
+- 时间比较（第 51 行）：`scheduledAt` 用的是 `PodScheduled` condition 的 `LastTransitionTime`，不是容器启动时间，也不是 `status.startTime`。Pod 绑定后拉镜像花了 5 分钟，那 10 分钟的容忍期里真正在跑的只有 5 分钟。如果「保证运行时间」是硬需求，`toleration-seconds` 要把镜像拉取和启动时间算进去。
 
 `now` 不是在判定时取的，而是在 PostFilter 开头取一次：
 
-```go
+```go {linenos=inline}
 // pkg/preemptiontoleration/preemption_toleration.go
 func (pl *PreemptionToleration) PostFilter(ctx context.Context, state fwk.CycleState, pod *v1.Pod, m fwk.NodeToStatusReader) (*fwk.PostFilterResult, *fwk.Status) {
 	defer func() {
@@ -248,7 +248,7 @@ func (pl *PreemptionToleration) PostFilter(ctx context.Context, state fwk.CycleS
 
 ### 3.1 一个反直觉的组合：只写门槛
 
-假设只写了 `minimum-preemptable-priority: "10000"`，没写 `toleration-seconds`。直觉上这应该意味着「低于 10000 的抢不动我」。但 `TolerationSeconds` 默认是 0，走到最后一步：`scheduledAt + 0 > now` 对于一个已经调度过的 Pod 不成立，返回 false，不豁免。也就是说，**只写门槛不写时长，几乎等于什么都没写**，唯一的效果是保护那些还没有 `PodScheduled=True` 的 Pod。
+假设只写了 `minimum-preemptable-priority: "10000"`，没写 `toleration-seconds`。直觉上这应该意味着「低于 10000 的抢不动我」。但 `TolerationSeconds` 默认是 0，走到最后一步（`ExemptedFromPreemption` 第 51 行）：`scheduledAt + 0 > now` 对于一个已经调度过的 Pod 不成立，返回 false，不豁免。也就是说，**只写门槛不写时长，几乎等于什么都没写**，唯一的效果是保护那些还没有 `PodScheduled=True` 的 Pod。
 
 想要「门槛以下永远抢不动」，必须同时写 `toleration-seconds: "-1"`。KEP 里的 `low-non-preempted` 正是这么配的。
 
@@ -258,7 +258,7 @@ func (pl *PreemptionToleration) PostFilter(ctx context.Context, state fwk.CycleS
 
 `minimum-preemptable-priority` 设得比 `value` 还低，比如 `value: 8000`、门槛 5000，会不会让优先级 6000 的 Pod 能抢它？不会。在 `ExemptedFromPreemption` 之前，`SelectVictimsOnNode` 已经过滤掉了优先级不低于抢占者的 Pod：
 
-```go
+```go {linenos=inline}
 // pkg/preemptiontoleration/preemption_toleration.go
 	podPriority := corev1helpers.PodPriority(preemptor)
 	for _, pi := range nodeInfo.GetPods() {
@@ -285,7 +285,7 @@ func (pl *PreemptionToleration) PostFilter(ctx context.Context, state fwk.CycleS
 
 第三节的 `ExemptedFromPreemption` 是逐个 Pod 的判断，它被调用在 `SelectVictimsOnNode` 里，用来把候选受害者集合再筛一遍。整个函数与 in-tree 的对应实现只差这一处，函数注释写得很直接：
 
-```go
+```go {linenos=inline}
 // pkg/preemptiontoleration/preemption_toleration.go
 // SelectVictimsOnNode finds minimum set of pods on the given node that should
 // be preempted in order to make enough room for "preemptor" to be scheduled.
@@ -296,7 +296,7 @@ func (pl *PreemptionToleration) PostFilter(ctx context.Context, state fwk.CycleS
 
 候选受害者确定之后，剩下的步骤和 in-tree 的实现逐行对应：
 
-```go
+```go {linenos=inline}
 // pkg/preemptiontoleration/preemption_toleration.go
 	// Remove the victims only once the loop above is done: removePod mutates the
 	// very slice that nodeInfo.GetPods() returns.
@@ -331,7 +331,7 @@ func (pl *PreemptionToleration) PostFilter(ctx context.Context, state fwk.CycleS
 	// ...
 ```
 
-全部移除候选受害者、跑一遍 Filter 确认放得下、按「先违反 PDB 的、再不违反的」两轮，各自按优先级从高到低逐个赦免。被豁免的 Pod 始终留在节点副本上，Filter 判断时它们占着资源。所以一个节点上如果大部分低优先级 Pod 都处于容忍期，移除剩下的也腾不出足够空间，这个节点会在 Filter 一步失败，不成为候选。
+全部移除候选受害者（第 4–8 行）、跑一遍 Filter 确认放得下（第 18–20 行）、按「先违反 PDB 的、再不违反的」两轮（第 31 行），各自按优先级从高到低逐个赦免（第 25–27 行）。被豁免的 Pod 始终留在节点副本上，Filter 判断时它们占着资源。所以一个节点上如果大部分低优先级 Pod 都处于容忍期，移除剩下的也腾不出足够空间，这个节点会在 Filter 一步失败，不成为候选。
 
 这里有一个值得多想一步的地方：容忍期的判断发生在「全部移除」之前，是一个硬筛选，而不是赦免阶段的偏好。即便驱逐一个容忍期内的 Pod 就能让抢占者放下，插件也不会这么做，而是去别的节点找；所有节点都找不到，抢占就失败。容忍策略的优先级高于「尽量让高优先级 Pod 调度成功」。
 
@@ -339,7 +339,7 @@ func (pl *PreemptionToleration) PostFilter(ctx context.Context, state fwk.CycleS
 
 第四节说的「只差一处」仅指受害者筛选，其余部分不是重写，而是从 in-tree 复制来的。源码在文件末尾标了一个分界线：
 
-```go
+```go {linenos=inline}
 // pkg/preemptiontoleration/preemption_toleration.go
 /* DO NOT EDIT CONTENT BELOW */
 /* Copied from k/k#pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go */
@@ -347,7 +347,7 @@ func (pl *PreemptionToleration) PostFilter(ctx context.Context, state fwk.CycleS
 
 分界线以下的 `GetOffsetAndNumCandidates`、`CandidatesToVictimsMap`、`calculateNumCandidates`、`PodEligibleToPreemptOthers`、`filterPodsWithPDBViolation` 都是从 in-tree 复制来的。参数类型也是直接复用：
 
-```go
+```go {linenos=inline}
 // apis/config/types.go
 // PreemptionTolerationArgs reuses DefaultPluginArgs.
 type PreemptionTolerationArgs schedconfig.DefaultPreemptionArgs
@@ -375,7 +375,7 @@ type PreemptionTolerationArgs schedconfig.DefaultPreemptionArgs
 
 第一行则说明了一个更值得注意的事实：in-tree 现在已经有了 `IsEligiblePod` 这个钩子：
 
-```go
+```go {linenos=inline}
 // k8s.io/kubernetes@v1.36.4/pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go
 // IsEligiblePodFunc is a function which may be assigned to the DefaultPreemption plugin.
 // This may implement rules/filtering around preemption eligibility, which is in addition to
@@ -401,12 +401,12 @@ type IsEligiblePodFunc func(nodeInfo fwk.NodeInfo, victim fwk.PodInfo, preemptor
 
 图里的场景：victim 在 t=0 被调度，所属 `PriorityClass` 门槛 10000、容忍 600 秒。优先级 9000 的 P1 在 t=6 分钟到来，节点上唯一能腾出空间的就是 victim，它处于容忍期，P1 找不到候选，进入 unschedulable 队列。t=10 时容忍期结束，集群里如果恰好没有 Pod 删除、节点变化之类的事件，P1 不会被唤醒，直到调度队列的兜底机制生效：
 
-```go
+```go {linenos=inline}
 // k8s.io/kubernetes@v1.36.4/pkg/scheduler/backend/queue/scheduling_queue.go
 	DefaultPodMaxInUnschedulablePodsDuration time.Duration = 5 * time.Minute
 ```
 
-```go
+```go {linenos=inline}
 // k8s.io/kubernetes@v1.36.4/pkg/scheduler/backend/queue/scheduling_queue.go
 	go wait.Until(func() {
 		p.flushUnschedulablePodsLeftover(logger)

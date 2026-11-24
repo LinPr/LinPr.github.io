@@ -31,7 +31,7 @@ description: "SchedulingGates 是默认 Profile 里第一个插件，只实现 P
 
 `schedulingGates` 给了一个显式的开关：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: v1
 kind: Pod
 metadata:
@@ -53,7 +53,7 @@ spec:
 
 插件只做一件事：看到 gate 就拒绝。全部代码一次可以读完。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/schedulinggates/scheduling_gates.go
 // SchedulingGates checks if a Pod carries .spec.schedulingGates.
 type SchedulingGates struct{}
@@ -91,7 +91,7 @@ func (pl *SchedulingGates) isSchedulableAfterUpdateTargetPodSchedulingGatesElimi
 }
 ```
 
-插件是空结构体，没有参数，没有状态，`New` 忽略了所有入参。**逻辑只有一句：gate 非空就返回 `UnschedulableAndUnresolvable`，消息里列出所有 gate 名。**
+插件是空结构体，没有参数，没有状态，`New`（第 29–31 行）忽略了所有入参。`PreEnqueue`（第 8–16 行）只做一件事：`p.Spec.SchedulingGates` 为空时返回 `nil`（第 9–11 行）；非空时把每个 gate 的 `Name` 收集到 `gates` 切片（第 12–15 行），返回 `UnschedulableAndUnresolvable`（第 16 行），消息里用 `%v` 列出这些名字。
 
 两处值得说明：
 
@@ -110,7 +110,7 @@ func (pl *SchedulingGates) isSchedulableAfterUpdateTargetPodSchedulingGatesElimi
 
 `PriorityQueue` 的注释把三个子队列写得很清楚：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
 // PriorityQueue implements a scheduling queue.
 // The head of PriorityQueue is the highest priority pending entity (pod or pod group). This structure
@@ -125,7 +125,7 @@ func (pl *SchedulingGates) isSchedulableAfterUpdateTargetPodSchedulingGatesElimi
 
 注意注释的措辞：「two sub queues and an additional data structure」。`activeQ` 和 `backoffQ` 是堆，`unschedulableEntities` 只是一个 map，里面的 entity 没有顺序，因为它们本来就不会被 Pop，只会被事件「捞」出来：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/unschedulable_entities.go
 // unschedulableEntities holds pods and pod groups that cannot be scheduled.
 type unschedulableEntities struct {
@@ -147,7 +147,7 @@ type unschedulableEntities struct {
 
 既然 gated entity 停在 `unschedulableEntities`，gate 就必须架在 entity 进入 `activeQ` 的唯一入口上。这个入口是 `moveToActiveQ`，它先跑 PreEnqueue：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
 func (p *PriorityQueue) moveToActiveQ(logger klog.Logger, entity framework.QueuedEntityInfo, event string, movesFromBackoffQ bool, strategy *queueingStrategy) bool {
 	gatedBefore := entity.Gated()
@@ -176,11 +176,11 @@ func (p *PriorityQueue) moveToActiveQ(logger klog.Logger, entity framework.Queue
 }
 ```
 
-`SchedulerPopFromBackoffQ`（1.33 Beta，默认开启）打开后，`activeQ` 空闲时调度器会直接从 `backoffQ` 里 Pop，这样 `backoffQ` 里的 entity 也可能被直接调度。
+`SchedulerPopFromBackoffQ`（1.33 Beta，默认开启）打开后，`activeQ` 空闲时调度器会直接从 `backoffQ` 里 Pop，这样 `backoffQ` 里的 entity 也可能被直接调度。`moveToActiveQ` 里的 `skipPreEnqueue`（第 7–10 行）就是为此准备的：从 `backoffQ` 直接过来的 entity 不再重复跑 PreEnqueue；被拒绝的 entity 走第 12–18 行的分支，放回 `unschedulableEntities`，不进入 `activeQ`。
 
 gate 因此必须前移：`moveToBackoffQ` 在入队时就跑 PreEnqueue，被拒绝的同样放回 `unschedulableEntities`；之后从 `backoffQ` 移到 `activeQ` 时（`movesFromBackoffQ=true`）就不再重复跑。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
 func (p *PriorityQueue) moveToBackoffQ(logger klog.Logger, entity framework.QueuedEntityInfo, event string, strategy *queueingStrategy) bool {
 	gatedBefore := entity.Gated()
@@ -208,7 +208,7 @@ func (p *PriorityQueue) moveToBackoffQ(logger klog.Logger, entity framework.Queu
 
 两个入口调的是同一套检查，而这套检查面对的是一个插件集合。什么时候问哪个插件，决定了上一次的拦截结果能不能被复用。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
 func (p *PriorityQueue) runPreEnqueuePluginsForPod(ctx context.Context, pInfo *framework.QueuedPodInfo) {
 	// ...
@@ -238,11 +238,11 @@ func (p *PriorityQueue) runPreEnqueuePluginsForPod(ctx context.Context, pInfo *f
 }
 ```
 
-`preEnqueuePluginMap` 的类型是 `map[string]map[string]fwk.PreEnqueuePlugin`，按 profile 名和插件名索引。Go 的 map 遍历顺序是随机的，所以**PreEnqueue 插件之间没有固定的执行顺序**，这和 Filter 按配置顺序执行不同。唯一的确定性是：上次拦住这个 Pod 的插件（`GatingPlugin`）先跑，它仍然拒绝就直接返回，其他插件不用再跑。
+`preEnqueuePluginMap` 的类型是 `map[string]map[string]fwk.PreEnqueuePlugin`，按 profile 名和插件名索引。Go 的 map 遍历顺序是随机的，所以**PreEnqueue 插件之间没有固定的执行顺序**，这和 Filter 按配置顺序执行不同。唯一的确定性是：上次拦住这个 Pod 的插件（`GatingPlugin`）先跑（第 4–12 行），它仍然拒绝就直接返回，其他插件不用再跑。
 
-拒绝时，`runPreEnqueuePlugin` 记下三样东西：
+拒绝时，`runPreEnqueuePlugin` 记下三样东西（第 2–4 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
 	pInfo.UnschedulablePlugins.Insert(pl.Name())
 	pInfo.GatingPlugin = pl.Name()
@@ -263,7 +263,7 @@ func (p *PriorityQueue) runPreEnqueuePluginsForPod(ctx context.Context, pInfo *f
 
 集群里每时每刻都有节点更新、Pod 删除之类的事件，每个事件都会调用 `MoveAllToActiveOrBackoffQueue`，遍历 `unschedulableEntities`。如果被 gate 住的 Pod 有成千上万个，每次都给它们跑一遍 QueueingHint 是浪费。队列在这里做了一个短路：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
 func (p *PriorityQueue) moveEntitiesToActiveOrBackoffQueue(logger klog.Logger, entityInfoList []framework.QueuedEntityInfo, event fwk.ClusterEvent, oldObj, newObj interface{}, hintKeys *preQueueingHintPodKeys) {
 	// ...
@@ -282,13 +282,13 @@ func (p *PriorityQueue) moveEntitiesToActiveOrBackoffQueue(logger klog.Logger, e
 }
 ```
 
-**gated entity 只对 `GatingPluginEvents` 里的事件和通配事件有反应**：节点变化、别的 Pod 删除，一律跳过，连 hint 函数都不调。
+**gated entity 只对 `GatingPluginEvents` 里的事件和通配事件有反应**（第 8–12 行）：节点变化、别的 Pod 删除，一律跳过，连 hint 函数都不调。
 
 ### 4.2 「全部删光」才产生事件
 
 `UpdatePodSchedulingGatesEliminated` 来自 Pod 更新时的事件提取函数：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/events.go
 func extractPodSchedulingGateEliminatedChange(newPod *v1.Pod, oldPod *v1.Pod) fwk.ActionType {
 	if len(newPod.Spec.SchedulingGates) == 0 && len(oldPod.Spec.SchedulingGates) != 0 {
@@ -300,13 +300,13 @@ func extractPodSchedulingGateEliminatedChange(newPod *v1.Pod, oldPod *v1.Pod) fw
 }
 ```
 
-提取条件很严：旧 Pod 有 gate、新 Pod 一个都没有。两个 gate 删掉一个，不产生这个事件；如果这次更新也没有触发其他提取函数，产生的是通用的 `TargetPod/Update`。
+提取条件很严（第 3–6 行）：旧 Pod 有 gate、新 Pod 一个都没有。两个 gate 删掉一个，不产生这个事件；如果这次更新也没有触发其他提取函数，产生的是通用的 `TargetPod/Update`。
 
 后者也匹配不上。`MatchClusterEvents` 要求 `incomingEvent.ActionType <= ce.ActionType`，`Update` 是所有更新位的并集，大于 `UpdatePodSchedulingGatesEliminated`，所以 Pod 继续留在原地。**这正是「hint 无条件返回 `Queue`」敢这么写的原因：能走到 hint 的事件，一定是 gate 已经删光了。**
 
 完整的唤醒路径在 `PriorityQueue.Update` 里：Pod 在 `unschedulableEntities` 中，就对每个提取出来的事件调用 `isEntityWorthRequeuing`，`SchedulingGates` 在 `UnschedulablePlugins` 里、事件匹配、hint 返回 `Queue`，策略是 `queueAfterBackoff`；然后 `requeueEntityWithQueueingStrategy` 检查退避：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/backoff_queue.go
 	count := entity.GetUnschedulableCount()
 	if entity.GetConsecutiveErrorsCount() > 0 {
@@ -321,7 +321,7 @@ func extractPodSchedulingGateEliminatedChange(newPod *v1.Pod, oldPod *v1.Pod) fw
 	}
 ```
 
-被 gate 住的 Pod 从未进过调度周期，`UnschedulableCount` 为 0，没有退避，直接走 `moveToActiveQ`。PreEnqueue 再跑一遍，`SchedulingGates` 放行，Pod 进入 `activeQ`。
+被 gate 住的 Pod 从未进过调度周期，`UnschedulableCount` 为 0（`count` 在第 2 行取出，第 8–12 行判断为零时直接返回零值时间），没有退避，直接走 `moveToActiveQ`。PreEnqueue 再跑一遍，`SchedulingGates` 放行，Pod 进入 `activeQ`。
 
 **从 gate 删光到 Pod 可以被 Pop，中间没有任何人为延迟。**
 
@@ -345,7 +345,7 @@ func extractPodSchedulingGateEliminatedChange(newPod *v1.Pod, oldPod *v1.Pod) fw
 
 gate 只能删不能加，这条规则由更新时的校验保证：
 
-```go
+```go {linenos=inline}
 // pkg/apis/core/validation/validation.go
 func validateOnlyDeletedSchedulingGates(newGates, oldGates []core.PodSchedulingGate, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
@@ -370,9 +370,9 @@ func validateOnlyDeletedSchedulingGates(newGates, oldGates []core.PodSchedulingG
 }
 ```
 
-更新时出现旧列表里没有的名字就拒绝。**这保证了 gate 是单向的：Pod 一旦开始调度，就不可能被重新 gate 回去**，调度器不需要处理「调度到一半被 gate」的情况。创建时还有两条约束：gate 名必须是合法的 qualified name 且不能重复（`validateSchedulingGates`）；`spec.nodeName` 和 `schedulingGates` 不能同时设置：
+更新时出现旧列表里没有的名字就拒绝（第 8–18 行）。**这保证了 gate 是单向的：Pod 一旦开始调度，就不可能被重新 gate 回去**，调度器不需要处理「调度到一半被 gate」的情况。创建时还有两条约束：gate 名必须是合法的 qualified name 且不能重复（`validateSchedulingGates`）；`spec.nodeName` 和 `schedulingGates` 不能同时设置：
 
-```go
+```go {linenos=inline}
 // pkg/apis/core/validation/validation.go
 	// A Pod cannot be assigned a Node if there are remaining scheduling gates.
 	if pod.Spec.NodeName != "" && len(pod.Spec.SchedulingGates) != 0 {
@@ -382,7 +382,7 @@ func validateOnlyDeletedSchedulingGates(newGates, oldGates []core.PodSchedulingG
 
 绕过调度器的路径也被堵上了。`pods/binding` 子资源在写入节点名之前检查 gate：
 
-```go
+```go {linenos=inline}
 // pkg/registry/core/pod/storage/storage.go
 		// Reject binding to a scheduling un-ready Pod.
 		if len(pod.Spec.SchedulingGates) != 0 {
@@ -396,7 +396,7 @@ func validateOnlyDeletedSchedulingGates(newGates, oldGates []core.PodSchedulingG
 
 Pod 的 spec 大部分字段创建后不可变。`ValidatePodUpdate` 的白名单里有两项只在 gated 期间生效：
 
-```go
+```go {linenos=inline}
 // pkg/apis/core/validation/validation.go
 var updatablePodSpecFields = []string{
 	// ...
@@ -419,9 +419,9 @@ var updatablePodSpecFields = []string{
 
 ### 5.3 SchedulingGated 状态是谁写的
 
-**`kubectl get pod` 显示的 `SchedulingGated` 不是调度器写的。** 调度器从未处理过这个 Pod，自然不会更新它的状态。条件是 API Server 在创建时加上的：
+**`kubectl get pod` 显示的 `SchedulingGated` 不是调度器写的。** 调度器从未处理过这个 Pod，自然不会更新它的状态。条件是 API Server 在创建时加上的（第 3–5 行判断 gate 是否非空，第 7–12 行写入条件）：
 
-```go
+```go {linenos=inline}
 // pkg/registry/core/pod/strategy.go
 func applySchedulingGatedCondition(pod *api.Pod) {
 	if len(pod.Spec.SchedulingGates) == 0 {
@@ -447,9 +447,9 @@ kubectl 的打印逻辑看到 `PodScheduled` 条件的 reason 是 `SchedulingGat
 
 **Pod 指定了不存在的 `schedulerName`。** `addPod` 先用 `responsibleForPod` 判断这个 Pod 是不是自己的，不是就不入队，PreEnqueue 也就不会跑。这种 Pod 不会出现在 `pending_pods` 任何一个 queue 标签下。
 
-**PodGroup 成员被 gate。** `runPreEnqueuePlugins` 对 PodGroup entity 逐个检查成员 Pod，遇到第一个被 gate 的就把整个组标记为 gated：
+**PodGroup 成员被 gate。** `runPreEnqueuePlugins` 对 PodGroup entity 逐个检查成员 Pod，遇到第一个被 gate 的就把整个组标记为 gated（第 2–9 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
 	for pInfo := range entity.ForEachPodInfo() {
 		p.runPreEnqueuePluginsForPod(ctx, pInfo)

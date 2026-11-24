@@ -19,7 +19,7 @@ description: "InterPodAffinity 实现 Pod 间亲和与反亲和。本文从源�
 
 ## 一、规则长什么样
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: v1
 kind: Pod
 metadata:
@@ -61,9 +61,9 @@ spec:
 
 ### 2.1 `AffinityTerm`
 
-规则在进入调度器缓存时就被解析好了。`framework.NewPodInfo` 会把 Pod 的四类规则（required/preferred × 亲和/反亲和）解析成 `fwk.AffinityTerm`，存在 `PodInfo` 里，此后每个调度周期都直接用，不再重复解析 selector：
+规则在进入调度器缓存时就被解析好了。`framework.NewPodInfo` 会把 Pod 的四类规则（required/preferred × 亲和/反亲和）解析成 `fwk.AffinityTerm`（第 2–7 行），存在 `PodInfo` 里，此后每个调度周期都直接用，不再重复解析 selector：
 
-```go
+```go {linenos=inline}
 // staging/src/k8s.io/kube-scheduler/framework/types.go
 type AffinityTerm struct {
 	Namespaces        sets.Set[string]
@@ -87,9 +87,9 @@ namespace 的默认值在 `getNamespacesFromPodAffinityTerm` 中确定：`namesp
 
 ### 2.2 新 Pod 的 `namespaceSelector` 被展开成 namespace 列表
 
-`Matches` 需要被匹配 Pod 的 namespace 标签才能判断 `namespaceSelector`。对新 Pod 的规则，插件在 PreFilter/PreScore 中先做一次展开：
+`Matches`（第 10–15 行）需要被匹配 Pod 的 namespace 标签才能判断 `namespaceSelector`。对新 Pod 的规则，插件在 PreFilter/PreScore 中先做一次展开：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/plugin.go
 func (pl *InterPodAffinity) mergeAffinityTermNamespacesIfNotEmpty(at *fwk.AffinityTerm) error {
 	if at.NamespaceSelector.Empty() {
@@ -107,13 +107,13 @@ func (pl *InterPodAffinity) mergeAffinityTermNamespacesIfNotEmpty(at *fwk.Affini
 }
 ```
 
-用 namespace lister 把 selector 能选中的 namespace 全部列出来并入 `Namespaces`，然后把 selector 置成 `Nothing()`。之后拿新 Pod 的规则去匹配成千上万个已有 Pod 时，传入的 `nsLabels` 一律是 `nil`，只查集合，不再去取每个已有 Pod 的 namespace 标签。代码里反复出现的注释「The incoming pod's terms have the namespaceSelector merged into the namespaces」说的就是这件事。
+用 namespace lister 把 selector 能选中的 namespace 全部列出来并入 `Namespaces`（第 6、10–12 行），然后把 selector 置成 `Nothing()`（第 13 行）。之后拿新 Pod 的规则去匹配成千上万个已有 Pod 时，传入的 `nsLabels` 一律是 `nil`，只查集合，不再去取每个已有 Pod 的 namespace 标签。代码里反复出现的注释「The incoming pod's terms have the namespaceSelector merged into the namespaces」说的就是这件事。
 
 `Empty()` 返回 true 的是 `Everything()`（空 selector），这种情况不展开，保持「匹配所有 namespace」。`Nothing()` 的 `Empty()` 返回 false，会走一遍 `List`，结果为空，没有副作用。
 
-反方向——拿**已有 Pod 的规则**去匹配新 Pod——就不能这样做了，已有 Pod 的规则成千上万条，不可能每个周期都展开。插件改为只取一次新 Pod 所在 namespace 的标签：
+反方向——拿**已有 Pod 的规则**去匹配新 Pod——就不能这样做了，已有 Pod 的规则成千上万条，不可能每个周期都展开。插件改为只取一次新 Pod 所在 namespace 的标签（第 2–10 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/plugin.go
 func GetNamespaceLabelsSnapshot(logger klog.Logger, ns string, nsLister listersv1.NamespaceLister) (nsLabels labels.Set) {
 	podNS, err := nsLister.Get(ns)
@@ -138,7 +138,7 @@ func GetNamespaceLabelsSnapshot(logger klog.Logger, ns string, nsLister listersv
 
 PreFilter 的产物是几张计数表，表的键决定了后续每次查询的代价。先看键的定义：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/filtering.go
 type topologyPair struct {
 	key   string
@@ -147,7 +147,7 @@ type topologyPair struct {
 type topologyToMatchedTermCount map[topologyPair]int64
 ```
 
-计数表的键是 `topologyPair{key, value}`，例如 `{topology.kubernetes.io/zone, zone-a}`。和 `PodTopologySpread` 按约束下标拆表不同，这里所有规则的计数混在一张表里，因为 Filter 只需要回答「这个拓扑对上有没有」，不需要区分是哪条规则贡献的。
+计数表的键是 `topologyPair{key, value}`（第 2–6 行），例如 `{topology.kubernetes.io/zone, zone-a}`。和 `PodTopologySpread` 按约束下标拆表不同，这里所有规则的计数混在一张表里，因为 Filter 只需要回答「这个拓扑对上有没有」，不需要区分是哪条规则贡献的。
 
 `preFilterState` 里有三张这样的表（gate 关闭时的含义）：
 
@@ -159,7 +159,7 @@ type topologyToMatchedTermCount map[topologyPair]int64
 
 表的更新函数有一个细节：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/filtering.go
 func (m topologyToMatchedTermCount) update(node *v1.Node, tk string, value int64) {
 	if tv, ok := node.Labels[tk]; ok {
@@ -173,15 +173,15 @@ func (m topologyToMatchedTermCount) update(node *v1.Node, tk string, value int64
 }
 ```
 
-计数降到 0 就删除键。这不是为了省内存，而是语义需要：Filter 的自亲和判断用 `len(clusterWideAffinityCounts) == 0` 表示「全集群没有任何匹配 Pod」，`RemovePod` 把最后一个匹配 Pod 减掉后，必须让表真正变空。
+计数降到 0 就删除键（第 7–10 行）。这不是为了省内存，而是语义需要：Filter 的自亲和判断用 `len(clusterWideAffinityCounts) == 0` 表示「全集群没有任何匹配 Pod」，`RemovePod` 把最后一个匹配 Pod 减掉后，必须让表真正变空。
 
-另外节点没有 `topologyKey` 标签时，这个 Pod 不被计数。对反亲和，这意味着「没有这个标签的节点上的 Pod 不会排斥任何人」。
+另外节点没有 `topologyKey` 标签时，第 3 行的 `if` 取不到值，这个 Pod 不被计数。对反亲和，这意味着「没有这个标签的节点上的 Pod 不会排斥任何人」。
 
 ### 3.2 两次并行扫描
 
-已有 Pod 的反亲和只需要看「有 required 反亲和 Pod 的节点」，这个列表由快照维护：
+已有 Pod 的反亲和只需要看「有 required 反亲和 Pod 的节点」，这个列表由快照维护（第 3 行取节点，第 8–15 行逐 Pod、逐规则计数）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/filtering.go
 	processNode := func(i int) {
 		nodeInfo := nodes[i]
@@ -206,9 +206,9 @@ func (m topologyToMatchedTermCount) update(node *v1.Node, tk string, value int64
 	pl.parallelizer.Until(ctx, len(nodes), processNode, pl.Name())
 ```
 
-新 Pod 自己的规则则必须扫**全部节点的全部 Pod**，因为任何 Pod 都可能被新 Pod 的 selector 选中：
+新 Pod 自己的规则则必须扫**全部节点的全部 Pod**（第 2–19 行），因为任何 Pod 都可能被新 Pod 的 selector 选中：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/filtering.go
 	processNode := func(i int) {
 		nodeInfo := allNodes[i]
@@ -235,7 +235,7 @@ func (m topologyToMatchedTermCount) update(node *v1.Node, tk string, value int64
 
 亲和项的计数规则是「全匹配才记」：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/filtering.go
 func (m *topologyToMatchedTermCountList) appendWithAffinityTerms(
 	terms []fwk.AffinityTerm, pod *v1.Pod, node *v1.Node, value int64) {
@@ -247,13 +247,13 @@ func (m *topologyToMatchedTermCountList) appendWithAffinityTerms(
 }
 ```
 
-一个已有 Pod 同时满足全部亲和项，才会在每一项的拓扑对上各记一次。这正是「同一个 Pod 满足全部项」的语义：如果 Pod A 满足项 1、Pod B 满足项 2，它们都不会被计数。
+一个已有 Pod 同时满足全部亲和项（第 3 行的 `podMatchesAllAffinityTerms`），才会在每一项的拓扑对上各记一次。这正是「同一个 Pod 满足全部项」的语义：如果 Pod A 满足项 1、Pod B 满足项 2，它们都不会被计数。
 
 ### 3.3 Skip 条件与 Clone
 
 不是每个 Pod 都值得走完上面两轮扫描。PreFilter 末尾有一个提前退出的判断：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/filtering.go
 	incomingPodHasNoTerms := len(s.podInfo.GetRequiredAffinityTerms()) == 0 && len(s.podInfo.GetRequiredAntiAffinityTerms()) == 0
 	if len(s.existingClusterWideAntiAffinityCounts) == 0 && incomingPodHasNoTerms && !mustEvaluateHostScopedAntiAffinity {
@@ -261,7 +261,7 @@ func (m *topologyToMatchedTermCountList) appendWithAffinityTerms(
 	}
 ```
 
-新 Pod 没有 required 规则、也没有任何已有 Pod 的反亲和匹配它时，整个 Filter 被跳过。绝大多数 Pod 走的是这条路：它们不写 Pod 亲和，集群里写了 required 反亲和的 Pod 也只针对特定标签。此时 PreFilter 的开销只是扫一遍「有 required 反亲和 Pod 的节点」。
+新 Pod 没有 required 规则、也没有任何已有 Pod 的反亲和匹配它时，整个 Filter 被跳过（第 2–4 行）。绝大多数 Pod 走的是这条路：它们不写 Pod 亲和，集群里写了 required 反亲和的 Pod 也只针对特定标签。此时 PreFilter 的开销只是扫一遍「有 required 反亲和 Pod 的节点」。
 
 另一个早退出口：Pod 的规则无法解析时（例如 selector 写法非法），`NewPodInfo` 报错，PreFilter 返回 `UnschedulableAndUnresolvable`，原因 `parsing pod: ...`。
 
@@ -273,9 +273,9 @@ PreFilter 把全集群的扫描一次做完，后面每个候选节点的判断�
 
 {{< figure src="/images/posts/sched-plugins/14-ipa-filter-maps.svg" caption="一个具体例子：PreFilter 产出三张拓扑计数表，Filter 按「新 Pod 亲和 → 新 Pod 反亲和 → 已有 Pod 反亲和」的顺序逐节点查表（点击查看大图）" link="/images/posts/sched-plugins/14-ipa-filter-maps.svg" >}}
 
-gate 关闭时，Filter 的主体就是三次查表：
+gate 关闭时，Filter 的主体就是三次查表（亲和在第 3–4 行，反亲和在第 9–10 行，已有 Pod 反亲和在第 14–15 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/filtering.go
 	} else {
 		if !nodeTopologyMatchesAffinity(state, nodeInfo) {
@@ -306,7 +306,7 @@ gate 关闭时，Filter 的主体就是三次查表：
 
 三道检查里最绕的是亲和这一道：它既要在全局表里找匹配，又要处理「集群里一个匹配 Pod 都没有」的起步阶段。
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/filtering.go
 func nodeTopologyMatchesAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) bool {
 	if len(state.clusterWideAffinityTerms) > 0 {
@@ -332,9 +332,9 @@ func nodeTopologyMatchesAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) b
 }
 ```
 
-节点必须带齐所有亲和项的 `topologyKey`，并且每一项对应的拓扑对上计数都大于 0。
+节点必须带齐所有亲和项的 `topologyKey`（缺一个就在第 13 行直接返回 false），并且每一项对应的拓扑对上计数都大于 0（第 3–15 行）。
 
-`!podsExist` 时有一个特例：如果整个集群都没有匹配的 Pod（表为空），而新 Pod 自己满足自己的全部亲和项，就放行。典型场景是一个 Deployment 要求「所有副本在同一个 zone」——亲和项选中的就是自己这类 Pod。**没有这个特例，第一个副本永远找不到可以亲近的对象，整个 Deployment 卡死。**
+`!podsExist` 时有一个特例（第 17–19 行）：如果整个集群都没有匹配的 Pod（表为空），而新 Pod 自己满足自己的全部亲和项，就放行。典型场景是一个 Deployment 要求「所有副本在同一个 zone」——亲和项选中的就是自己这类 Pod。**没有这个特例，第一个副本永远找不到可以亲近的对象，整个 Deployment 卡死。**
 
 注意条件是「全集群为空」而不是「本域为空」：只要别的 zone 已经有了匹配的 Pod，新副本就必须去那个 zone。
 
@@ -342,7 +342,7 @@ func nodeTopologyMatchesAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) b
 
 新 Pod 的反亲和只看它自己每条规则对应的拓扑对：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/filtering.go
 func satisfyPodAntiAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) bool {
 	if len(state.clusterWideAntiAffinityCounts) > 0 {
@@ -359,9 +359,9 @@ func satisfyPodAntiAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) bool {
 }
 ```
 
-已有 Pod 的反亲和则不知道是哪条规则、用的哪个 `topologyKey`，只能拿节点的**每一个标签**去表里查：
+已有 Pod 的反亲和则不知道是哪条规则、用的哪个 `topologyKey`，只能拿节点的**每一个标签**去表里查（第 6–11 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/filtering.go
 func satisfyExistingPodsAntiAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) bool {
 	if len(state.existingClusterWideAntiAffinityCounts) > 0 {
@@ -389,9 +389,9 @@ func satisfyExistingPodsAntiAffinity(state *preFilterState, nodeInfo fwk.NodeInf
 
 反亲和不满足，意味着目标拓扑域里多了某个 Pod，删掉它就可能解决，所以返回 `Unschedulable`。但「可能」二字很重要：抢占只驱逐候选节点本身上的 Pod。拓扑键是 zone 时，冲突的 Pod 很可能在同 zone 的另一个节点上，在当前节点上驱逐什么都无济于事——上图中的 n4 就是这种情况。这类节点会进入抢占候选，在 `SelectVictimsOnNode` 把本节点所有低优先级 Pod 移除后再跑 Filter 时失败，被淘汰。
 
-`DefaultPreemption` 的源码里还有一段注释专门说明了一个不支持的情况：
+`DefaultPreemption` 的源码里还有一段注释专门说明了一个不支持的情况（第 2–7 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go
 	// If the preemptor does not fit after removing all the eligible victims,
 	// we are almost done and this node is not suitable for preemption. The only
@@ -415,7 +415,7 @@ gate 关闭时，新 Pod 只要有一条 required 规则，PreFilter 就要扫�
 
 `preFilterState` 上方有一大段注释说明这个优化的设计，核心思路是按拓扑键把规则分成「全局」和「本机」两类：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/filtering.go
 func (s *preFilterState) classifyTermsBasedOnScope() {
 	if s.allHostScoped() {
@@ -438,15 +438,15 @@ func (s *preFilterState) classifyTermsBasedOnScope() {
 
 ### 5.2 亲和与反亲和的分法不同
 
-反亲和项**逐条**分类：违反任何一条就拒绝，各条之间独立，hostname 项完全可以单独在本机检查。
+反亲和项**逐条**分类（第 9–14 行）：违反任何一条就拒绝，各条之间独立，hostname 项完全可以单独在本机检查。
 
-亲和项**整体**分类：只有当全部项都是 hostname 时，才整体归入 `hostScopedAffinityTerms`；只要有一条不是，就全部（包括其中的 hostname 项）留在 `clusterWideAffinityTerms` 里走全局表。
+亲和项**整体**分类（第 3–7 行）：只有当全部项都是 hostname 时，才整体归入 `hostScopedAffinityTerms`；只要有一条不是，就全部（包括其中的 hostname 项）留在 `clusterWideAffinityTerms` 里走全局表。
 
 两者的分野还是「同一个 Pod 满足全部项」：如果拆开，hostname 项在本机找到一个 Pod A，zone 项在全局表里找到一个 Pod B，无法判断 A 和 B 是不是同一个 Pod。
 
 全部是 hostname 的亲和项在 Filter 中这样检查：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/filtering.go
 func nodePodsSatisfyAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) bool {
 	if len(state.hostScopedAffinityTerms) == 0 {
@@ -467,13 +467,13 @@ func nodePodsSatisfyAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) bool 
 }
 ```
 
-这里丢失了全局表，自亲和特例需要的「全集群是否有匹配 Pod」就没有了。补救办法是 PreFilter 里多做一次轻量的全集群计数（`countMatchingHostScopedAffinityPodsGlobally`），只累加一个 `int64`，不建 map。这一步仍然要遍历所有 Pod，所以对亲和项来说，快速路径省掉的主要是 map 的构建和 Filter 中的查表，而不是遍历本身。
+这里丢失了全局表，自亲和特例需要的「全集群是否有匹配 Pod」就没有了，所以第 17 行仍然要调 `satisfiesSelfAffinityCheck`。补救办法是 PreFilter 里多做一次轻量的全集群计数（`countMatchingHostScopedAffinityPodsGlobally`），只累加一个 `int64`，不建 map。这一步仍然要遍历所有 Pod，所以对亲和项来说，快速路径省掉的主要是 map 的构建和 Filter 中的查表，而不是遍历本身。
 
 ### 5.3 已有 Pod 的 hostname 反亲和
 
-快照新增了一个节点列表：只包含「有**非** hostname required 反亲和 Pod」的节点。PreFilter 只扫这些节点建 `existingClusterWideAntiAffinityCounts`。hostname 项在 Filter 中就地检查：
+快照新增了一个节点列表：只包含「有**非** hostname required 反亲和 Pod」的节点。PreFilter 只扫这些节点建 `existingClusterWideAntiAffinityCounts`。hostname 项在 Filter 中就地检查（第 2–16 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/filtering.go
 	// Local check for host-scoped anti-affinity
 	if state.enableInterPodAffinityHostnameFastPath {
@@ -492,9 +492,9 @@ func nodePodsSatisfyAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) bool 
 	}
 ```
 
-这带来一个新问题：表为空时 PreFilter 原本会返回 `Skip`，但现在表为空不代表没有 hostname 反亲和需要检查。于是 PreFilter 多算了一个布尔值：
+这带来一个新问题：表为空时 PreFilter 原本会返回 `Skip`，但现在表为空不代表没有 hostname 反亲和需要检查。于是 PreFilter 多算了一个布尔值（第 2–5 行）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/filtering.go
 		var nonHostScopedNodesContainHostScopedTerms bool
 		s.existingClusterWideAntiAffinityCounts, nonHostScopedNodesContainHostScopedTerms = pl.getExistingAntiAffinityCounts(ctx, pod, s.namespaceLabels, nodesWithNonHostScopedAntiAffinityPods)
@@ -518,7 +518,7 @@ func nodePodsSatisfyAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) bool 
 
 `AddPod` 和 `RemovePod` 都调用 `preFilterState.updateWithPod`，用 `multiplier` 区分正负：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/filtering.go
 	} else {
 		s.existingClusterWideAntiAffinityCounts.updateWithAntiAffinityTerms(pInfo.GetRequiredAntiAffinityTerms(), s.podInfo.GetPod(), s.namespaceLabels, node, multiplier)
@@ -540,7 +540,7 @@ func nodePodsSatisfyAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) bool 
 	}
 ```
 
-一个被增减的 Pod 同时影响三张表：它自己的反亲和规则可能排斥新 Pod，它也可能被新 Pod 的亲和/反亲和规则选中。快速路径下 hostname 项不在表里，只需维护自亲和计数；本机的 hostname 检查在 Filter 中直接读 `NodeInfo`，而抢占模拟时 `NodeInfo` 本身已经被 `RemovePod`/`AddPodInfo` 修改过，自然是最新的。
+一个被增减的 Pod 同时影响三张表（已有 Pod 的反亲和在第 2–4 行，新 Pod 的亲和与反亲和在第 14–18 行）：它自己的反亲和规则可能排斥新 Pod，它也可能被新 Pod 的亲和/反亲和规则选中。快速路径下 hostname 项不在表里，只需维护自亲和计数；本机的 hostname 检查在 Filter 中直接读 `NodeInfo`，而抢占模拟时 `NodeInfo` 本身已经被 `RemovePod`/`AddPodInfo` 修改过，自然是最新的。
 
 调用场景与上一篇相同：nominated Pod 的占位，以及抢占的「全部移除、逐个加回」。
 
@@ -550,9 +550,9 @@ func nodePodsSatisfyAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) bool 
 
 ### 7.1 五类贡献
 
-PreScore 产出一张「拓扑键 → 拓扑值 → 分数」的表，结构比计数表简单：
+PreScore 产出一张「拓扑键 → 拓扑值 → 分数」的表（第 2 行的 `scoreMap`），结构比计数表简单：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/scoring.go
 type scoreMap map[string]map[string]int64
 
@@ -564,9 +564,9 @@ type preScoreState struct {
 }
 ```
 
-对每个已有 Pod，`processExistingPod` 累加五类贡献，计数位置都是「已有 Pod 所在节点」的拓扑值：
+对每个已有 Pod，`processExistingPod` 累加五类贡献（新 Pod 的 preferred 在第 2、4 行，已有 Pod 的 required 亲和在第 6–10 行，已有 Pod 的 preferred 在第 12、14 行），计数位置都是「已有 Pod 所在节点」的拓扑值：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/scoring.go
 	topoScore.processTerms(state.podInfo.GetPreferredAffinityTerms(), existingPod.GetPod(), nil, existingPodNode, 1)
 
@@ -604,9 +604,9 @@ type preScoreState struct {
 
 ### 7.3 遍历范围的优化
 
-打分要遍历哪些节点，取决于新 Pod 自己有没有 preferred 规则：
+打分要遍历哪些节点，取决于新 Pod 自己有没有 preferred 规则（第 12–18 行按 `hasConstraints` 选列表；开了 `ignorePreferredTermsOfExistingPods` 且没有 preferred 规则时，第 4–6 行直接 `Skip`）：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/scoring.go
 	// Optionally ignore calculating preferences of existing pods' affinity rules
 	// if the incoming pod has no inter-pod affinities.
@@ -637,7 +637,7 @@ type preScoreState struct {
 
 Score 阶段每个候选节点只做一次查表求和：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/scoring.go
 	var score int64
 	for tpKey, tpValues := range s.topologyScore {
@@ -647,9 +647,9 @@ Score 阶段每个候选节点只做一次查表求和：
 	}
 ```
 
-Score 只是按节点标签把表里对应的值加起来，可以为负。`NormalizeScore` 是标准的 min-max：
+Score 只是按节点标签把表里对应的值加起来（第 2–6 行），可以为负。`NormalizeScore` 是标准的 min-max：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/scoring.go
 	maxMinDiff := maxCount - minCount
 	for i := range scores {
@@ -662,7 +662,7 @@ Score 只是按节点标签把表里对应的值加起来，可以为负。`Norm
 	}
 ```
 
-与 `PodTopologySpread` 的翻转公式不同，这里最低分的节点得 0，最高分的得 100，中间按比例截断取整。所有节点原始分相同时全部得 0。
+与 `PodTopologySpread` 的翻转公式不同，这里最低分的节点得 0，最高分的得 100，中间按比例截断取整（第 2–9 行）。所有节点原始分相同时 `maxMinDiff` 为 0，`fScore` 保持 0。
 
 {{< figure src="/images/posts/sched-plugins/14-ipa-score.svg" caption="打分算例：五类贡献按已有 Pod 所在节点的拓扑值计数，Score 按候选节点标签求和，NormalizeScore 做 min-max（点击查看大图）" link="/images/posts/sched-plugins/14-ipa-score.svg" >}}
 
@@ -676,9 +676,9 @@ min-max 之后分差被拉满到 0～100，再乘以权重 2。
 
 ## 八、EventsToRegister 与 QueueingHint
 
-被拒的 Pod 要靠事件重新排队，这里注册了三个，判断口径与三张表一一对应：
+被拒的 Pod 要靠事件重新排队，这里注册了三个（第 2–4 行），判断口径与三张表一一对应：
 
-```go
+```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/plugin.go
 		{Event: fwk.ClusterEvent{Resource: fwk.AssignedPod, ActionType: fwk.Add | fwk.UpdatePodLabel | fwk.Delete}, QueueingHintFn: pl.isSchedulableAfterAssignedPodChange},
 		{Event: fwk.ClusterEvent{Resource: fwk.TargetPod, ActionType: fwk.UpdatePodLabel}, QueueingHintFn: pl.isSchedulableAfterTargetPodUpdateLabel},

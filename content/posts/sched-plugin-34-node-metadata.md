@@ -21,7 +21,7 @@ description: "NodeMetadata 读取节点上的一个 label 或 annotation，按�
 
 配置层面要回答的是一组固定问题：读哪个 key、从 label 还是 annotation 读、值是数字还是时间、往哪头偏。下面是一个完整例子：
 
-```yaml
+```yaml {linenos=inline}
 apiVersion: kubescheduler.config.k8s.io/v1
 kind: KubeSchedulerConfiguration
 profiles:
@@ -40,15 +40,15 @@ profiles:
           scoringStrategy: "Lowest"
 ```
 
-这是 `manifests/nodemetadata/scheduler-config.yaml` 中的第二个示例：节点用 annotation 标注每小时成本，越便宜的节点得分越高。Pod 通过 `schedulerName: cost-aware-scheduler` 选择这个 Profile。数据来源就是调度器 snapshot 里的 Node 对象，不需要额外的 informer 或 CRD，外部系统更新 annotation 后，下一个调度周期就能看到。
+这是 `manifests/nodemetadata/scheduler-config.yaml` 中的第二个示例：节点用 annotation 标注每小时成本（第 13–14 行），越便宜的节点得分越高。Pod 通过 `schedulerName: cost-aware-scheduler`（第 4 行）选择这个 Profile。数据来源就是调度器 snapshot 里的 Node 对象，不需要额外的 informer 或 CRD，外部系统更新 annotation 后，下一个调度周期就能看到。
 
 这套配置能写什么，取决于参数结构的定义和校验，下一节看这两个。
 
 ## 二、参数与校验
 
-`NodeMetadataArgs` 的定义如下，五个字段分别决定读哪里、读什么、往哪个方向打分：
+`NodeMetadataArgs` 的定义如下，`TypeMeta` 之外的五个字段分别决定读哪里、读什么、往哪个方向打分（第 6–25 行）：
 
-```go
+```go {linenos=inline}
 // apis/config/types.go
 type NodeMetadataArgs struct {
 	metav1.TypeMeta
@@ -96,7 +96,7 @@ type NodeMetadataArgs struct {
 
 `Score` 本身很短，取数和比较都在 `calculateScore` 里，它负责把两类失败降级成哨兵值：
 
-```go
+```go {linenos=inline}
 // pkg/nodemetadata/node_metadata.go
 type NodeMetadata struct {
 	logger klog.Logger
@@ -129,14 +129,14 @@ func (nm *NodeMetadata) Score(ctx context.Context, state framework.CycleState, p
 
 两个设计点：
 
-- **key 不存在、值解析失败，都不报错，而是返回哨兵值 `math.MinInt64`。** 如果这里返回 `Error` 状态，框架会让整个 Pod 的本轮调度失败，一个节点的 annotation 写错就会让所有 Pod 都调度不了。用哨兵值把错误降级为「这个节点在本插件里得最低分」，符合 KEP 中「缺失或格式错误的元数据不应导致调度失败」的要求。
-- `node == nil` 分支里调用了 `nodeInfo.Node().Name`，这本身就是对 nil 指针取字段，会 panic。好在框架传进来的 `NodeInfo` 都来自 snapshot，节点不为空，这个分支实际走不到。
+- **key 不存在、值解析失败，都不报错，而是返回哨兵值 `math.MinInt64`（第 19–23 行）。** 如果这里返回 `Error` 状态，框架会让整个 Pod 的本轮调度失败，一个节点的 annotation 写错就会让所有 Pod 都调度不了。用哨兵值把错误降级为「这个节点在本插件里得最低分」，符合 KEP 中「缺失或格式错误的元数据不应导致调度失败」的要求。
+- `node == nil` 分支里调用了 `nodeInfo.Node().Name`（第 16 行），这本身就是对 nil 指针取字段，会 panic。好在框架传进来的 `NodeInfo` 都来自 snapshot，节点不为空，这个分支实际走不到。
 
 ### 3.2 两条解析路径
 
 取到字符串之后，`Number` 和 `Timestamp` 分成两条路径解析，它们都要输出一个 int64 原始分：
 
-```go
+```go {linenos=inline}
 // pkg/nodemetadata/node_metadata.go
 func (nm *NodeMetadata) parseNumericValue(value string) (int64, error) {
 	numValue, err := strconv.ParseFloat(value, 64)
@@ -179,17 +179,17 @@ func (nm *NodeMetadata) parseTimestampValue(value string) (int64, error) {
 }
 ```
 
-两条路径的共同思路是：**把「偏好方向」编码到原始分的符号里，让归一化永远是「原始分越大越好」。** `Lowest` 取负，`Newest` 用负的年龄，于是归一化代码不需要知道策略是什么。
+两条路径的共同思路是：**把「偏好方向」编码到原始分的符号里，让归一化永远是「原始分越大越好」。** `Lowest` 取负（第 10–13 行），`Newest` 用负的年龄（第 30–33 行），于是归一化代码不需要知道策略是什么。
 
-数值路径用 `ParseFloat` 接受小数，再用 `int64(numValue)` 转换。**Go 的浮点到整数转换是向零截断，不是四舍五入。** KEP 的 Known limitations 写的是「numeric values are rounded before scoring」，与代码不符，以代码为准：1.2 和 1.7 都变成 1。
+数值路径用 `ParseFloat` 接受小数（第 3 行），再用 `int64(numValue)` 转换（第 9 行）。**Go 的浮点到整数转换是向零截断，不是四舍五入。** KEP 的 Known limitations 写的是「numeric values are rounded before scoring」，与代码不符，以代码为准：1.2 和 1.7 都变成 1。
 
-时间戳路径算的是 Score 时刻距离时间戳的秒数，未来的时间戳会得到负的年龄，`Newest` 下反而得分最高。每个节点调用一次 `time.Since`，同一轮打分里各节点的「现在」相差微秒级，不影响秒级精度。
+时间戳路径先按 `TimestampFormat` 解析（第 21 行），再算 Score 时刻距离时间戳的秒数（第 27 行），未来的时间戳会得到负的年龄，`Newest` 下反而得分最高。每个节点调用一次 `time.Since`，同一轮打分里各节点的「现在」相差微秒级，不影响秒级精度。每个节点调用一次 `time.Since`，同一轮打分里各节点的「现在」相差微秒级，不影响秒级精度。
 
 ### 3.3 NormalizeScore：为无效节点预留 0 分
 
 归一化的难点不在映射公式，而在怎么处理那些没有数据的节点：
 
-```go
+```go {linenos=inline}
 // pkg/nodemetadata/node_metadata.go
 func (nm *NodeMetadata) NormalizeScore(ctx context.Context, state framework.CycleState, pod *v1.Pod, scores framework.NodeScoreList) *framework.Status {
 	// ...
@@ -247,10 +247,10 @@ func (nm *NodeMetadata) NormalizeScore(ctx context.Context, state framework.Cycl
 
 和 [NodeResourcesAllocatable](/posts/sched-plugin-33-node-resources-allocatable/) 的 min-max 相比，这里多了一层「保留 0 分」的设计：
 
-- 求极值时跳过哨兵值，否则 `MinInt64` 会把区间撑到天文数字，所有有效节点都挤在同一个分数上；
-- 无效节点固定为 `MinNodeScore`（0），有效节点映射到 `[1, 100]`，`newRange` 是 99 而不是 100；
-- 所有有效节点值相同时，它们都得 1 分而不是 0 分，依然和无效节点拉开差距；
-- 全部无效时都是 0 分，插件不起作用。
+- 求极值时跳过哨兵值（第 7–9 行），否则 `MinInt64` 会把区间撑到天文数字，所有有效节点都挤在同一个分数上；
+- 无效节点固定为 `MinNodeScore`（0）（第 45–47 行），有效节点映射到 `[1, 100]`，`newRange` 是 99 而不是 100（第 26、42 行）；
+- 所有有效节点值相同时，它们都得 1 分而不是 0 分（第 29–37 行），依然和无效节点拉开差距；
+- 全部无效时都是 0 分（第 19–23 行），插件不起作用。
 
 这样做的意义是：「没有数据」和「数据最差」被明确区分开。如果不预留，`Lowest` 策略下成本最高的节点会得 0 分，与没有标注成本的节点并列，而运维通常希望先用已知成本的节点。
 
