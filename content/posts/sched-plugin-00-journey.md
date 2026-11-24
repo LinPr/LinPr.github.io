@@ -17,9 +17,9 @@ description: "系列开篇。沿着 ScheduleOne 的源码走一遍：Pod 怎么�
 
 {{< figure src="/images/posts/sched-plugins/00-journey.svg" link="/images/posts/sched-plugins/00-journey.svg" caption="一个 Pod 的调度旅程：左侧是扩展点，右侧是本系列在该位置重点讲的插件（点击查看大图）" >}}
 
-上面这张图是按扩展点画的。落到代码里，这些扩展点分别由哪个函数触发，可以看下面这张调用栈。它一直画到真正执行插件方法的那一层：黄色底的行就是直接调用插件钩子的函数（框架里统一命名为 `runXxxPlugin`），右侧黄色标签是它调用的方法，比如 `runFilterPlugin` 里的 `pl.Filter()`。缩进表示谁调用了谁，后文各节会沿着这棵树逐段展开：
+上面这张图是按扩展点画的。落到代码里，这些扩展点分别由哪个函数触发，可以看下面这张调用栈。它一直画到真正执行插件方法的那一层：黄色底的行就是直接调用插件钩子的函数（框架里统一命名为 `runXxxPlugin`），右侧黄色标签是它调用的方法，比如 `runFilterPlugin` 里的 `pl.Filter()`。缩进表示谁调用了谁；右侧加粗的是每一步的关键决策，比如 Filter 的失败码决定能否抢占、抢占成功本轮也算失败、assume 让绑定可以异步。这张图可以当作全文的提纲，后文各节就是对这些结论的展开：
 
-{{< figure src="/images/posts/sched-plugins/00-call-stack.svg" link="/images/posts/sched-plugins/00-call-stack.svg" caption="从入队到绑定的调用栈：黄色底的行直接执行插件钩子；左侧色条紫色是队列，蓝色是调度周期，绿色是绑定周期的 goroutine，橙色只在失败时执行（点击查看大图）" >}}
+{{< figure src="/images/posts/sched-plugins/00-call-stack.svg" link="/images/posts/sched-plugins/00-call-stack.svg" caption="从入队到绑定的调用栈与关键决策：黄色底的行直接执行插件钩子，右侧加粗的是这一步的关键结论；左侧色条紫色是队列，蓝色是调度周期，绿色是绑定周期的 goroutine，橙色只在失败时执行（点击查看大图）" >}}
 
 先记住几处容易看错的地方，读后面的源码时会更顺：
 
