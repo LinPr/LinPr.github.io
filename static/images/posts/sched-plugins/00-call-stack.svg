@@ -1,169 +1,288 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1010 880" width="1010" height="880" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 1424" width="1060" height="1424" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
 <defs><marker id="a" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 z" fill="#94a3b8"/></marker></defs>
-<rect width="1010" height="880" fill="#ffffff"/>
-<text x="505.0" y="36.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">ScheduleOne 的调用栈：一个阶段对应哪个函数</text>
-<text x="505.0" y="62.0" font-size="12.5" fill="#64748b" text-anchor="middle">缩进表示调用关系，箭头表示「调用 / 转到」；左侧竖条按队列、调度周期、绑定周期、失败处理配色</text>
-<text x="505.0" y="82.0" font-size="12" fill="#64748b" text-anchor="middle">文件省略了 pkg/scheduler/ 前缀；框架层的 Run* 函数在 framework/runtime/framework.go</text>
-<rect x="16" y="107.0" width="5" height="21.0" rx="2.5" fill="#7c3aed" opacity="0.85"/>
-<text x="46.0" y="122.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">ScheduleOne</text>
-<text x="470.0" y="122.0" font-size="12.2" fill="#64748b" text-anchor="start">调度循环，每轮从队列取一个实体</text>
-<line x1="55.0" y1="117.5" x2="55.0" y2="144.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="55.0" y1="144.5" x2="66.0" y2="144.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="55.0" cy="144.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="134.0" width="5" height="21.0" rx="2.5" fill="#7c3aed" opacity="0.85"/>
-<text x="73.0" y="149.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">NextEntity</text>
-<text x="470.0" y="149.0" font-size="12.2" fill="#64748b" text-anchor="start">→ PriorityQueue.Pop()，按 QueueSort 出队</text>
-<line x1="55.0" y1="117.5" x2="55.0" y2="171.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="55.0" y1="171.5" x2="66.0" y2="171.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="55.0" cy="171.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="161.0" width="5" height="21.0" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="73.0" y="176.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">scheduleOnePod</text>
-<text x="470.0" y="176.0" font-size="12.2" fill="#64748b" text-anchor="start">Pod 实体的主流程</text>
-<line x1="82.0" y1="171.5" x2="82.0" y2="198.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="82.0" y1="198.5" x2="93.0" y2="198.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="82.0" cy="198.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="188.0" width="5" height="21.0" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="100.0" y="203.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">frameworkForPod</text>
-<text x="470.0" y="203.0" font-size="12.2" fill="#64748b" text-anchor="start">按 spec.schedulerName 选 profile</text>
-<line x1="82.0" y1="171.5" x2="82.0" y2="225.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="82.0" y1="225.5" x2="93.0" y2="225.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="82.0" cy="225.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="215.0" width="5" height="21.0" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="100.0" y="230.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">schedulingCycle</text>
-<text x="470.0" y="230.0" font-size="12.2" fill="#64748b" text-anchor="start">串行，一个 Pod 走完才处理下一个</text>
-<line x1="109.0" y1="225.5" x2="109.0" y2="252.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="109.0" y1="252.5" x2="120.0" y2="252.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="109.0" cy="252.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="242.0" width="5" height="21.0" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="127.0" y="257.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">Cache.UpdateSnapshot</text>
-<text x="470.0" y="257.0" font-size="12.2" fill="#64748b" text-anchor="start">给本周期一份节点/Pod 快照</text>
-<line x1="109.0" y1="225.5" x2="109.0" y2="279.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="109.0" y1="279.5" x2="120.0" y2="279.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="109.0" cy="279.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="269.0" width="5" height="21.0" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="127.0" y="284.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">schedulingAlgorithm</text>
-<text x="470.0" y="284.0" font-size="12.2" fill="#64748b" text-anchor="start">调度周期主体，失败时跑 PostFilter</text>
-<line x1="136.0" y1="279.5" x2="136.0" y2="306.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="136.0" y1="306.5" x2="147.0" y2="306.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="136.0" cy="306.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="296.0" width="5" height="21.0" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="154.0" y="311.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">SchedulePod</text>
-<text x="470.0" y="311.0" font-size="12.2" fill="#64748b" text-anchor="start">algorithm.go：过滤 → 打分 → 选出节点</text>
-<line x1="163.0" y1="306.5" x2="163.0" y2="333.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="163.0" y1="333.5" x2="174.0" y2="333.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="163.0" cy="333.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="323.0" width="5" height="21.0" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="181.0" y="338.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">findNodesThatFitPod</text>
-<text x="470.0" y="338.0" font-size="12.2" fill="#64748b" text-anchor="start">PreFilter → 提名节点 → Filter</text>
-<line x1="190.0" y1="333.5" x2="190.0" y2="360.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="190.0" y1="360.5" x2="201.0" y2="360.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="190.0" cy="360.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="350.0" width="5" height="21.0" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="208.0" y="365.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">prefilterNodes</text>
-<text x="470.0" y="365.0" font-size="12.2" fill="#64748b" text-anchor="start">→ RunPreFilterPlugins，可返回 PreFilterResult</text>
-<line x1="190.0" y1="333.5" x2="190.0" y2="387.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="190.0" y1="387.5" x2="201.0" y2="387.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="190.0" cy="387.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="377.0" width="5" height="21.0" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="208.0" y="392.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">evaluateNominatedNode</text>
-<text x="470.0" y="392.0" font-size="12.2" fill="#64748b" text-anchor="start">只试 nominatedNodeName 指向的节点</text>
-<line x1="190.0" y1="333.5" x2="190.0" y2="414.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="190.0" y1="414.5" x2="201.0" y2="414.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="190.0" cy="414.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="404.0" width="5" height="21.0" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="208.0" y="419.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">findNodesThatPassFilters</text>
-<text x="470.0" y="419.0" font-size="12.2" fill="#64748b" text-anchor="start">→ RunFilterPlugins，节点间并行</text>
-<line x1="163.0" y1="306.5" x2="163.0" y2="441.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="163.0" y1="441.5" x2="174.0" y2="441.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="163.0" cy="441.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="431.0" width="5" height="21.0" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="181.0" y="446.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">prioritizeNodes</text>
-<text x="470.0" y="446.0" font-size="12.2" fill="#64748b" text-anchor="start">PreScore → Score → 归一化 → 加权求和</text>
-<line x1="136.0" y1="279.5" x2="136.0" y2="468.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="136.0" y1="468.5" x2="147.0" y2="468.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="136.0" cy="468.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="458.0" width="5" height="21.0" rx="2.5" fill="#ea580c" opacity="0.85"/>
-<text x="154.0" y="473.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPostFilterPlugins</text>
-<text x="470.0" y="473.0" font-size="12.2" fill="#64748b" text-anchor="start">仅无可行节点时：DefaultPreemption 等</text>
-<line x1="109.0" y1="225.5" x2="109.0" y2="495.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="109.0" y1="495.5" x2="120.0" y2="495.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="109.0" cy="495.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="485.0" width="5" height="21.0" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="127.0" y="500.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">prepareForBindingCycle</text>
-<text x="470.0" y="500.0" font-size="12.2" fill="#64748b" text-anchor="start">assume 之后、起绑定 goroutine 之前</text>
-<line x1="136.0" y1="495.5" x2="136.0" y2="522.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="136.0" y1="522.5" x2="147.0" y2="522.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="136.0" cy="522.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="512.0" width="5" height="21.0" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="154.0" y="527.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">AssumeAndReserveInCache</text>
-<text x="470.0" y="527.0" font-size="12.2" fill="#64748b" text-anchor="start">写入缓存并调用 Reserve 插件</text>
-<line x1="136.0" y1="495.5" x2="136.0" y2="549.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="136.0" y1="549.5" x2="147.0" y2="549.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="136.0" cy="549.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="539.0" width="5" height="21.0" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="154.0" y="554.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPermitPlugins</text>
-<text x="470.0" y="554.0" font-size="12.2" fill="#64748b" text-anchor="start">可返回 Wait，Pod 进等待表</text>
-<line x1="55.0" y1="117.5" x2="55.0" y2="576.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="55.0" y1="576.5" x2="66.0" y2="576.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="55.0" cy="576.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="566.0" width="5" height="21.0" rx="2.5" fill="#059669" opacity="0.85"/>
-<text x="73.0" y="581.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">runBindingCycle</text>
-<text x="470.0" y="581.0" font-size="12.2" fill="#64748b" text-anchor="start">go 出的 goroutine，与调度周期并发</text>
-<line x1="82.0" y1="576.5" x2="82.0" y2="603.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="82.0" y1="603.5" x2="93.0" y2="603.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="82.0" cy="603.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="593.0" width="5" height="21.0" rx="2.5" fill="#059669" opacity="0.85"/>
-<text x="100.0" y="608.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">bindingCycle</text>
-<text x="470.0" y="608.0" font-size="12.2" fill="#64748b" text-anchor="start">绑定周期主体</text>
-<line x1="109.0" y1="603.5" x2="109.0" y2="630.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="109.0" y1="630.5" x2="120.0" y2="630.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="109.0" cy="630.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="620.0" width="5" height="21.0" rx="2.5" fill="#059669" opacity="0.85"/>
-<text x="127.0" y="635.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">WaitOnPermit</text>
-<text x="470.0" y="635.0" font-size="12.2" fill="#64748b" text-anchor="start">Permit 返回 Wait 时在此阻塞</text>
-<line x1="109.0" y1="603.5" x2="109.0" y2="657.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="109.0" y1="657.5" x2="120.0" y2="657.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="109.0" cy="657.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="647.0" width="5" height="21.0" rx="2.5" fill="#059669" opacity="0.85"/>
-<text x="127.0" y="662.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPreBindPlugins</text>
-<text x="470.0" y="662.0" font-size="12.2" fill="#64748b" text-anchor="start">VolumeBinding、DynamicResources 在这里写 API</text>
-<line x1="109.0" y1="603.5" x2="109.0" y2="684.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="109.0" y1="684.5" x2="120.0" y2="684.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="109.0" cy="684.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="674.0" width="5" height="21.0" rx="2.5" fill="#059669" opacity="0.85"/>
-<text x="127.0" y="689.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">bind</text>
-<text x="470.0" y="689.0" font-size="12.2" fill="#64748b" text-anchor="start">→ RunBindPlugins → DefaultBinder 写 binding</text>
-<line x1="109.0" y1="603.5" x2="109.0" y2="711.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="109.0" y1="711.5" x2="120.0" y2="711.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="109.0" cy="711.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="701.0" width="5" height="21.0" rx="2.5" fill="#059669" opacity="0.85"/>
-<text x="127.0" y="716.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPostBindPlugins</text>
-<text x="470.0" y="716.0" font-size="12.2" fill="#64748b" text-anchor="start">收尾通知</text>
-<line x1="55.0" y1="117.5" x2="55.0" y2="738.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="55.0" y1="738.5" x2="66.0" y2="738.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="55.0" cy="738.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="728.0" width="5" height="21.0" rx="2.5" fill="#ea580c" opacity="0.85"/>
-<text x="73.0" y="743.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">handleSchedulingFailure</text>
-<text x="470.0" y="743.0" font-size="12.2" fill="#64748b" text-anchor="start">调度周期失败：记录拒绝的插件</text>
-<line x1="82.0" y1="738.5" x2="82.0" y2="765.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="82.0" y1="765.5" x2="93.0" y2="765.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="82.0" cy="765.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="755.0" width="5" height="21.0" rx="2.5" fill="#ea580c" opacity="0.85"/>
-<text x="100.0" y="770.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">AddUnschedulablePodIfNotPresent</text>
-<text x="470.0" y="770.0" font-size="12.2" fill="#64748b" text-anchor="start">队列决定去 backoffQ 还是 unschedulableEntities</text>
-<line x1="109.0" y1="765.5" x2="109.0" y2="792.5" stroke="#64748b" stroke-width="1.2"/>
-<line x1="109.0" y1="792.5" x2="120.0" y2="792.5" stroke="#64748b" stroke-width="1.2"/>
-<circle cx="109.0" cy="792.5" r="2.2" fill="#64748b"/>
-<rect x="16" y="782.0" width="5" height="21.0" rx="2.5" fill="#ea580c" opacity="0.85"/>
-<text x="127.0" y="797.0" font-size="13" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">determineSchedulingHintForInFlightPod</text>
-<text x="470.0" y="797.0" font-size="12.2" fill="#64748b" text-anchor="start">按周期内发生的事件决定是否直接重试</text>
-<rect x="46" y="830" width="5" height="14" rx="2.5" fill="#7c3aed" opacity="0.85"/>
-<text x="58.0" y="841.0" font-size="12.2" fill="#64748b" text-anchor="start">调度循环 / 队列</text>
-<rect x="189.16" y="830" width="5" height="14" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="201.2" y="841.0" font-size="12.2" fill="#64748b" text-anchor="start">调度周期</text>
-<rect x="285.96" y="830" width="5" height="14" rx="2.5" fill="#059669" opacity="0.85"/>
-<text x="298.0" y="841.0" font-size="12.2" fill="#64748b" text-anchor="start">绑定周期</text>
-<rect x="382.76" y="830" width="5" height="14" rx="2.5" fill="#ea580c" opacity="0.85"/>
-<text x="394.8" y="841.0" font-size="12.2" fill="#64748b" text-anchor="start">失败与重排队</text>
-<text x="510.0" y="841.0" font-size="12.2" fill="#64748b" text-anchor="start">橙色段只在失败时执行</text>
+<rect width="1060" height="1424" fill="#ffffff"/>
+<text x="530.0" y="36.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">从队列到绑定：调度器调用插件钩子的完整调用栈</text>
+<text x="530.0" y="62.0" font-size="12.5" fill="#64748b" text-anchor="middle">缩进表示调用关系；黄色底的行是直接调用插件方法的函数，右侧黄色标签是被调用的钩子</text>
+<text x="530.0" y="84.0" font-size="11.8" fill="#64748b" text-anchor="middle">文件：schedule_one.go / algorithm.go（pkg/scheduler）· framework/runtime/framework.go · backend/queue/scheduling_queue.go</text>
+<rect x="12" y="115.0" width="5" height="18" rx="2.5" fill="#7c3aed" opacity="0.85"/>
+<text x="40.0" y="128.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">PriorityQueue.moveToActiveQ</text>
+<text x="560.0" y="128.2" font-size="12" fill="#64748b" text-anchor="start">Pod 入队 / 从 backoffQ、unschedulable 移回时</text>
+<line x1="48.0" y1="124.0" x2="48.0" y2="148.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="48.0" y1="148.0" x2="56.0" y2="148.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="139.0" width="5" height="18" rx="2.5" fill="#7c3aed" opacity="0.85"/>
+<text x="62.0" y="152.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">runPreEnqueuePlugins</text>
+<line x1="70.0" y1="148.0" x2="70.0" y2="172.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="70.0" y1="172.0" x2="78.0" y2="172.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="163.0" width="5" height="18" rx="2.5" fill="#7c3aed" opacity="0.85"/>
+<text x="84.0" y="176.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">runPreEnqueuePluginsForPod</text>
+<text x="560.0" y="176.2" font-size="12" fill="#64748b" text-anchor="start">上次拦住它的 GatingPlugin 先跑</text>
+<rect x="98.0" y="186.0" width="942.0" height="20" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="92.0" y1="172.0" x2="92.0" y2="196.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="92.0" y1="196.0" x2="100.0" y2="196.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="187.0" width="5" height="18" rx="2.5" fill="#7c3aed" opacity="0.85"/>
+<text x="106.0" y="200.3" font-size="12.6" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPreEnqueuePlugin</text>
+<rect x="560.0" y="188.5" width="128.2" height="15" rx="7.5" fill="#ffffff" stroke="#f59e0b" stroke-width="1"/>
+<text x="569.0" y="200.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PreEnqueue()</text>
+<line x1="28.0" y1="207.0" x2="1040.0" y2="207.0" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="5 4"/>
+<rect x="12" y="211.0" width="5" height="18" rx="2.5" fill="#7c3aed" opacity="0.85"/>
+<text x="40.0" y="224.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">ScheduleOne</text>
+<text x="560.0" y="224.2" font-size="12" fill="#64748b" text-anchor="start">调度循环，每轮从队列取一个实体</text>
+<line x1="48.0" y1="220.0" x2="48.0" y2="244.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="48.0" y1="244.0" x2="56.0" y2="244.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="235.0" width="5" height="18" rx="2.5" fill="#7c3aed" opacity="0.85"/>
+<text x="62.0" y="248.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">NextEntity = PriorityQueue.Pop</text>
+<text x="560.0" y="248.2" font-size="12" fill="#64748b" text-anchor="start">从 activeQ 堆顶取出</text>
+<rect x="76.0" y="258.0" width="964.0" height="20" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="70.0" y1="244.0" x2="70.0" y2="268.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="70.0" y1="268.0" x2="78.0" y2="268.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="259.0" width="5" height="18" rx="2.5" fill="#7c3aed" opacity="0.85"/>
+<text x="84.0" y="272.3" font-size="12.6" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">lessFn（convertLessFn 包装的 QueueSortFunc）</text>
+<rect x="560.0" y="260.5" width="135.5" height="15" rx="7.5" fill="#ffffff" stroke="#f59e0b" stroke-width="1"/>
+<text x="569.0" y="272.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">QueueSort.Less()</text>
+<text x="705.5" y="272.2" font-size="12" fill="#64748b" text-anchor="start">堆调整时比较两个实体</text>
+<line x1="48.0" y1="220.0" x2="48.0" y2="292.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="48.0" y1="292.0" x2="56.0" y2="292.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="283.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="62.0" y="296.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">scheduleOnePod</text>
+<text x="560.0" y="296.2" font-size="12" fill="#64748b" text-anchor="start">Pod 实体的主流程</text>
+<line x1="70.0" y1="292.0" x2="70.0" y2="316.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="70.0" y1="316.0" x2="78.0" y2="316.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="307.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="84.0" y="320.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">frameworkForPod</text>
+<text x="560.0" y="320.2" font-size="12" fill="#64748b" text-anchor="start">按 spec.schedulerName 选 profile</text>
+<line x1="70.0" y1="292.0" x2="70.0" y2="340.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="70.0" y1="340.0" x2="78.0" y2="340.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="331.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="84.0" y="344.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">schedulingCycle</text>
+<text x="560.0" y="344.2" font-size="12" fill="#64748b" text-anchor="start">串行：一个 Pod 走完才处理下一个</text>
+<line x1="92.0" y1="340.0" x2="92.0" y2="364.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="92.0" y1="364.0" x2="100.0" y2="364.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="355.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="106.0" y="368.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">Cache.UpdateSnapshot</text>
+<text x="560.0" y="368.2" font-size="12" fill="#64748b" text-anchor="start">本周期的节点/Pod 快照</text>
+<line x1="92.0" y1="340.0" x2="92.0" y2="388.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="92.0" y1="388.0" x2="100.0" y2="388.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="379.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="106.0" y="392.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">schedulingAlgorithm</text>
+<line x1="114.0" y1="388.0" x2="114.0" y2="412.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="114.0" y1="412.0" x2="122.0" y2="412.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="403.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="128.0" y="416.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">SchedulePod</text>
+<text x="560.0" y="416.2" font-size="12" fill="#64748b" text-anchor="start">algorithm.go</text>
+<line x1="136.0" y1="412.0" x2="136.0" y2="436.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="136.0" y1="436.0" x2="144.0" y2="436.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="427.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="150.0" y="440.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">findNodesThatFitPod</text>
+<line x1="158.0" y1="436.0" x2="158.0" y2="460.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="158.0" y1="460.0" x2="166.0" y2="460.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="451.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="172.0" y="464.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">prefilterNodes</text>
+<line x1="180.0" y1="460.0" x2="180.0" y2="484.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="180.0" y1="484.0" x2="188.0" y2="484.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="475.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="194.0" y="488.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPreFilterPlugins</text>
+<text x="560.0" y="488.2" font-size="12" fill="#64748b" text-anchor="start">按配置顺序逐个插件</text>
+<rect x="208.0" y="498.0" width="832.0" height="20" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="202.0" y1="484.0" x2="202.0" y2="508.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="202.0" y1="508.0" x2="210.0" y2="508.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="499.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="216.0" y="512.3" font-size="12.6" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPreFilterPlugin</text>
+<rect x="560.0" y="500.5" width="120.8" height="15" rx="7.5" fill="#ffffff" stroke="#f59e0b" stroke-width="1"/>
+<text x="569.0" y="512.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PreFilter()</text>
+<line x1="158.0" y1="436.0" x2="158.0" y2="532.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="158.0" y1="532.0" x2="166.0" y2="532.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="523.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="172.0" y="536.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">evaluateNominatedNode</text>
+<text x="560.0" y="536.2" font-size="12" fill="#64748b" text-anchor="start">有 nominatedNodeName 时先单独试它</text>
+<line x1="158.0" y1="436.0" x2="158.0" y2="556.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="158.0" y1="556.0" x2="166.0" y2="556.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="547.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="172.0" y="560.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">findNodesThatPassFilters</text>
+<text x="560.0" y="560.2" font-size="12" fill="#64748b" text-anchor="start">Parallelizer 按节点并行</text>
+<line x1="180.0" y1="556.0" x2="180.0" y2="580.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="180.0" y1="580.0" x2="188.0" y2="580.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="571.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="194.0" y="584.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunFilterPluginsWithNominatedPods</text>
+<text x="560.0" y="584.2" font-size="12" fill="#64748b" text-anchor="start">考虑已提名 Pod 时可能跑两遍</text>
+<line x1="202.0" y1="580.0" x2="202.0" y2="604.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="202.0" y1="604.0" x2="210.0" y2="604.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="595.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="216.0" y="608.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunFilterPlugins</text>
+<text x="560.0" y="608.2" font-size="12" fill="#64748b" text-anchor="start">同一节点上插件串行</text>
+<rect x="230.0" y="618.0" width="810.0" height="20" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="224.0" y1="604.0" x2="224.0" y2="628.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="224.0" y1="628.0" x2="232.0" y2="628.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="619.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="238.0" y="632.3" font-size="12.6" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runFilterPlugin</text>
+<rect x="560.0" y="620.5" width="98.8" height="15" rx="7.5" fill="#ffffff" stroke="#f59e0b" stroke-width="1"/>
+<text x="569.0" y="632.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.Filter()</text>
+<line x1="136.0" y1="412.0" x2="136.0" y2="652.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="136.0" y1="652.0" x2="144.0" y2="652.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="643.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="150.0" y="656.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">prioritizeNodes</text>
+<text x="560.0" y="656.2" font-size="12" fill="#64748b" text-anchor="start">可行节点 &gt; 1 才打分</text>
+<line x1="158.0" y1="652.0" x2="158.0" y2="676.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="158.0" y1="676.0" x2="166.0" y2="676.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="667.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="172.0" y="680.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPreScorePlugins</text>
+<rect x="186.0" y="690.0" width="854.0" height="20" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="180.0" y1="676.0" x2="180.0" y2="700.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="180.0" y1="700.0" x2="188.0" y2="700.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="691.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="194.0" y="704.3" font-size="12.6" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPreScorePlugin</text>
+<rect x="560.0" y="692.5" width="113.5" height="15" rx="7.5" fill="#ffffff" stroke="#f59e0b" stroke-width="1"/>
+<text x="569.0" y="704.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PreScore()</text>
+<line x1="158.0" y1="652.0" x2="158.0" y2="724.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="158.0" y1="724.0" x2="166.0" y2="724.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="715.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="172.0" y="728.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunScorePlugins</text>
+<line x1="180.0" y1="724.0" x2="180.0" y2="748.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="180.0" y1="748.0" x2="188.0" y2="748.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="739.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="194.0" y="752.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">runRawScorePlugins</text>
+<text x="560.0" y="752.2" font-size="12" fill="#64748b" text-anchor="start">按节点并行</text>
+<rect x="208.0" y="762.0" width="832.0" height="20" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="202.0" y1="748.0" x2="202.0" y2="772.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="202.0" y1="772.0" x2="210.0" y2="772.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="763.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="216.0" y="776.3" font-size="12.6" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runScorePlugin</text>
+<rect x="560.0" y="764.5" width="91.4" height="15" rx="7.5" fill="#ffffff" stroke="#f59e0b" stroke-width="1"/>
+<text x="569.0" y="776.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.Score()</text>
+<line x1="180.0" y1="724.0" x2="180.0" y2="796.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="180.0" y1="796.0" x2="188.0" y2="796.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="787.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="194.0" y="800.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">normalizeScores</text>
+<text x="560.0" y="800.2" font-size="12" fill="#64748b" text-anchor="start">按插件并行</text>
+<rect x="208.0" y="810.0" width="832.0" height="20" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="202.0" y1="796.0" x2="202.0" y2="820.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="202.0" y1="820.0" x2="210.0" y2="820.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="811.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="216.0" y="824.3" font-size="12.6" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runScoreExtension</text>
+<rect x="560.0" y="812.5" width="135.5" height="15" rx="7.5" fill="#ffffff" stroke="#f59e0b" stroke-width="1"/>
+<text x="569.0" y="824.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">NormalizeScore()</text>
+<line x1="114.0" y1="388.0" x2="114.0" y2="844.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="114.0" y1="844.0" x2="122.0" y2="844.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="835.0" width="5" height="18" rx="2.5" fill="#ea580c" opacity="0.85"/>
+<text x="128.0" y="848.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPostFilterPlugins</text>
+<text x="560.0" y="848.2" font-size="12" fill="#64748b" text-anchor="start">仅在没有可行节点时</text>
+<rect x="142.0" y="858.0" width="898.0" height="20" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="136.0" y1="844.0" x2="136.0" y2="868.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="136.0" y1="868.0" x2="144.0" y2="868.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="859.0" width="5" height="18" rx="2.5" fill="#ea580c" opacity="0.85"/>
+<text x="150.0" y="872.3" font-size="12.6" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPostFilterPlugin</text>
+<rect x="560.0" y="860.5" width="128.2" height="15" rx="7.5" fill="#ffffff" stroke="#f59e0b" stroke-width="1"/>
+<text x="569.0" y="872.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PostFilter()</text>
+<line x1="92.0" y1="340.0" x2="92.0" y2="892.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="92.0" y1="892.0" x2="100.0" y2="892.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="883.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="106.0" y="896.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">prepareForBindingCycle</text>
+<line x1="114.0" y1="892.0" x2="114.0" y2="916.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="114.0" y1="916.0" x2="122.0" y2="916.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="907.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="128.0" y="920.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">AssumeAndReserveInCache</text>
+<text x="560.0" y="920.2" font-size="12" fill="#64748b" text-anchor="start">先 cache.AssumePod</text>
+<line x1="136.0" y1="916.0" x2="136.0" y2="940.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="136.0" y1="940.0" x2="144.0" y2="940.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="931.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="150.0" y="944.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">reserve</text>
+<line x1="158.0" y1="940.0" x2="158.0" y2="964.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="158.0" y1="964.0" x2="166.0" y2="964.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="955.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="172.0" y="968.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunReservePluginsReserve</text>
+<text x="560.0" y="968.2" font-size="12" fill="#64748b" text-anchor="start">失败时逆序 Unreserve</text>
+<rect x="186.0" y="978.0" width="854.0" height="20" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="180.0" y1="964.0" x2="180.0" y2="988.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="180.0" y1="988.0" x2="188.0" y2="988.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="979.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="194.0" y="992.3" font-size="12.6" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runReservePluginReserve</text>
+<rect x="560.0" y="980.5" width="106.1" height="15" rx="7.5" fill="#ffffff" stroke="#f59e0b" stroke-width="1"/>
+<text x="569.0" y="992.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.Reserve()</text>
+<line x1="114.0" y1="892.0" x2="114.0" y2="1012.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="114.0" y1="1012.0" x2="122.0" y2="1012.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1003.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="128.0" y="1016.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPermitPlugins</text>
+<rect x="142.0" y="1026.0" width="898.0" height="20" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="136.0" y1="1012.0" x2="136.0" y2="1036.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="136.0" y1="1036.0" x2="144.0" y2="1036.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1027.0" width="5" height="18" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="150.0" y="1040.3" font-size="12.6" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPermitPlugin</text>
+<rect x="560.0" y="1028.5" width="98.8" height="15" rx="7.5" fill="#ffffff" stroke="#f59e0b" stroke-width="1"/>
+<text x="569.0" y="1040.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.Permit()</text>
+<line x1="48.0" y1="220.0" x2="48.0" y2="1060.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="48.0" y1="1060.0" x2="56.0" y2="1060.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1051.0" width="5" height="18" rx="2.5" fill="#059669" opacity="0.85"/>
+<text x="62.0" y="1064.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">runBindingCycle</text>
+<text x="560.0" y="1064.2" font-size="12" fill="#64748b" text-anchor="start">go 出的 goroutine</text>
+<line x1="70.0" y1="1060.0" x2="70.0" y2="1084.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="70.0" y1="1084.0" x2="78.0" y2="1084.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1075.0" width="5" height="18" rx="2.5" fill="#059669" opacity="0.85"/>
+<text x="84.0" y="1088.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">bindingCycle</text>
+<line x1="92.0" y1="1084.0" x2="92.0" y2="1108.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="92.0" y1="1108.0" x2="100.0" y2="1108.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1099.0" width="5" height="18" rx="2.5" fill="#059669" opacity="0.85"/>
+<text x="106.0" y="1112.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">WaitOnPermit</text>
+<text x="560.0" y="1112.2" font-size="12" fill="#64748b" text-anchor="start">Permit 返回 Wait 时在此阻塞</text>
+<line x1="92.0" y1="1084.0" x2="92.0" y2="1132.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="92.0" y1="1132.0" x2="100.0" y2="1132.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1123.0" width="5" height="18" rx="2.5" fill="#059669" opacity="0.85"/>
+<text x="106.0" y="1136.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPreBindPlugins</text>
+<rect x="120.0" y="1146.0" width="920.0" height="20" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="114.0" y1="1132.0" x2="114.0" y2="1156.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="114.0" y1="1156.0" x2="122.0" y2="1156.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1147.0" width="5" height="18" rx="2.5" fill="#059669" opacity="0.85"/>
+<text x="128.0" y="1160.3" font-size="12.6" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPreBindPlugin</text>
+<rect x="560.0" y="1148.5" width="106.1" height="15" rx="7.5" fill="#ffffff" stroke="#f59e0b" stroke-width="1"/>
+<text x="569.0" y="1160.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PreBind()</text>
+<line x1="92.0" y1="1084.0" x2="92.0" y2="1180.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="92.0" y1="1180.0" x2="100.0" y2="1180.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1171.0" width="5" height="18" rx="2.5" fill="#059669" opacity="0.85"/>
+<text x="106.0" y="1184.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">bind</text>
+<line x1="114.0" y1="1180.0" x2="114.0" y2="1204.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="114.0" y1="1204.0" x2="122.0" y2="1204.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1195.0" width="5" height="18" rx="2.5" fill="#059669" opacity="0.85"/>
+<text x="128.0" y="1208.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunBindPlugins</text>
+<text x="560.0" y="1208.2" font-size="12" fill="#64748b" text-anchor="start">第一个不返回 Skip 的插件生效</text>
+<rect x="142.0" y="1218.0" width="898.0" height="20" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="136.0" y1="1204.0" x2="136.0" y2="1228.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="136.0" y1="1228.0" x2="144.0" y2="1228.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1219.0" width="5" height="18" rx="2.5" fill="#059669" opacity="0.85"/>
+<text x="150.0" y="1232.3" font-size="12.6" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runBindPlugin</text>
+<rect x="560.0" y="1220.5" width="84.1" height="15" rx="7.5" fill="#ffffff" stroke="#f59e0b" stroke-width="1"/>
+<text x="569.0" y="1232.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">bp.Bind()</text>
+<line x1="92.0" y1="1084.0" x2="92.0" y2="1252.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="92.0" y1="1252.0" x2="100.0" y2="1252.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1243.0" width="5" height="18" rx="2.5" fill="#059669" opacity="0.85"/>
+<text x="106.0" y="1256.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPostBindPlugins</text>
+<rect x="120.0" y="1266.0" width="920.0" height="20" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="114.0" y1="1252.0" x2="114.0" y2="1276.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="114.0" y1="1276.0" x2="122.0" y2="1276.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1267.0" width="5" height="18" rx="2.5" fill="#059669" opacity="0.85"/>
+<text x="128.0" y="1280.3" font-size="12.6" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPostBindPlugin</text>
+<rect x="560.0" y="1268.5" width="113.5" height="15" rx="7.5" fill="#ffffff" stroke="#f59e0b" stroke-width="1"/>
+<text x="569.0" y="1280.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PostBind()</text>
+<line x1="48.0" y1="220.0" x2="48.0" y2="1300.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="48.0" y1="1300.0" x2="56.0" y2="1300.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1291.0" width="5" height="18" rx="2.5" fill="#ea580c" opacity="0.85"/>
+<text x="62.0" y="1304.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">handleSchedulingFailure</text>
+<text x="560.0" y="1304.2" font-size="12" fill="#64748b" text-anchor="start">调度周期失败时</text>
+<line x1="70.0" y1="1300.0" x2="70.0" y2="1324.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="70.0" y1="1324.0" x2="78.0" y2="1324.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1315.0" width="5" height="18" rx="2.5" fill="#ea580c" opacity="0.85"/>
+<text x="84.0" y="1328.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">AddUnschedulablePodIfNotPresent</text>
+<text x="560.0" y="1328.2" font-size="12" fill="#64748b" text-anchor="start">决定去 backoffQ 还是 unschedulableEntities</text>
+<line x1="92.0" y1="1324.0" x2="92.0" y2="1348.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="92.0" y1="1348.0" x2="100.0" y2="1348.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1339.0" width="5" height="18" rx="2.5" fill="#ea580c" opacity="0.85"/>
+<text x="106.0" y="1352.3" font-size="12.6" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">determineSchedulingHintForInFlightPod</text>
+<text x="560.0" y="1352.2" font-size="12" fill="#64748b" text-anchor="start">周期内发生过相关事件就直接重试</text>
+<rect x="40" y="1384" width="5" height="14" rx="2.5" fill="#7c3aed" opacity="0.85"/>
+<text x="52.0" y="1395.0" font-size="12" fill="#64748b" text-anchor="start">队列</text>
+<rect x="106" y="1384" width="5" height="14" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="118.0" y="1395.0" font-size="12" fill="#64748b" text-anchor="start">调度周期</text>
+<rect x="196" y="1384" width="5" height="14" rx="2.5" fill="#059669" opacity="0.85"/>
+<text x="208.0" y="1395.0" font-size="12" fill="#64748b" text-anchor="start">绑定周期（goroutine）</text>
+<rect x="374.8" y="1384" width="5" height="14" rx="2.5" fill="#ea580c" opacity="0.85"/>
+<text x="386.8" y="1395.0" font-size="12" fill="#64748b" text-anchor="start">仅失败时</text>
+<rect x="464.8" y="1382" width="34" height="17" rx="5" fill="#fef3c7" stroke="#f59e0b"/>
+<text x="506.8" y="1395.0" font-size="12" fill="#64748b" text-anchor="start">直接执行插件钩子的函数</text>
 </svg>

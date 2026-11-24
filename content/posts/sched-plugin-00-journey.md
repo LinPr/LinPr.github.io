@@ -17,15 +17,16 @@ description: "系列开篇。沿着 ScheduleOne 的源码走一遍：Pod 怎么�
 
 {{< figure src="/images/posts/sched-plugins/00-journey.svg" link="/images/posts/sched-plugins/00-journey.svg" caption="一个 Pod 的调度旅程：左侧是扩展点，右侧是本系列在该位置重点讲的插件（点击查看大图）" >}}
 
-上面这张图是按扩展点画的。落到代码里，这些扩展点分别由哪个函数触发，可以看下面这张调用栈。它从调度循环的入口 `ScheduleOne` 开始，缩进表示谁调用了谁，右侧说明这一步在做什么；后文各节会沿着这棵树逐段展开：
+上面这张图是按扩展点画的。落到代码里，这些扩展点分别由哪个函数触发，可以看下面这张调用栈。它一直画到真正执行插件方法的那一层：黄色底的行就是直接调用插件钩子的函数（框架里统一命名为 `runXxxPlugin`），右侧黄色标签是它调用的方法，比如 `runFilterPlugin` 里的 `pl.Filter()`。缩进表示谁调用了谁，后文各节会沿着这棵树逐段展开：
 
-{{< figure src="/images/posts/sched-plugins/00-call-stack.svg" link="/images/posts/sched-plugins/00-call-stack.svg" caption="从 ScheduleOne 到绑定周期的调用栈：紫色是队列和调度循环，蓝色是调度周期，绿色是绑定周期的 goroutine，橙色只在失败时执行（点击查看大图）" >}}
+{{< figure src="/images/posts/sched-plugins/00-call-stack.svg" link="/images/posts/sched-plugins/00-call-stack.svg" caption="从入队到绑定的调用栈：黄色底的行直接执行插件钩子；左侧色条紫色是队列，蓝色是调度周期，绿色是绑定周期的 goroutine，橙色只在失败时执行（点击查看大图）" >}}
 
 先记住几处容易看错的地方，读后面的源码时会更顺：
 
 - `NextEntity` 不是普通方法，它在 `scheduler.go` 里被赋成 `podQueue.Pop`，出队实际发生在 `PriorityQueue` 里，QueueSort 插件就在这一步起作用（第二节）。
 - `findNodesThatFitPod` 下面的三个函数是按顺序尝试的：先 PreFilter，再单独试提名节点，最后才遍历候选节点跑 Filter；提名节点通过就直接返回（3.2 节）。
-- `prioritizeNodes` 是包级函数，内部依次调 `RunPreScorePlugins`、`RunScorePlugins` 和归一化。框架层的 `Run*` 函数都在 `framework/runtime/framework.go`，是插件真正被执行的地方（3.5 节）。
+- 框架层分两级：`RunXxxPlugins` 负责遍历插件、处理 Skip 和失败码、记录指标，真正调用插件方法的是它下面的 `runXxxPlugin`，两级都在 `framework/runtime/framework.go`。打分多一步：`RunScorePlugins` 先按节点并行跑 `runScorePlugin`，再按插件并行跑 `runScoreExtension` 做归一化（3.5 节）。
+- PreEnqueue 和 QueueSort 不在调度循环里执行：PreEnqueue 在 Pod 进入 `activeQ` 时由队列的 `moveToActiveQ` 调用，QueueSort 的 `Less` 则是堆每次调整时的比较函数（第二节）。
 - `runBindingCycle` 和 `handleSchedulingFailure` 都挂在 `scheduleOnePod` 下，但只会走一个：调度周期成功就起 goroutine 绑定（第四节），失败就进失败处理（第五节）。绑定周期和调度周期共用同一个 `CycleState`，所以 PreBind 还能读到 Filter 阶段写下的数据。
 
 ## 一、出发之前：Profile 决定了这趟旅程有哪些站
