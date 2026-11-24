@@ -9,6 +9,10 @@ author: "LinPr"
 description: "Coscheduling 是 scheduler-plugins 里的 gang 调度插件：用 PodGroup CRD 和 pod-group 标签把 Pod 编组，QueueSort 让同组 Pod 相邻出队，PreFilter 做四道前置检查，Permit 让已占好资源的 Pod 原地等齐 minMember，PostFilter 和 Unreserve 在失败时连坐整组。本文逐个拆解这些扩展点，讲清 PodGroup controller 的状态机，并与 in-tree 的 GangScheduling 做源码级对照。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `Coscheduling` 实现的扩展点（QueueSort、PreFilter、PostFilter、Reserve、Permit）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/27.svg" link="/images/posts/sched-plugins/callstack/27.svg" caption="Coscheduling 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-26-topological-sort/)的 TopologicalSort 用一个 AppGroup CRD 决定同一应用里各个 Pod 的出队顺序。它是 QueueSort 插件，本篇的 Coscheduling 也是。[第 25 篇](/posts/sched-plugin-25-qos-sort/)讲过，一个 Profile 只能有一个 QueueSort 插件，所以 QOSSort、TopologicalSort、Coscheduling 三者在同一个 Profile 里互斥。
 
 Coscheduling 要解决的问题和[第 21 篇](/posts/sched-plugin-21-gang-scheduling/)的 GangScheduling 一样：一组 Pod 要么都拿到位置，要么都不占。两者的实现路线却完全不同。GangScheduling 把整组作为一个实体出队，在一次调度周期里逐个试放、失败统一回滚；Coscheduling 诞生在调度框架还只能一个一个处理 Pod 的年代，它让每个 Pod 照常走完调度周期、真实地占住资源，然后在 Permit 扩展点原地等待，等到同组凑够 `minMember` 个再一起放行。

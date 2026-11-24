@@ -9,6 +9,10 @@ author: "LinPr"
 description: "SySched 从 Security Profiles Operator 的 SeccompProfile 中读出每个 Pod 允许的系统调用，计算新 Pod 放到某节点后所有 Pod 额外暴露的系统调用数（ExS），让系统调用画像相近的 Pod 聚在一起、缩小节点的内核攻击面。本文拆解它的画像获取、节点并集缓存、ExS 打分与反向归一化，给出算例，并指出并发、缓存时序与 KEP 不一致之处。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `SySched` 实现的扩展点（Score、NormalizeScore）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/36.svg" link="/images/posts/sched-plugins/callstack/36.svg" caption="SySched 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 上一篇 [PodState](/posts/sched-plugin-35-pod-state/) 用 Pod 的生命周期状态给节点打分。本篇的 `SySched` 关心的维度在调度器里很少见：安全。同一节点上的 Pod 共享一个内核，任何一个 Pod 能调用的系统调用，都是这个内核对外暴露的攻击面的一部分。一个只需要几十个系统调用的 Pod，如果和一个什么都能调的 Pod 放在一起，就要和对方一起承担那些它根本用不到的内核接口的漏洞风险。
 
 `SySched` 只实现 Score 扩展点（含 `NormalizeScore`），通过 `app.WithPlugin(sysched.Name, sysched.New)` 注册，需要在 Profile 中显式启用，没有 feature gate。README 中的成熟度是 Alpha，设计文档是 `kep/399-sysched-scoring`。本文基于 scheduler-plugins 提交 `cfeb3aa`（依赖 Kubernetes v1.36.4，Security Profiles Operator API v0.4.0）。

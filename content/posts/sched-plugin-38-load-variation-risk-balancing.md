@@ -9,6 +9,10 @@ author: "LinPr"
 description: "只按平均负载做均衡，看不到负载的抖动。LoadVariationRiskBalancing 用「均值 + margin × 标准差开 sensitivity 次方」定义节点风险，CPU 与内存取较差者。本文从 ResourceStats 的构造讲到 computeScore 的每一次截断，推导等分线，给出 sensitivity 取 1 和 2 的算例，并指出 metrics-server 下模型退化、满载节点仍得 50 分等细节。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `LoadVariationRiskBalancing` 实现的扩展点（Score、NormalizeScore）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/38.svg" link="/images/posts/sched-plugins/callstack/38.svg" caption="LoadVariationRiskBalancing 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 上一篇[《TargetLoadPacking》](/posts/sched-plugin-37-target-load-packing/)讲了 Trimaran 的公共数据链路：load-watcher、30 秒一次的 Collector 快照，以及 `PodAssignEventHandler` 的滞后补偿。TLP 的目标是装箱，只看 CPU 均值。这一篇的 `LoadVariationRiskBalancing`（下文简称 LVRB）方向相反，它做**均衡**，而且把负载的**波动**也算进去。
 
 LVRB 只实现 Score（外加一个空的 `NormalizeScore`），没有 PreScore，也不往 CycleState 写任何东西。它不在默认 Profile 里，需要在 scheduler-plugins 的调度器里显式启用，没有 feature gate。和其它 Trimaran 插件一样，它不实现 `EnqueueExtensions`，因为 Score 插件不会拒绝 Pod。源码基线仍是 scheduler-plugins `cfeb3aa`。

@@ -9,6 +9,10 @@ author: "LinPr"
 description: "TopologicalSort 是网络感知框架里的 QueueSort 插件：同一个 AppGroup 的 Pod 按 controller 预先算好的 topologyOrder 出队，其余回退到 PrioritySort。本文拆 AppGroup CRD、拓扑序的产生与存储方式、Less 的比较规则，以及这个比较函数不满足严格弱序、AppGroup 缺失时会 panic 等只有读代码才看得到的问题。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `TopologicalSort` 实现的扩展点（QueueSort）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/26.svg" link="/images/posts/sched-plugins/callstack/26.svg" caption="TopologicalSort 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-25-qos-sort/)讲了 out-of-tree 插件的运行方式，以及一个调度器进程只能有一个 QueueSort 插件。TopologicalSort 是 scheduler-plugins 里第二个 QueueSort 插件，和 QOSSort、Coscheduling 互斥。它属于「网络感知调度」（KEP 260 Network-Aware Scheduling）的一部分，与[第 29 篇](/posts/sched-plugin-29-network-overhead/)的 NetworkOverhead 配套：NetworkOverhead 决定 Pod 放在哪个节点，TopologicalSort 决定同一个应用里谁先被调度。`pkg/networkaware/README.md` 把两者的成熟度都标为 Sample。
 
 本文代码基于 scheduler-plugins `cfeb3aa`（依赖 Kubernetes v1.36.4），AppGroup 的类型定义来自依赖模块 `github.com/diktyo-io/appgroup-api v1.0.1-alpha`。

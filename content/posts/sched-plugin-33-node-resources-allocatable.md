@@ -9,6 +9,10 @@ author: "LinPr"
 description: "NodeResourcesAllocatable 只根据节点 allocatable 的加权和打分，Least 模式让小 Pod 先占小节点、把大节点留给大 Pod，Most 模式则相反。本文拆解它的参数与默认权重、打分与 min-max 归一化、带数字的算例，以及它和 in-tree NodeResourcesFit 打分策略在语义、量纲和组合使用上的区别。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `NodeResourcesAllocatable` 实现的扩展点（Score、NormalizeScore）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/33.svg" link="/images/posts/sched-plugins/callstack/33.svg" caption="NodeResourcesAllocatable 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 上一篇 [CrossNodePreemption](/posts/sched-plugin-32-cross-node-preemption/) 结束了抢占相关的几个插件，故事回到 Score 阶段。接下来四篇都是 scheduler-plugins 里的小型打分插件，本篇的 `NodeResourcesAllocatable` 是其中最「资源化」的一个。
 
 它只实现了 Score 扩展点（含 `NormalizeScore`），通过 `app.WithPlugin(noderesources.AllocatableName, noderesources.NewAllocatable)` 注册到 scheduler-plugins 的调度器二进制中，需要在 Profile 里显式启用，没有 feature gate，也没有 Filter、EventsToRegister 这些部分。本文基于 scheduler-plugins 提交 `cfeb3aa`（依赖 Kubernetes v1.36.4），对照的 in-tree 代码取自 Kubernetes master 提交 `aabdf5a2`。

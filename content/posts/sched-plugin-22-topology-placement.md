@@ -9,6 +9,10 @@ author: "LinPr"
 description: "TopologyPlacementGenerator 是 PlacementGenerate 扩展点上唯一的 in-tree 插件：它按 PodGroup 声明的拓扑标签把节点切成若干候选 placement，让整组 Pod 只在同一个 rack 或 zone 里试放。本文拆解 placement 的数据结构、已调度 Pod 如何锁定域、多个生成插件的笛卡尔积合并、snapshot 如何限定节点集合，以及调度器在多个 placement 之间搜索的上限公式。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `TopologyPlacementGenerator` 实现的扩展点（PlacementGenerate）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/22.svg" link="/images/posts/sched-plugins/callstack/22.svg" caption="TopologyPlacementGenerator 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-21-gang-scheduling/)讲了 PodGroup 调度周期的骨架：整组出队，逐个 Pod 试放，每放一个就让 GangScheduling 判断一次 `PlacementFeasible`。那条路径默认把整组放在「全部节点」这一个隐式 placement 里。
 
 分布式训练对放在哪里通常有更强的要求：同一个训练任务的所有 worker 最好在同一个 rack 下，走同一台 ToR 交换机；或者至少在同一个 zone，避免跨可用区的流量和延迟。`PodTopologySpread` 和 `InterPodAffinity` 是逐个 Pod 判断的，前一个 Pod 选了 rack-1，后一个 Pod 才被吸引过去，第一个 Pod 选错了，整组就跟着错。

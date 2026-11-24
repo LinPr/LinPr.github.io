@@ -9,6 +9,10 @@ author: "LinPr"
 description: "PrioritySort 是默认的 QueueSort 插件，只有一个 Less 方法：优先级高的先出队，相同优先级按入队时间先后。本文拆开 Less 的两个输入从哪里来：priority 由 Priority 准入插件根据 PriorityClass 在创建时写死，Timestamp 是入队时间而且会在失败后刷新；再看 Less 如何驱动 activeQ 和 backoffQ 两个堆、为什么所有 profile 必须共用一个 QueueSort，以及 preemptionPolicy: Never 的「插队不抢占」语义。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `PrioritySort` 实现的扩展点（QueueSort）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/02.svg" link="/images/posts/sched-plugins/callstack/02.svg" caption="PrioritySort 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-01-scheduling-gates/)讲的是 Pod 能不能进入 `activeQ`。进来之后，`activeQ` 里可能同时排着成百上千个 Pod，调度周期是串行的，一次只取一个。取哪一个，由 QueueSort 扩展点决定。默认 Profile 里这个位置只有一个插件：`PrioritySort`。
 
 它在 `default_plugins.go` 的 `MultiPoint` 列表里排第二，默认启用，不受 feature gate 控制，也没有参数。和其他插件不同，它在 `registry.go` 里直接注册 `queuesort.New`，没有经过 `runtime.FactoryAdapter` 包装，因为它不需要读取任何 feature gate。本文基于 Kubernetes master 提交 `aabdf5a2`。

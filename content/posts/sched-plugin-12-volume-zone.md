@@ -9,6 +9,10 @@ author: "LinPr"
 description: "VolumeZone 读取已绑定 PV 上的 zone/region 标签，要求节点的同名标签取值落在其中。本文拆解它如何解析多可用区标签、如何兼容 failure-domain.beta 与 topology.kubernetes.io 两套标签、为什么失败一律是 UnschedulableAndUnresolvable，以及它与 VolumeBinding 检查 PV nodeAffinity 的分工和历史由来。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `VolumeZone` 实现的扩展点（PreFilter、Filter）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/12.svg" link="/images/posts/sched-plugins/callstack/12.svg" caption="VolumeZone 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 上一篇 [VolumeBinding](/posts/sched-plugin-11-volume-binding/) 是存储插件里最重的一个，它通过 PV 的 `spec.nodeAffinity` 处理拓扑约束。存储段的最后一个插件 `VolumeZone` 也管拓扑，但看的是另一个地方：PV 的 **label**。
 
 本文基于 Kubernetes master 提交 `aabdf5a2`。`VolumeZone` 在默认 Profile 的 MultiPoint 列表里排在 `VolumeBinding` 之后、`PodTopologySpread` 之前，默认启用，不受 feature gate 控制，没有 Args。它实现 PreFilter、Filter、`EnqueueExtensions` 和 `SignPlugin`，没有 Score，没有 `PreFilterExtensions`。

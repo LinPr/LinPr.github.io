@@ -9,6 +9,10 @@ author: "LinPr"
 description: "PodGroupPodsCount 是 PlacementScore 扩展点上的打分插件：在多个都满足 minCount 的候选 placement 之间，给能放下更多 Pod 的那个更高分。本文拆解它的打分与归一化公式、为什么分母用最大值而不是 minCount、为什么默认权重是 1、它和 NodeResourcesFit 的 MostAllocated 放置打分如何互相制衡，并给出一个带数字的完整算例。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `PodGroupPodsCount` 实现的扩展点（PlacementScore）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/23.svg" link="/images/posts/sched-plugins/callstack/23.svg" caption="PodGroupPodsCount 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-22-topology-placement/)的 TopologyPlacementGenerator 把节点切成了若干 rack 级的候选 placement，调度器在每个 placement 里完整试放一遍整组 Pod，留下那些通过了 GangScheduling `PlacementFeasible` 的。如果可行的 placement 不止一个，就需要打分来挑。
 
 这一步发生在 PodGroup 调度周期的 `PlacementScore` 扩展点。默认 Profile 里有两个插件在这里打分：本篇的 PodGroupPodsCount，以及 NodeResourcesFit 的放置打分。前者回答「哪个 placement 放下的 Pod 多」，后者回答「哪个 placement 装得更满」。

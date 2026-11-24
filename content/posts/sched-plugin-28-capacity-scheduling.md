@@ -9,6 +9,10 @@ author: "LinPr"
 description: "CapacityScheduling 用 ElasticQuota 的 min/max 实现租户间的资源借用与回收。本文从源码拆解插件内存账本 ElasticQuotaInfos 的维护方式、PreFilter 的两道配额检查、Reserve/Unreserve 记账、PostFilter 如何借用 in-tree 的 preemption.Evaluator 并改写受害者选择，以及 EventsToRegister 和 controller 写 status.used 的细节与坑。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `CapacityScheduling` 实现的扩展点（PreFilter、PostFilter、Reserve）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/28.svg" link="/images/posts/sched-plugins/callstack/28.svg" caption="CapacityScheduling 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 上一篇的 [Coscheduling](/posts/sched-plugin-27-coscheduling/) 用 Permit 的等待把一组 Pod 捆在一起：要么都上，要么都不上。它解决的是「一组 Pod 之间」的问题。本篇的 `CapacityScheduling` 处理的是「租户之间」的问题：集群资源按 Namespace 分给不同团队，每个团队有一份保底额度，闲着的额度可以借给别人，需要时再收回来。
 
 本文基于 scheduler-plugins 提交 `cfeb3aa`，它依赖 Kubernetes v1.36.4，所以文中引用的 `preemption` 包代码来自 `k8s.io/kubernetes@v1.36.4`；涉及 Kubernetes 主干的地方以 master 提交 `aabdf5a2` 为准，并会单独标出差异。

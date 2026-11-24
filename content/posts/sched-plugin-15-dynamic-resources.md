@@ -9,6 +9,10 @@ author: "LinPr"
 description: "DynamicResources 是 DRA 在调度器里的实现：它在 Filter 里为每个节点跑一遍设备分配器，在 Reserve 把结果挂进 in-flight 表，在 PreBind 把 allocation 和 reservedFor 写回 ResourceClaim。本文按扩展点拆解它的状态、分配器的回溯搜索、assume cache 与 in-flight 表的分工、各个 DRA feature gate，以及它为什么几乎从不触发抢占。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `DynamicResources` 实现的扩展点（PreEnqueue、PreFilter、Filter、PostFilter、Score、NormalizeScore、Reserve、PreBind、PodGroupPostFilter）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/15.svg" link="/images/posts/sched-plugins/callstack/15.svg" caption="DynamicResources 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-14-inter-pod-affinity/)的 `InterPodAffinity` 处理的是「Pod 和 Pod 之间」的约束。默认 Profile 里紧接着它的是 `DynamicResources`，它处理的是 Pod 和**设备**之间的约束：GPU、网卡 VF、FPGA 这类无法用一个整数 `nvidia.com/gpu: 1` 描述清楚的资源。本文基于 Kubernetes master 提交 `aabdf5a2`（1.38 开发周期）。
 
 在 `pkg/scheduler/apis/config/v1/default_plugins.go` 里，它的权重是 2，位置被刻意放在 `DefaultPreemption` 之前：

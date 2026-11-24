@@ -9,6 +9,10 @@ author: "LinPr"
 description: "NodeDeclaredFeatures 让 kubelet 声明自己支持的特性，调度器从 Pod spec 推断所需特性并做子集判断，避免版本偏差期间把新特性 Pod 放到旧节点。本文拆解特性注册表与位图、MaxVersion，以及配套的 kubelet 与 apiserver 准入检查。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `NodeDeclaredFeatures` 实现的扩展点（PreFilter、Filter）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/16.svg" link="/images/posts/sched-plugins/callstack/16.svg" caption="NodeDeclaredFeatures 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-15-dynamic-resources/)的 `DynamicResources` 处理的是「节点上有没有某种设备」。`NodeDeclaredFeatures` 处理的问题更抽象：节点上的 **kubelet 会不会**某个功能。它是 Filter 链上最后一个插件，也是 in-tree 插件里最年轻的之一。
 
 本文基于 Kubernetes master 提交 `aabdf5a2`（1.38 开发周期）。插件由 feature gate `NodeDeclaredFeatures` 控制，对应 [KEP-5328](https://kep.k8s.io/5328)：1.35 Alpha，1.36 Beta 默认开启，1.37 GA 并锁定开启。gate 开启时 `applyFeatureGates` 把它**追加**到默认 MultiPoint 列表末尾（排在 `DefaultBinder` 之后），所以在 Filter 链上它最后执行。它实现了 PreFilter、Filter、`EnqueueExtensions` 和 `SignPlugin`，没有 Score，没有参数。

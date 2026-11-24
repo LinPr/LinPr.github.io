@@ -9,6 +9,10 @@ author: "LinPr"
 description: "CrossNodePreemption 想解决 in-tree 抢占无法跨节点选受害者的问题，典型场景是 PodTopologySpread 和 Pod 反亲和。本文拆解这份已被整体注释掉的示例代码：它如何用 DFS 枚举受害者子集、为什么复杂度是 2ⁿ、实现上的若干缺陷，以及 preemption.Evaluator 的扩展点为什么容纳不下它，最后看 Kubernetes 主干如何以 PodGroup 为单位引入跨节点受害者。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `CrossNodePreemption` 实现的扩展点（PostFilter）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/32.svg" link="/images/posts/sched-plugins/callstack/32.svg" caption="CrossNodePreemption 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 上一篇的 [PreemptionToleration](/posts/sched-plugin-31-preemption-toleration/) 在 in-tree 抢占的骨架上改了「谁可以被抢」。本篇的 `CrossNodePreemption` 想改的是另一个更根本的约束：受害者必须和抢占者在同一个节点上。
 
 它在 scheduler-plugins 里的处境很特殊。本文基于 scheduler-plugins 提交 `cfeb3aa`（依赖 Kubernetes v1.36.4），在这个版本里，`cmd/scheduler/main.go` 中它的注册是注释掉的：

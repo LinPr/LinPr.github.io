@@ -9,6 +9,10 @@ author: "LinPr"
 description: "SchedulingGates 是默认 Profile 里第一个插件，只实现 PreEnqueue：spec.schedulingGates 非空的 Pod 连 activeQ 都进不去。本文从插件的 20 行代码出发，拆开调度队列里 PreEnqueue 的调用位置、gated 实体在 unschedulableEntities 里如何被跳过、gate 删光后 Pod 怎么回到队列，以及 API Server 对 schedulingGates 只减不增的校验规则。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `SchedulingGates` 实现的扩展点（PreEnqueue）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/01.svg" link="/images/posts/sched-plugins/callstack/01.svg" caption="SchedulingGates 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-00-journey/)画了一张总地图：Pod 被 informer 发现后进入调度队列 `PriorityQueue`，经过 PreEnqueue 才能进入 `activeQ`，出队后跑一个调度周期，失败了再由 QueueingHint 决定什么时候回来。这一篇从地图的最左端开始，读默认 Profile 里排在第一位的插件 `SchedulingGates`。
 
 它在 `default_plugins.go` 的 `MultiPoint` 列表里排第一，默认启用，不受任何 feature gate 控制（对应的 `PodSchedulingReadiness` 已经 GA 并从 `kube_features.go` 中移除）。它只实现了两个接口：`PreEnqueuePlugin` 和 `EnqueueExtensions`，没有 Filter，没有 Score，也不参与调度周期。本文基于 Kubernetes master 提交 `aabdf5a2`。

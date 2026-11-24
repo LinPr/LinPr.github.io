@@ -9,6 +9,10 @@ author: "LinPr"
 description: "NodeResourceTopologyMatch 读取 NodeResourceTopology CRD，在调度阶段模拟 kubelet Topology Manager 的 single-numa-node 准入，避免 Pod 被调度后又因 TopologyAffinityError 失败。本文拆解 NRT 数据模型、Filter 的位图算法、四种 Score 策略的真实行为、Passthrough/OverReserve/DiscardReserved 三种缓存、外来 Pod 检测、抢占模拟，以及只有读代码才看得到的坑。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `NodeResourceTopologyMatch` 实现的扩展点（PreFilter、Filter、Score、Reserve、PostBind）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/30.svg" link="/images/posts/sched-plugins/callstack/30.svg" caption="NodeResourceTopologyMatch 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 上一篇 [NetworkOverhead](/posts/sched-plugin-29-network-overhead/) 用 CRD 描述的网络代价给节点打分。本篇的 `NodeResourceTopologyMatch`（下文简称 NRT 插件）同样依赖一个 CRD，但它关心的不是节点之间，而是节点内部：一台机器上有几个 NUMA 节点、每个 NUMA 节点还剩多少 CPU、内存和设备。
 
 它挂在 PreFilter、Filter、Score、Reserve、PostBind 五个扩展点上，并实现了 `EnqueueExtensions`。和所有 scheduler-plugins 插件一样，它不在 kube-scheduler 的默认 Profile 里，需要用 scheduler-plugins 编译出的调度器二进制（`cmd/scheduler/main.go` 里通过 `app.WithPlugin(noderesourcetopology.Name, noderesourcetopology.New)` 注册）并在 Profile 中显式启用，没有 feature gate。本文基于 scheduler-plugins 提交 `cfeb3aa`（依赖 Kubernetes v1.36.4），涉及 kube-scheduler 框架的部分以同一版本为准。

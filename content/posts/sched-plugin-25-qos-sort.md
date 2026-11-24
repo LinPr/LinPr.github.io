@@ -9,6 +9,10 @@ author: "LinPr"
 description: "QOSSort 是 out-of-tree 部分的第一个插件，在 PrioritySort 的「优先级、入队时间」两级比较之间插入 QoS 等级。本文先交代 scheduler-plugins 的插件如何编译进另一个调度器、如何由 Profile 启用，以及为什么一个进程只能有一个 QueueSort，再拆 Less 与 compQOS 的实现和它与 PrioritySort 的差异。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `QOSSort` 实现的扩展点（QueueSort）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/25.svg" link="/images/posts/sched-plugins/callstack/25.svg" caption="QOSSort 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-24-default-binder/)的 DefaultBinder 把 `Binding` 写进 API Server，一个 Pod 在默认 Profile 里的旅程到此走完。从这一篇开始，系列转向 [kubernetes-sigs/scheduler-plugins](https://github.com/kubernetes-sigs/scheduler-plugins)：这些插件不随 Kubernetes 发布，要自己编译、部署、配置才会生效。本文基于 scheduler-plugins 提交 `cfeb3aa`，它依赖的 Kubernetes 版本是 v1.36.4，框架代码的引用以 v1.36.4 为准；和 Kubernetes master（提交 `aabdf5a2`）有差异的地方会单独指出。
 
 QOSSort 是 out-of-tree 插件里最小的一个：只实现 QueueSort 扩展点，三十行代码，README 里把成熟度标成 Sample（示范用途）。它适合作为第一篇，因为在读它之前，需要先把「out-of-tree 插件到底跑在哪里」讲清楚，而这件事对后面每一篇都适用。

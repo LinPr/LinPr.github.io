@@ -9,6 +9,10 @@ author: "LinPr"
 description: "PodTopologySpread 按 zone、节点等拓扑域打散副本。本文从源码拆解 PreFilter 计数表与关键路径、skew 判定、minDomains 与节点包含策略、matchLabelKeys、默认约束、Score 算例和 AddPod/RemovePod。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `PodTopologySpread` 实现的扩展点（PreFilter、Filter、PreScore、Score、NormalizeScore）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/13.svg" link="/images/posts/sched-plugins/callstack/13.svg" caption="PodTopologySpread 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-12-volume-zone/)的 `VolumeZone` 只关心「Pod 用到的卷在哪个 zone」，它看的是存储对象。从这一篇开始，Filter 链进入另一类插件：判断一个节点是否可行，不仅取决于节点本身，还取决于**集群里其它 Pod 分布在哪里**。`PodTopologySpread` 是这类插件的第一个，紧接着的 `InterPodAffinity` 是第二个。
 
 本文基于 Kubernetes master 提交 `aabdf5a2`（1.38 开发周期）。`PodTopologySpread` 默认启用，在默认 Profile 的 MultiPoint 列表里排在 `VolumeZone` 之后、`InterPodAffinity` 之前，打分权重为 2。它实现了 PreFilter（带 `PreFilterExtensions`）、Filter、PreScore、Score（带 `NormalizeScore`）、`EnqueueExtensions` 和 `SignPlugin`。相关的 feature gate 有三个：

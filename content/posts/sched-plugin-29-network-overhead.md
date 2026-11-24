@@ -9,6 +9,10 @@ author: "LinPr"
 description: "NetworkOverhead 读取 AppGroup 里的服务依赖和 NetworkTopology 里的 region/zone 代价矩阵，在 PreFilter 中为每个节点预先算出依赖的满足/违反数和累计网络代价，Filter 按多数票过滤，Score 把代价反转成分数。本文拆两个 CRD 的结构、weightsName 与代价表的查找、逐对判定规则，并用一个两级拓扑的算例算出每个节点的计数与得分。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `NetworkOverhead` 实现的扩展点（PreFilter、Filter、Score、NormalizeScore）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/29.svg" link="/images/posts/sched-plugins/callstack/29.svg" caption="NetworkOverhead 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-28-capacity-scheduling/)的 CapacityScheduling 在 PreFilter 和 PostFilter 上做多租户配额。NetworkOverhead 同样从 PreFilter 开始介入，但关心的是另一类约束：一个微服务的 Pod 放在哪里，它和它所调用的服务之间的网络代价最小。它实现 PreFilter（带空的 `PreFilterExtensions`）、Filter、Score 和 NormalizeScore，不在默认 Profile 里，需要通过 scheduler-plugins 编译出的调度器启用，常与[第 26 篇](/posts/sched-plugin-26-topological-sort/)的 TopologicalSort 一起配置。`pkg/networkaware/README.md` 把它的成熟度标为 Sample。
 
 本文基于 scheduler-plugins `cfeb3aa`（依赖 Kubernetes v1.36.4）；两个 CRD 的类型来自依赖模块 `github.com/diktyo-io/appgroup-api v1.0.1-alpha` 和 `github.com/diktyo-io/networktopology-api v1.0.1-alpha`。

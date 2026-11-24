@@ -1,325 +1,436 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1564" width="1240" height="1564" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1260 2084" width="1260" height="2084" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
 <defs><marker id="a" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 z" fill="#94a3b8"/></marker></defs>
-<rect width="1240" height="1564" fill="#ffffff"/>
-<text x="620.0" y="36.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">从队列到绑定：调度器的调用栈与关键决策</text>
-<text x="620.0" y="62.0" font-size="12.5" fill="#64748b" text-anchor="middle">缩进表示调用关系；黄色底的行直接执行插件钩子；右侧加粗的是这一步的关键结论，读懂这些就读懂了调度主流程</text>
-<text x="620.0" y="86.0" font-size="11.8" fill="#64748b" text-anchor="middle">文件：pkg/scheduler/schedule_one.go · algorithm.go · framework/runtime/framework.go · backend/queue/scheduling_queue.go</text>
-<rect x="26" y="116.0" width="1194" height="26.5" fill="#f8fafc"/>
+<rect width="1260" height="2084" fill="#ffffff"/>
+<text x="630.0" y="36.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">从队列到绑定：调度器的调用栈与关键决策</text>
+<text x="630.0" y="62.0" font-size="12.5" fill="#64748b" text-anchor="middle">缩进表示调用关系；黄色底的行直接执行插件钩子；右侧加粗的是这一步的关键结论</text>
+<text x="630.0" y="86.0" font-size="11.6" fill="#64748b" text-anchor="middle">pkg/scheduler：schedule_one.go · schedule_one_podgroup.go · algorithm.go · framework/runtime/framework.go · backend/queue/scheduling_queue.go</text>
+<rect x="26" y="116.0" width="1214" height="26.5" fill="#f8fafc"/>
 <rect x="12" y="119.0" width="5" height="20.5" rx="2.5" fill="#7c3aed" opacity="0.85"/>
 <text x="40.0" y="133.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">PriorityQueue.moveToActiveQ</text>
-<text x="520.0" y="133.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">入队前先过 PreEnqueue：</tspan><tspan>被拦下的 Pod 以 gated 状态留在 unschedulableEntities，不消耗调度周期</tspan></text>
+<text x="540.0" y="133.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">入队前先过 PreEnqueue：</tspan><tspan>被拦下的 Pod 以 gated 状态留在 unschedulableEntities，不消耗调度周期</tspan></text>
 <line x1="48.0" y1="129.0" x2="48.0" y2="155.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="48.0" y1="155.5" x2="55.0" y2="155.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="48.0" y1="155.5" x2="54.0" y2="155.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="145.5" width="5" height="20.5" rx="2.5" fill="#7c3aed" opacity="0.85"/>
-<text x="61.0" y="159.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">runPreEnqueuePlugins</text>
-<rect x="26" y="169.0" width="1194" height="26.5" fill="#f8fafc"/>
-<line x1="69.0" y1="155.5" x2="69.0" y2="182.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="69.0" y1="182.0" x2="76.0" y2="182.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="60.0" y="159.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">runPreEnqueuePlugins</text>
+<rect x="26" y="169.0" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="68.0" y1="155.5" x2="68.0" y2="182.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="68.0" y1="182.0" x2="74.0" y2="182.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="172.0" width="5" height="20.5" rx="2.5" fill="#7c3aed" opacity="0.85"/>
-<text x="82.0" y="186.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">runPreEnqueuePluginsForPod</text>
-<text x="520.0" y="186.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">插件存在 map 里，顺序不固定：</tspan><tspan>上次拦住它的 GatingPlugin 先跑，任一拒绝即 gated</tspan></text>
-<rect x="95.0" y="197.5" width="1125.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
-<line x1="90.0" y1="182.0" x2="90.0" y2="208.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="90.0" y1="208.5" x2="97.0" y2="208.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="80.0" y="186.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">runPreEnqueuePluginsForPod</text>
+<text x="540.0" y="186.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">插件存在 map 里，顺序不固定：</tspan><tspan>上次拦住它的 GatingPlugin 先跑，任一拒绝即 gated</tspan></text>
+<rect x="92.0" y="197.5" width="1148.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="88.0" y1="182.0" x2="88.0" y2="208.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="88.0" y1="208.5" x2="94.0" y2="208.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="198.5" width="5" height="20.5" rx="2.5" fill="#7c3aed" opacity="0.85"/>
-<text x="103.0" y="212.8" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPreEnqueuePlugin</text>
-<rect x="520.0" y="200.5" width="128.2" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
-<text x="529.0" y="212.5" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PreEnqueue()</text>
-<text x="658.2" y="212.7" font-size="12.2" fill="#475569"><tspan>SchedulingGates、DynamicResources、DefaultPreemption、GangScheduling</tspan></text>
-<line x1="28.0" y1="222.0" x2="1220.0" y2="222.0" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="100.0" y="212.8" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPreEnqueuePlugin</text>
+<rect x="540.0" y="200.5" width="128.2" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
+<text x="549.0" y="212.5" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PreEnqueue()</text>
+<text x="678.2" y="212.7" font-size="12.2" fill="#475569"><tspan>SchedulingGates、DynamicResources、DefaultPreemption、GangScheduling</tspan></text>
+<line x1="28.0" y1="222.0" x2="1240.0" y2="222.0" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="5 4"/>
 <rect x="12" y="225.0" width="5" height="20.5" rx="2.5" fill="#7c3aed" opacity="0.85"/>
 <text x="40.0" y="239.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">ScheduleOne</text>
-<text x="520.0" y="239.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">串行循环，一次只处理一个实体：</tspan><tspan>实体可能是 Pod，也可能是整个 PodGroup（走 scheduleOnePodGroup）</tspan></text>
+<text x="540.0" y="239.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">串行循环，一次只处理一个实体：</tspan><tspan>实体可能是 Pod，也可能是整个 PodGroup（走 scheduleOnePodGroup）</tspan></text>
 <line x1="48.0" y1="235.0" x2="48.0" y2="261.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="48.0" y1="261.5" x2="55.0" y2="261.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="48.0" y1="261.5" x2="54.0" y2="261.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="251.5" width="5" height="20.5" rx="2.5" fill="#7c3aed" opacity="0.85"/>
-<text x="61.0" y="265.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">NextEntity = PriorityQueue.Pop</text>
-<text x="520.0" y="265.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">阻塞直到 activeQ 有实体：</tspan><tspan>取堆顶，即 QueueSort 认为最该先调度的</tspan></text>
-<rect x="26" y="275.0" width="1194" height="26.5" fill="#f8fafc"/>
-<rect x="74.0" y="277.0" width="1146.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
-<line x1="69.0" y1="261.5" x2="69.0" y2="288.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="69.0" y1="288.0" x2="76.0" y2="288.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="60.0" y="265.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">NextEntity = PriorityQueue.Pop</text>
+<text x="540.0" y="265.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">阻塞直到 activeQ 有实体：</tspan><tspan>取堆顶，即 QueueSort 认为最该先调度的</tspan></text>
+<rect x="26" y="275.0" width="1214" height="26.5" fill="#f8fafc"/>
+<rect x="72.0" y="277.0" width="1168.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="68.0" y1="261.5" x2="68.0" y2="288.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="68.0" y1="288.0" x2="74.0" y2="288.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="278.0" width="5" height="20.5" rx="2.5" fill="#7c3aed" opacity="0.85"/>
-<text x="82.0" y="292.3" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">lessFn（包装 QueueSortFunc）</text>
-<rect x="520.0" y="280.0" width="135.5" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
-<text x="529.0" y="292.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">QueueSort.Less()</text>
-<text x="665.5" y="292.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">整个进程只有一个 QueueSort：</tspan><tspan>所有 profile 必须一致；默认先比优先级，再比入队时间</tspan></text>
+<text x="80.0" y="292.3" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">lessFn（包装 QueueSortFunc）</text>
+<rect x="540.0" y="280.0" width="135.5" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
+<text x="549.0" y="292.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">QueueSort.Less()</text>
+<text x="685.5" y="292.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">整个进程只有一个 QueueSort：</tspan><tspan>所有 profile 必须一致；默认先比优先级，再比入队时间</tspan></text>
 <line x1="48.0" y1="235.0" x2="48.0" y2="314.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="48.0" y1="314.5" x2="55.0" y2="314.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="48.0" y1="314.5" x2="54.0" y2="314.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="304.5" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="61.0" y="318.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">scheduleOnePod</text>
-<text x="520.0" y="318.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">新建 CycleState：</tspan><tspan>插件在各扩展点之间靠它传数据，抢占模拟时会 Clone</tspan></text>
-<rect x="26" y="328.0" width="1194" height="26.5" fill="#f8fafc"/>
-<line x1="69.0" y1="314.5" x2="69.0" y2="341.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="69.0" y1="341.0" x2="76.0" y2="341.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="60.0" y="318.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">scheduleOnePod</text>
+<text x="540.0" y="318.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">新建 CycleState：</tspan><tspan>插件在各扩展点之间靠它传数据，抢占模拟时会 Clone</tspan></text>
+<rect x="26" y="328.0" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="68.0" y1="314.5" x2="68.0" y2="341.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="68.0" y1="341.0" x2="74.0" y2="341.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="331.0" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="82.0" y="345.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">frameworkForPod</text>
-<text x="520.0" y="345.2" font-size="12.2" fill="#475569"><tspan>按 spec.schedulerName 选出 profile（插件链与权重）</tspan></text>
-<line x1="69.0" y1="314.5" x2="69.0" y2="367.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="69.0" y1="367.5" x2="76.0" y2="367.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="80.0" y="345.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">frameworkForPod</text>
+<text x="540.0" y="345.2" font-size="12.2" fill="#475569"><tspan>按 spec.schedulerName 选出 profile（插件链与权重）</tspan></text>
+<line x1="68.0" y1="314.5" x2="68.0" y2="367.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="68.0" y1="367.5" x2="74.0" y2="367.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="357.5" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="82.0" y="371.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">schedulingCycle</text>
-<text x="520.0" y="371.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">成功 → go 绑定；失败 → handleSchedulingFailure</tspan></text>
-<rect x="26" y="381.0" width="1194" height="26.5" fill="#f8fafc"/>
-<line x1="90.0" y1="367.5" x2="90.0" y2="394.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="90.0" y1="394.0" x2="97.0" y2="394.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="80.0" y="371.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">schedulingCycle</text>
+<text x="540.0" y="371.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">成功 → go 绑定；失败 → handleSchedulingFailure</tspan></text>
+<rect x="26" y="381.0" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="88.0" y1="367.5" x2="88.0" y2="394.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="88.0" y1="394.0" x2="94.0" y2="394.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="384.0" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="103.0" y="398.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">Cache.UpdateSnapshot</text>
-<text x="520.0" y="398.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">整个周期只看这一份快照：</tspan><tspan>informer 的并发更新不会影响本轮判断</tspan></text>
-<line x1="90.0" y1="367.5" x2="90.0" y2="420.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="90.0" y1="420.5" x2="97.0" y2="420.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="100.0" y="398.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">Cache.UpdateSnapshot</text>
+<text x="540.0" y="398.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">整个周期只看这一份快照：</tspan><tspan>informer 的并发更新不会影响本轮判断</tspan></text>
+<line x1="88.0" y1="367.5" x2="88.0" y2="420.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="88.0" y1="420.5" x2="94.0" y2="420.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="410.5" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="103.0" y="424.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">schedulingAlgorithm</text>
-<text x="520.0" y="424.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">只有返回 FitError 才会抢占：</tspan><tspan>PodGroup 周期里单个 Pod 不跑 PostFilter</tspan></text>
-<rect x="26" y="434.0" width="1194" height="26.5" fill="#f8fafc"/>
-<line x1="111.0" y1="420.5" x2="111.0" y2="447.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="111.0" y1="447.0" x2="118.0" y2="447.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="100.0" y="424.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">schedulingAlgorithm</text>
+<text x="540.0" y="424.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">只有返回 FitError 才会抢占：</tspan><tspan>PodGroup 周期里单个 Pod 不跑 PostFilter</tspan></text>
+<rect x="26" y="434.0" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="108.0" y1="420.5" x2="108.0" y2="447.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="108.0" y1="447.0" x2="114.0" y2="447.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="437.0" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="124.0" y="451.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">SchedulePod</text>
-<text x="520.0" y="451.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">只有 1 个可行节点时直接选它：</tspan><tspan>跳过整个打分阶段</tspan></text>
-<line x1="132.0" y1="447.0" x2="132.0" y2="473.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="132.0" y1="473.5" x2="139.0" y2="473.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="120.0" y="451.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">SchedulePod</text>
+<text x="540.0" y="451.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">只有 1 个可行节点时直接选它：</tspan><tspan>跳过整个打分阶段</tspan></text>
+<line x1="128.0" y1="447.0" x2="128.0" y2="473.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="128.0" y1="473.5" x2="134.0" y2="473.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="463.5" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="145.0" y="477.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">findNodesThatFitPod</text>
-<text x="520.0" y="477.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">三步依次尝试：</tspan><tspan>PreFilter → 提名节点 → 遍历候选节点</tspan></text>
-<rect x="26" y="487.0" width="1194" height="26.5" fill="#f8fafc"/>
-<line x1="153.0" y1="473.5" x2="153.0" y2="500.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="153.0" y1="500.0" x2="160.0" y2="500.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="140.0" y="477.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">findNodesThatFitPod</text>
+<text x="540.0" y="477.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">三步依次尝试：</tspan><tspan>PreFilter → 提名节点 → 遍历候选节点</tspan></text>
+<rect x="26" y="487.0" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="148.0" y1="473.5" x2="148.0" y2="500.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="148.0" y1="500.0" x2="154.0" y2="500.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="490.0" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="166.0" y="504.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">prefilterNodes</text>
-<line x1="174.0" y1="500.0" x2="174.0" y2="526.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="174.0" y1="526.5" x2="181.0" y2="526.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="160.0" y="504.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">prefilterNodes</text>
+<line x1="168.0" y1="500.0" x2="168.0" y2="526.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="168.0" y1="526.5" x2="174.0" y2="526.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="516.5" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="187.0" y="530.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPreFilterPlugins</text>
-<text x="520.0" y="530.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">PreFilterResult 求交集缩小候选：</tspan><tspan>Skip 跳过同插件的 Filter；UnschedulableAndUnresolvable 立即结束本轮</tspan></text>
-<rect x="26" y="540.0" width="1194" height="26.5" fill="#f8fafc"/>
-<rect x="200.0" y="542.0" width="1020.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
-<line x1="195.0" y1="526.5" x2="195.0" y2="553.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="195.0" y1="553.0" x2="202.0" y2="553.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="180.0" y="530.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPreFilterPlugins</text>
+<text x="540.0" y="530.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">PreFilterResult 求交集缩小候选：</tspan><tspan>Skip 跳过同插件的 Filter；UnschedulableAndUnresolvable 立即结束本轮</tspan></text>
+<rect x="26" y="540.0" width="1214" height="26.5" fill="#f8fafc"/>
+<rect x="192.0" y="542.0" width="1048.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="188.0" y1="526.5" x2="188.0" y2="553.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="188.0" y1="553.0" x2="194.0" y2="553.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="543.0" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="208.0" y="557.3" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPreFilterPlugin</text>
-<rect x="520.0" y="545.0" width="120.8" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
-<text x="529.0" y="557.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PreFilter()</text>
-<text x="650.8" y="557.2" font-size="12.2" fill="#475569"><tspan>预计算写入 CycleState，供 Filter/Score 读取</tspan></text>
-<line x1="153.0" y1="473.5" x2="153.0" y2="579.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="153.0" y1="579.5" x2="160.0" y2="579.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="200.0" y="557.3" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPreFilterPlugin</text>
+<rect x="540.0" y="545.0" width="120.8" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
+<text x="549.0" y="557.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PreFilter()</text>
+<text x="670.8" y="557.2" font-size="12.2" fill="#475569"><tspan>预计算写入 CycleState，供 Filter/Score 读取</tspan></text>
+<line x1="148.0" y1="473.5" x2="148.0" y2="579.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="148.0" y1="579.5" x2="154.0" y2="579.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="569.5" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="166.0" y="583.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">evaluateNominatedNode</text>
-<text x="520.0" y="583.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">提名节点优先单独试：</tspan><tspan>通过就直接返回，不再遍历其他节点</tspan></text>
-<rect x="26" y="593.0" width="1194" height="26.5" fill="#f8fafc"/>
-<line x1="153.0" y1="473.5" x2="153.0" y2="606.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="153.0" y1="606.0" x2="160.0" y2="606.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="160.0" y="583.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">evaluateNominatedNode</text>
+<text x="540.0" y="583.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">提名节点优先单独试：</tspan><tspan>通过就直接返回，不再遍历其他节点</tspan></text>
+<rect x="26" y="593.0" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="148.0" y1="473.5" x2="148.0" y2="606.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="148.0" y1="606.0" x2="154.0" y2="606.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="596.0" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="166.0" y="610.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">findNodesThatPassFilters</text>
-<text x="520.0" y="610.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">节点间并行，找够就停：</tspan><tspan>≥100 个节点时只找一部分：比例 50−N/125 %，至少 5%、至少 100 个</tspan></text>
-<line x1="174.0" y1="606.0" x2="174.0" y2="632.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="174.0" y1="632.5" x2="181.0" y2="632.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="160.0" y="610.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">findNodesThatPassFilters</text>
+<text x="540.0" y="610.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">节点间并行，找够就停：</tspan><tspan>≥100 个节点时只找一部分：比例 50−N/125 %，至少 5%、至少 100 个</tspan></text>
+<line x1="168.0" y1="606.0" x2="168.0" y2="632.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="168.0" y1="632.5" x2="174.0" y2="632.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="622.5" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="187.0" y="636.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunFilterPluginsWithNominatedPods</text>
-<text x="520.0" y="636.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">把已提名的更高优先级 Pod 也算进去：</tspan><tspan>先带上它们过一遍，再不带过一遍，两次都通过才算可行</tspan></text>
-<rect x="26" y="646.0" width="1194" height="26.5" fill="#f8fafc"/>
-<line x1="195.0" y1="632.5" x2="195.0" y2="659.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="195.0" y1="659.0" x2="202.0" y2="659.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="180.0" y="636.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunFilterPluginsWithNominatedPods</text>
+<text x="540.0" y="636.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">把已提名的更高优先级 Pod 也算进去：</tspan><tspan>先带上它们过一遍，再不带过一遍，两次都通过才算可行</tspan></text>
+<rect x="26" y="646.0" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="188.0" y1="632.5" x2="188.0" y2="659.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="188.0" y1="659.0" x2="194.0" y2="659.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="649.0" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="208.0" y="663.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunFilterPlugins</text>
-<text x="520.0" y="663.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">同一节点上插件串行：</tspan><tspan>一个插件失败，这个节点就出局</tspan></text>
-<rect x="221.0" y="674.5" width="999.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
-<line x1="216.0" y1="659.0" x2="216.0" y2="685.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="216.0" y1="685.5" x2="223.0" y2="685.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="200.0" y="663.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunFilterPlugins</text>
+<text x="540.0" y="663.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">同一节点上插件串行：</tspan><tspan>一个插件失败，这个节点就出局</tspan></text>
+<rect x="212.0" y="674.5" width="1028.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="208.0" y1="659.0" x2="208.0" y2="685.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="208.0" y1="685.5" x2="214.0" y2="685.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="675.5" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="229.0" y="689.8" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runFilterPlugin</text>
-<rect x="520.0" y="677.5" width="98.8" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
-<text x="529.0" y="689.5" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.Filter()</text>
-<text x="628.8" y="689.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">失败码决定能否抢占：</tspan><tspan>Unschedulable 可以；UnschedulableAndUnresolvable 不行</tspan></text>
-<rect x="26" y="699.0" width="1194" height="26.5" fill="#f8fafc"/>
-<line x1="132.0" y1="447.0" x2="132.0" y2="712.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="132.0" y1="712.0" x2="139.0" y2="712.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="220.0" y="689.8" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runFilterPlugin</text>
+<rect x="540.0" y="677.5" width="98.8" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
+<text x="549.0" y="689.5" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.Filter()</text>
+<text x="648.8" y="689.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">失败码决定能否抢占：</tspan><tspan>Unschedulable 可以；UnschedulableAndUnresolvable 不行</tspan></text>
+<rect x="26" y="699.0" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="128.0" y1="447.0" x2="128.0" y2="712.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="128.0" y1="712.0" x2="134.0" y2="712.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="702.0" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="145.0" y="716.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">prioritizeNodes</text>
-<text x="520.0" y="716.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">总分 = Σ 归一化分 × 权重：</tspan><tspan>默认权重：TaintToleration 3，亲和/打散/DRA 2，其余 1</tspan></text>
-<line x1="153.0" y1="712.0" x2="153.0" y2="738.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="153.0" y1="738.5" x2="160.0" y2="738.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="140.0" y="716.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">prioritizeNodes</text>
+<text x="540.0" y="716.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">总分 = Σ 归一化分 × 权重：</tspan><tspan>默认权重：TaintToleration 3，亲和/打散/DRA 2，其余 1</tspan></text>
+<line x1="148.0" y1="712.0" x2="148.0" y2="738.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="148.0" y1="738.5" x2="154.0" y2="738.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="728.5" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="166.0" y="742.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPreScorePlugins</text>
-<text x="520.0" y="742.7" font-size="12.2" fill="#475569"><tspan>返回 Skip 的插件跳过 Score</tspan></text>
-<rect x="26" y="752.0" width="1194" height="26.5" fill="#f8fafc"/>
-<rect x="179.0" y="754.0" width="1041.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
-<line x1="174.0" y1="738.5" x2="174.0" y2="765.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="174.0" y1="765.0" x2="181.0" y2="765.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="160.0" y="742.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPreScorePlugins</text>
+<text x="540.0" y="742.7" font-size="12.2" fill="#475569"><tspan>返回 Skip 的插件跳过 Score</tspan></text>
+<rect x="26" y="752.0" width="1214" height="26.5" fill="#f8fafc"/>
+<rect x="172.0" y="754.0" width="1068.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="168.0" y1="738.5" x2="168.0" y2="765.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="168.0" y1="765.0" x2="174.0" y2="765.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="755.0" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="187.0" y="769.3" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPreScorePlugin</text>
-<rect x="520.0" y="757.0" width="113.5" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
-<text x="529.0" y="769.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PreScore()</text>
-<line x1="153.0" y1="712.0" x2="153.0" y2="791.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="153.0" y1="791.5" x2="160.0" y2="791.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="180.0" y="769.3" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPreScorePlugin</text>
+<rect x="540.0" y="757.0" width="113.5" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
+<text x="549.0" y="769.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PreScore()</text>
+<line x1="148.0" y1="712.0" x2="148.0" y2="791.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="148.0" y1="791.5" x2="154.0" y2="791.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="781.5" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="166.0" y="795.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunScorePlugins</text>
-<rect x="26" y="805.0" width="1194" height="26.5" fill="#f8fafc"/>
-<line x1="174.0" y1="791.5" x2="174.0" y2="818.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="174.0" y1="818.0" x2="181.0" y2="818.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="160.0" y="795.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunScorePlugins</text>
+<rect x="26" y="805.0" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="168.0" y1="791.5" x2="168.0" y2="818.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="168.0" y1="818.0" x2="174.0" y2="818.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="808.0" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="187.0" y="822.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">runRawScorePlugins</text>
-<text x="520.0" y="822.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">按节点并行</tspan></text>
-<rect x="200.0" y="833.5" width="1020.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
-<line x1="195.0" y1="818.0" x2="195.0" y2="844.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="195.0" y1="844.5" x2="202.0" y2="844.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="180.0" y="822.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">runRawScorePlugins</text>
+<text x="540.0" y="822.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">按节点并行</tspan></text>
+<rect x="192.0" y="833.5" width="1048.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="188.0" y1="818.0" x2="188.0" y2="844.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="188.0" y1="844.5" x2="194.0" y2="844.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="834.5" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="208.0" y="848.8" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runScorePlugin</text>
-<rect x="520.0" y="836.5" width="91.4" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
-<text x="529.0" y="848.5" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.Score()</text>
-<text x="621.4" y="848.7" font-size="12.2" fill="#475569"><tspan>原始分，量纲由插件自定</tspan></text>
-<rect x="26" y="858.0" width="1194" height="26.5" fill="#f8fafc"/>
-<line x1="174.0" y1="791.5" x2="174.0" y2="871.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="174.0" y1="871.0" x2="181.0" y2="871.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="200.0" y="848.8" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runScorePlugin</text>
+<rect x="540.0" y="836.5" width="91.4" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
+<text x="549.0" y="848.5" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.Score()</text>
+<text x="641.4" y="848.7" font-size="12.2" fill="#475569"><tspan>原始分，量纲由插件自定</tspan></text>
+<rect x="26" y="858.0" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="168.0" y1="791.5" x2="168.0" y2="871.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="168.0" y1="871.0" x2="174.0" y2="871.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="861.0" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="187.0" y="875.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">normalizeScores</text>
-<text x="520.0" y="875.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">按插件并行：</tspan><tspan>把原始分映射到 0–100</tspan></text>
-<rect x="200.0" y="886.5" width="1020.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
-<line x1="195.0" y1="871.0" x2="195.0" y2="897.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="195.0" y1="897.5" x2="202.0" y2="897.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="180.0" y="875.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">normalizeScores</text>
+<text x="540.0" y="875.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">按插件并行：</tspan><tspan>把原始分映射到 0–100</tspan></text>
+<rect x="192.0" y="886.5" width="1048.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="188.0" y1="871.0" x2="188.0" y2="897.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="188.0" y1="897.5" x2="194.0" y2="897.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="887.5" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="208.0" y="901.8" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runScoreExtension</text>
-<rect x="520.0" y="889.5" width="135.5" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
-<text x="529.0" y="901.5" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">NormalizeScore()</text>
-<rect x="26" y="911.0" width="1194" height="26.5" fill="#f8fafc"/>
-<line x1="111.0" y1="420.5" x2="111.0" y2="924.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="111.0" y1="924.0" x2="118.0" y2="924.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="200.0" y="901.8" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runScoreExtension</text>
+<rect x="540.0" y="889.5" width="135.5" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
+<text x="549.0" y="901.5" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">NormalizeScore()</text>
+<rect x="26" y="911.0" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="108.0" y1="420.5" x2="108.0" y2="924.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="108.0" y1="924.0" x2="114.0" y2="924.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="914.0" width="5" height="20.5" rx="2.5" fill="#ea580c" opacity="0.85"/>
-<text x="124.0" y="928.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPostFilterPlugins</text>
-<text x="520.0" y="928.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">抢占成功本轮也算失败：</tspan><tspan>只删受害者并写 nominatedNodeName，下一轮才真正放上去</tspan></text>
-<rect x="137.0" y="939.5" width="1083.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
-<line x1="132.0" y1="924.0" x2="132.0" y2="950.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="132.0" y1="950.5" x2="139.0" y2="950.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="120.0" y="928.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPostFilterPlugins</text>
+<text x="540.0" y="928.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">抢占成功本轮也算失败：</tspan><tspan>只删受害者并写 nominatedNodeName，下一轮才真正放上去</tspan></text>
+<rect x="132.0" y="939.5" width="1108.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="128.0" y1="924.0" x2="128.0" y2="950.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="128.0" y1="950.5" x2="134.0" y2="950.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="940.5" width="5" height="20.5" rx="2.5" fill="#ea580c" opacity="0.85"/>
-<text x="145.0" y="954.8" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPostFilterPlugin</text>
-<rect x="520.0" y="942.5" width="128.2" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
-<text x="529.0" y="954.5" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PostFilter()</text>
-<text x="658.2" y="954.7" font-size="12.2" fill="#475569"><tspan>DynamicResources 先释放闲置 claim，再由 DefaultPreemption 驱逐</tspan></text>
-<rect x="26" y="964.0" width="1194" height="26.5" fill="#f8fafc"/>
-<line x1="90.0" y1="367.5" x2="90.0" y2="977.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="90.0" y1="977.0" x2="97.0" y2="977.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="140.0" y="954.8" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPostFilterPlugin</text>
+<rect x="540.0" y="942.5" width="128.2" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
+<text x="549.0" y="954.5" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PostFilter()</text>
+<text x="678.2" y="954.7" font-size="12.2" fill="#475569"><tspan>DynamicResources 先释放闲置 claim，再由 DefaultPreemption 驱逐</tspan></text>
+<rect x="26" y="964.0" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="88.0" y1="367.5" x2="88.0" y2="977.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="88.0" y1="977.0" x2="94.0" y2="977.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="967.0" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="103.0" y="981.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">prepareForBindingCycle</text>
-<line x1="111.0" y1="977.0" x2="111.0" y2="1003.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="111.0" y1="1003.5" x2="118.0" y2="1003.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="100.0" y="981.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">prepareForBindingCycle</text>
+<line x1="108.0" y1="977.0" x2="108.0" y2="1003.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="108.0" y1="1003.5" x2="114.0" y2="1003.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="993.5" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="124.0" y="1007.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">AssumeAndReserveInCache</text>
-<text x="520.0" y="1007.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">assume：缓存里先当它已在节点上：</tspan><tspan>下一个 Pod 的调度周期立刻看到资源被占，绑定才能异步</tspan></text>
-<rect x="26" y="1017.0" width="1194" height="26.5" fill="#f8fafc"/>
-<line x1="132.0" y1="1003.5" x2="132.0" y2="1030.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="132.0" y1="1030.0" x2="139.0" y2="1030.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="120.0" y="1007.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">AssumeAndReserveInCache</text>
+<text x="540.0" y="1007.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">assume：缓存里先当它已在节点上：</tspan><tspan>下一个 Pod 的调度周期立刻看到资源被占，绑定才能异步</tspan></text>
+<rect x="26" y="1017.0" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="128.0" y1="1003.5" x2="128.0" y2="1030.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="128.0" y1="1030.0" x2="134.0" y2="1030.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1020.0" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="145.0" y="1034.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">reserve</text>
-<line x1="153.0" y1="1030.0" x2="153.0" y2="1056.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="153.0" y1="1056.5" x2="160.0" y2="1056.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="140.0" y="1034.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">reserve</text>
+<line x1="148.0" y1="1030.0" x2="148.0" y2="1056.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="148.0" y1="1056.5" x2="154.0" y2="1056.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1046.5" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="166.0" y="1060.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunReservePluginsReserve</text>
-<text x="520.0" y="1060.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">有状态插件在这里记账：</tspan><tspan>任一失败，按逆序调用 Unreserve 退账</tspan></text>
-<rect x="26" y="1070.0" width="1194" height="26.5" fill="#f8fafc"/>
-<rect x="179.0" y="1072.0" width="1041.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
-<line x1="174.0" y1="1056.5" x2="174.0" y2="1083.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="174.0" y1="1083.0" x2="181.0" y2="1083.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="160.0" y="1060.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunReservePluginsReserve</text>
+<text x="540.0" y="1060.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">有状态插件在这里记账：</tspan><tspan>任一失败，按逆序调用 Unreserve 退账</tspan></text>
+<rect x="26" y="1070.0" width="1214" height="26.5" fill="#f8fafc"/>
+<rect x="172.0" y="1072.0" width="1068.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="168.0" y1="1056.5" x2="168.0" y2="1083.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="168.0" y1="1083.0" x2="174.0" y2="1083.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1073.0" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="187.0" y="1087.3" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runReservePluginReserve</text>
-<rect x="520.0" y="1075.0" width="106.1" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
-<text x="529.0" y="1087.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.Reserve()</text>
-<line x1="111.0" y1="977.0" x2="111.0" y2="1109.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="111.0" y1="1109.5" x2="118.0" y2="1109.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="180.0" y="1087.3" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runReservePluginReserve</text>
+<rect x="540.0" y="1075.0" width="106.1" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
+<text x="549.0" y="1087.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.Reserve()</text>
+<line x1="108.0" y1="977.0" x2="108.0" y2="1109.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="108.0" y1="1109.5" x2="114.0" y2="1109.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1099.5" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="124.0" y="1113.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPermitPlugins</text>
-<text x="520.0" y="1113.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">批准 / 拒绝 / 等待：</tspan><tspan>Wait 的 Pod 占着资源进等待表；Coscheduling 靠它凑齐一组</tspan></text>
-<rect x="26" y="1123.0" width="1194" height="26.5" fill="#f8fafc"/>
-<rect x="137.0" y="1125.0" width="1083.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
-<line x1="132.0" y1="1109.5" x2="132.0" y2="1136.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="132.0" y1="1136.0" x2="139.0" y2="1136.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="120.0" y="1113.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPermitPlugins</text>
+<text x="540.0" y="1113.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">批准 / 拒绝 / 等待：</tspan><tspan>Wait 的 Pod 占着资源进等待表；Coscheduling 靠它凑齐一组</tspan></text>
+<rect x="26" y="1123.0" width="1214" height="26.5" fill="#f8fafc"/>
+<rect x="132.0" y="1125.0" width="1108.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="128.0" y1="1109.5" x2="128.0" y2="1136.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="128.0" y1="1136.0" x2="134.0" y2="1136.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1126.0" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="145.0" y="1140.3" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPermitPlugin</text>
-<rect x="520.0" y="1128.0" width="98.8" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
-<text x="529.0" y="1140.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.Permit()</text>
-<line x1="48.0" y1="235.0" x2="48.0" y2="1162.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="48.0" y1="1162.5" x2="55.0" y2="1162.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="140.0" y="1140.3" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPermitPlugin</text>
+<rect x="540.0" y="1128.0" width="98.8" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
+<text x="549.0" y="1140.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.Permit()</text>
+<line x1="68.0" y1="314.5" x2="68.0" y2="1162.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="68.0" y1="1162.5" x2="74.0" y2="1162.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1152.5" width="5" height="20.5" rx="2.5" fill="#059669" opacity="0.85"/>
-<text x="61.0" y="1166.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">runBindingCycle</text>
-<text x="520.0" y="1166.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">go 出去，调度循环立刻处理下一个 Pod：</tspan><tspan>绑定周期之间并发执行</tspan></text>
-<rect x="26" y="1176.0" width="1194" height="26.5" fill="#f8fafc"/>
-<line x1="69.0" y1="1162.5" x2="69.0" y2="1189.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="69.0" y1="1189.0" x2="76.0" y2="1189.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="80.0" y="1166.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">go runBindingCycle</text>
+<text x="540.0" y="1166.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">调度周期成功后 go 出去，调度循环立刻处理下一个 Pod：</tspan><tspan>绑定周期之间并发执行</tspan></text>
+<rect x="26" y="1176.0" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="88.0" y1="1162.5" x2="88.0" y2="1189.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="88.0" y1="1189.0" x2="94.0" y2="1189.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1179.0" width="5" height="20.5" rx="2.5" fill="#059669" opacity="0.85"/>
-<text x="82.0" y="1193.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">bindingCycle</text>
-<line x1="90.0" y1="1189.0" x2="90.0" y2="1215.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="90.0" y1="1215.5" x2="97.0" y2="1215.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="100.0" y="1193.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">bindingCycle</text>
+<line x1="108.0" y1="1189.0" x2="108.0" y2="1215.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="108.0" y1="1215.5" x2="114.0" y2="1215.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1205.5" width="5" height="20.5" rx="2.5" fill="#059669" opacity="0.85"/>
-<text x="103.0" y="1219.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">WaitOnPermit</text>
-<text x="520.0" y="1219.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">阻塞到批准、拒绝或超时：</tspan><tspan>此后再失败不算「不可调度」，直接进 backoffQ 重试</tspan></text>
-<rect x="26" y="1229.0" width="1194" height="26.5" fill="#f8fafc"/>
-<line x1="90.0" y1="1189.0" x2="90.0" y2="1242.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="90.0" y1="1242.0" x2="97.0" y2="1242.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="120.0" y="1219.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">WaitOnPermit</text>
+<text x="540.0" y="1219.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">阻塞到批准、拒绝或超时：</tspan><tspan>此后再失败不算「不可调度」，直接进 backoffQ 重试</tspan></text>
+<rect x="26" y="1229.0" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="108.0" y1="1189.0" x2="108.0" y2="1242.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="108.0" y1="1242.0" x2="114.0" y2="1242.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1232.0" width="5" height="20.5" rx="2.5" fill="#059669" opacity="0.85"/>
-<text x="103.0" y="1246.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPreBindPlugins</text>
-<text x="520.0" y="1246.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">绑定前的 API 操作：</tspan><tspan>VolumeBinding 绑定 PVC、等动态供给；DRA 写回 claim</tspan></text>
-<rect x="116.0" y="1257.5" width="1104.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
-<line x1="111.0" y1="1242.0" x2="111.0" y2="1268.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="111.0" y1="1268.5" x2="118.0" y2="1268.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="120.0" y="1246.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPreBindPlugins</text>
+<text x="540.0" y="1246.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">绑定前的 API 操作：</tspan><tspan>VolumeBinding 绑定 PVC、等动态供给；DRA 写回 claim</tspan></text>
+<rect x="132.0" y="1257.5" width="1108.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="128.0" y1="1242.0" x2="128.0" y2="1268.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="128.0" y1="1268.5" x2="134.0" y2="1268.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1258.5" width="5" height="20.5" rx="2.5" fill="#059669" opacity="0.85"/>
-<text x="124.0" y="1272.8" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPreBindPlugin</text>
-<rect x="520.0" y="1260.5" width="106.1" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
-<text x="529.0" y="1272.5" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PreBind()</text>
-<rect x="26" y="1282.0" width="1194" height="26.5" fill="#f8fafc"/>
-<line x1="90.0" y1="1189.0" x2="90.0" y2="1295.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="90.0" y1="1295.0" x2="97.0" y2="1295.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="140.0" y="1272.8" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPreBindPlugin</text>
+<rect x="540.0" y="1260.5" width="106.1" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
+<text x="549.0" y="1272.5" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PreBind()</text>
+<rect x="26" y="1282.0" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="108.0" y1="1189.0" x2="108.0" y2="1295.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="108.0" y1="1295.0" x2="114.0" y2="1295.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1285.0" width="5" height="20.5" rx="2.5" fill="#059669" opacity="0.85"/>
-<text x="103.0" y="1299.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">bind</text>
-<line x1="111.0" y1="1295.0" x2="111.0" y2="1321.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="111.0" y1="1321.5" x2="118.0" y2="1321.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="120.0" y="1299.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">bind</text>
+<line x1="128.0" y1="1295.0" x2="128.0" y2="1321.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="128.0" y1="1321.5" x2="134.0" y2="1321.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1311.5" width="5" height="20.5" rx="2.5" fill="#059669" opacity="0.85"/>
-<text x="124.0" y="1325.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunBindPlugins</text>
-<text x="520.0" y="1325.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">第一个不返回 Skip 的插件生效：</tspan><tspan>默认 DefaultBinder：POST pods/binding 子资源</tspan></text>
-<rect x="26" y="1335.0" width="1194" height="26.5" fill="#f8fafc"/>
-<rect x="137.0" y="1337.0" width="1083.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
-<line x1="132.0" y1="1321.5" x2="132.0" y2="1348.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="132.0" y1="1348.0" x2="139.0" y2="1348.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="140.0" y="1325.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunBindPlugins</text>
+<text x="540.0" y="1325.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">第一个不返回 Skip 的插件生效：</tspan><tspan>默认 DefaultBinder：POST pods/binding 子资源</tspan></text>
+<rect x="26" y="1335.0" width="1214" height="26.5" fill="#f8fafc"/>
+<rect x="152.0" y="1337.0" width="1088.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="148.0" y1="1321.5" x2="148.0" y2="1348.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="148.0" y1="1348.0" x2="154.0" y2="1348.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1338.0" width="5" height="20.5" rx="2.5" fill="#059669" opacity="0.85"/>
-<text x="145.0" y="1352.3" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runBindPlugin</text>
-<rect x="520.0" y="1340.0" width="84.1" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
-<text x="529.0" y="1352.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">bp.Bind()</text>
-<line x1="90.0" y1="1189.0" x2="90.0" y2="1374.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="90.0" y1="1374.5" x2="97.0" y2="1374.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="160.0" y="1352.3" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runBindPlugin</text>
+<rect x="540.0" y="1340.0" width="84.1" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
+<text x="549.0" y="1352.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">bp.Bind()</text>
+<line x1="108.0" y1="1189.0" x2="108.0" y2="1374.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="108.0" y1="1374.5" x2="114.0" y2="1374.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1364.5" width="5" height="20.5" rx="2.5" fill="#059669" opacity="0.85"/>
-<text x="103.0" y="1378.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPostBindPlugins</text>
-<text x="520.0" y="1378.7" font-size="12.2" fill="#475569"><tspan>纯通知，失败也不影响结果</tspan></text>
-<rect x="26" y="1388.0" width="1194" height="26.5" fill="#f8fafc"/>
-<rect x="116.0" y="1390.0" width="1104.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
-<line x1="111.0" y1="1374.5" x2="111.0" y2="1401.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="111.0" y1="1401.0" x2="118.0" y2="1401.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="120.0" y="1378.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPostBindPlugins</text>
+<text x="540.0" y="1378.7" font-size="12.2" fill="#475569"><tspan>纯通知，失败也不影响结果</tspan></text>
+<rect x="26" y="1388.0" width="1214" height="26.5" fill="#f8fafc"/>
+<rect x="132.0" y="1390.0" width="1108.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="128.0" y1="1374.5" x2="128.0" y2="1401.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="128.0" y1="1401.0" x2="134.0" y2="1401.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1391.0" width="5" height="20.5" rx="2.5" fill="#059669" opacity="0.85"/>
-<text x="124.0" y="1405.3" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPostBindPlugin</text>
-<rect x="520.0" y="1393.0" width="113.5" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
-<text x="529.0" y="1405.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PostBind()</text>
-<line x1="48.0" y1="235.0" x2="48.0" y2="1427.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="48.0" y1="1427.5" x2="55.0" y2="1427.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="140.0" y="1405.3" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPostBindPlugin</text>
+<rect x="540.0" y="1393.0" width="113.5" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
+<text x="549.0" y="1405.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PostBind()</text>
+<line x1="68.0" y1="314.5" x2="68.0" y2="1427.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="68.0" y1="1427.5" x2="74.0" y2="1427.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1417.5" width="5" height="20.5" rx="2.5" fill="#ea580c" opacity="0.85"/>
-<text x="61.0" y="1431.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">handleSchedulingFailure</text>
-<text x="520.0" y="1431.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">记下是哪些插件拒绝了它：</tspan><tspan>之后只有这些插件关心的事件才可能唤醒它</tspan></text>
-<rect x="26" y="1441.0" width="1194" height="26.5" fill="#f8fafc"/>
-<line x1="69.0" y1="1427.5" x2="69.0" y2="1454.0" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="69.0" y1="1454.0" x2="76.0" y2="1454.0" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="80.0" y="1431.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">FailureHandler = handleSchedulingFailure</text>
+<text x="540.0" y="1431.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">调度周期失败时记下是哪些插件拒绝了它：</tspan><tspan>之后只有这些插件关心的事件才可能唤醒它</tspan></text>
+<rect x="26" y="1441.0" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="88.0" y1="1427.5" x2="88.0" y2="1454.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="88.0" y1="1454.0" x2="94.0" y2="1454.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1444.0" width="5" height="20.5" rx="2.5" fill="#ea580c" opacity="0.85"/>
-<text x="82.0" y="1458.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">AddUnschedulablePodIfNotPresent</text>
-<line x1="90.0" y1="1454.0" x2="90.0" y2="1480.5" stroke="#94a3b8" stroke-width="1.1"/>
-<line x1="90.0" y1="1480.5" x2="97.0" y2="1480.5" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="100.0" y="1458.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">AddUnschedulablePodIfNotPresent</text>
+<line x1="108.0" y1="1454.0" x2="108.0" y2="1480.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="108.0" y1="1480.5" x2="114.0" y2="1480.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1470.5" width="5" height="20.5" rx="2.5" fill="#ea580c" opacity="0.85"/>
-<text x="103.0" y="1484.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">determineSchedulingHintForInFlightPod</text>
-<text x="520.0" y="1484.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">周期内来过相关事件 → backoffQ：</tspan><tspan>否则进 unschedulableEntities 等 QueueingHint，最长 5 分钟兜底刷新</tspan></text>
-<rect x="40" y="1522" width="5" height="14" rx="2.5" fill="#7c3aed" opacity="0.85"/>
-<text x="52.0" y="1533.0" font-size="12" fill="#64748b" text-anchor="start">队列</text>
-<rect x="106" y="1522" width="5" height="14" rx="2.5" fill="#2563eb" opacity="0.85"/>
-<text x="118.0" y="1533.0" font-size="12" fill="#64748b" text-anchor="start">调度周期（串行）</text>
-<rect x="244" y="1522" width="5" height="14" rx="2.5" fill="#059669" opacity="0.85"/>
-<text x="256.0" y="1533.0" font-size="12" fill="#64748b" text-anchor="start">绑定周期（goroutine）</text>
-<rect x="422.8" y="1522" width="5" height="14" rx="2.5" fill="#ea580c" opacity="0.85"/>
-<text x="434.8" y="1533.0" font-size="12" fill="#64748b" text-anchor="start">失败 / 抢占路径</text>
-<rect x="558.4" y="1520" width="34" height="17" rx="5" fill="#fef3c7" stroke="#f59e0b"/>
-<text x="600.4" y="1533.0" font-size="12" fill="#64748b" text-anchor="start">直接执行插件钩子</text>
-<text x="726.4" y="1533" font-size="12" fill="#1e3a8a" font-weight="700">加粗</text>
-<text x="756.4" y="1533.0" font-size="12" fill="#64748b" text-anchor="start">= 关键决策</text>
+<text x="120.0" y="1484.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">determineSchedulingHintForInFlightPod</text>
+<text x="540.0" y="1484.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">周期内来过相关事件 → backoffQ：</tspan><tspan>否则进 unschedulableEntities 等 QueueingHint，最长 5 分钟兜底刷新</tspan></text>
+<rect x="26" y="1494.0" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="48.0" y1="235.0" x2="48.0" y2="1507.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="48.0" y1="1507.0" x2="54.0" y2="1507.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1497.0" width="5" height="20.5" rx="2.5" fill="#0d9488" opacity="0.85"/>
+<text x="60.0" y="1511.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">scheduleOnePodGroup</text>
+<text x="540.0" y="1511.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">PodGroup 作为一个实体出队：</tspan><tspan>整组在一个周期里逐个试放，只在快照里 assume，失败统一撤销</tspan></text>
+<line x1="68.0" y1="1507.0" x2="68.0" y2="1533.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="68.0" y1="1533.5" x2="74.0" y2="1533.5" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1523.5" width="5" height="20.5" rx="2.5" fill="#0d9488" opacity="0.85"/>
+<text x="80.0" y="1537.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">podGroupCycle</text>
+<rect x="26" y="1547.0" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="88.0" y1="1533.5" x2="88.0" y2="1560.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="88.0" y1="1560.0" x2="94.0" y2="1560.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1550.0" width="5" height="20.5" rx="2.5" fill="#0d9488" opacity="0.85"/>
+<text x="100.0" y="1564.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">runRootSchedulingAlgorithm</text>
+<line x1="108.0" y1="1560.0" x2="108.0" y2="1586.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="108.0" y1="1586.5" x2="114.0" y2="1586.5" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1576.5" width="5" height="37.0" rx="2.5" fill="#0d9488" opacity="0.85"/>
+<text x="120.0" y="1590.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">podGroupSchedulingAlgorithm</text>
+<text x="540.0" y="1590.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">开了 TopologyAwareWorkloadScheduling 才走 placement：</tspan><tspan>否则直接进 </tspan></text>
+<text x="540.0" y="1607.2" font-size="12.2" fill="#475569"><tspan>podGroupSchedulingDefaultAlgorithm</tspan></text>
+<rect x="26" y="1616.5" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="128.0" y1="1586.5" x2="128.0" y2="1629.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="128.0" y1="1629.5" x2="134.0" y2="1629.5" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1619.5" width="5" height="20.5" rx="2.5" fill="#0d9488" opacity="0.85"/>
+<text x="140.0" y="1633.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">podGroupSchedulingPlacementAlgorithm</text>
+<line x1="148.0" y1="1629.5" x2="148.0" y2="1656.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="148.0" y1="1656.0" x2="154.0" y2="1656.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1646.0" width="5" height="20.5" rx="2.5" fill="#0d9488" opacity="0.85"/>
+<text x="160.0" y="1660.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPlacementGeneratePlugins</text>
+<text x="540.0" y="1660.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">把节点切成若干候选 placement</tspan></text>
+<rect x="26" y="1669.5" width="1214" height="26.5" fill="#f8fafc"/>
+<rect x="172.0" y="1671.5" width="1068.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="168.0" y1="1656.0" x2="168.0" y2="1682.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="168.0" y1="1682.5" x2="174.0" y2="1682.5" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1672.5" width="5" height="20.5" rx="2.5" fill="#0d9488" opacity="0.85"/>
+<text x="180.0" y="1686.8" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPlacementGeneratePlugin</text>
+<rect x="540.0" y="1674.5" width="186.9" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
+<text x="549.0" y="1686.5" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.GeneratePlacements()</text>
+<line x1="148.0" y1="1629.5" x2="148.0" y2="1709.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="148.0" y1="1709.0" x2="154.0" y2="1709.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1699.0" width="5" height="20.5" rx="2.5" fill="#0d9488" opacity="0.85"/>
+<text x="160.0" y="1713.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">evaluatePlacement</text>
+<text x="540.0" y="1713.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">在每个 placement 里试放整组</tspan></text>
+<rect x="26" y="1722.5" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="168.0" y1="1709.0" x2="168.0" y2="1735.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="168.0" y1="1735.5" x2="174.0" y2="1735.5" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1725.5" width="5" height="20.5" rx="2.5" fill="#0d9488" opacity="0.85"/>
+<text x="180.0" y="1739.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">podGroupSchedulingDefaultAlgorithm</text>
+<text x="540.0" y="1739.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">逐个 Pod 试放，每放一个问一次可行性</tspan></text>
+<line x1="188.0" y1="1735.5" x2="188.0" y2="1762.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="188.0" y1="1762.0" x2="194.0" y2="1762.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1752.0" width="5" height="20.5" rx="2.5" fill="#0d9488" opacity="0.85"/>
+<text x="200.0" y="1766.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">podGroupPodSchedulingAlgorithm</text>
+<text x="540.0" y="1766.2" font-size="12.2" fill="#475569"><tspan>调 schedulingAlgorithm：与单 Pod 同一条 PreFilter/Filter/Score 路径</tspan></text>
+<rect x="26" y="1775.5" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="188.0" y1="1735.5" x2="188.0" y2="1788.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="188.0" y1="1788.5" x2="194.0" y2="1788.5" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1778.5" width="5" height="20.5" rx="2.5" fill="#0d9488" opacity="0.85"/>
+<text x="200.0" y="1792.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">podGroupPotentiallyFeasible</text>
+<line x1="208.0" y1="1788.5" x2="208.0" y2="1815.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="208.0" y1="1815.0" x2="214.0" y2="1815.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1805.0" width="5" height="20.5" rx="2.5" fill="#0d9488" opacity="0.85"/>
+<text x="220.0" y="1819.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPlacementFeasiblePlugins</text>
+<rect x="26" y="1828.5" width="1214" height="26.5" fill="#f8fafc"/>
+<rect x="232.0" y="1830.5" width="1008.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="228.0" y1="1815.0" x2="228.0" y2="1841.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="228.0" y1="1841.5" x2="234.0" y2="1841.5" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1831.5" width="5" height="20.5" rx="2.5" fill="#0d9488" opacity="0.85"/>
+<text x="240.0" y="1845.8" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPlacementFeasiblePlugin</text>
+<rect x="540.0" y="1833.5" width="179.6" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
+<text x="549.0" y="1845.5" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PlacementFeasible()</text>
+<text x="729.6" y="1845.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">达到 minCount 才算成功：</tspan><tspan>Wait 表示继续放下一个；Unschedulable 提前结束</tspan></text>
+<line x1="148.0" y1="1629.5" x2="148.0" y2="1868.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="148.0" y1="1868.0" x2="154.0" y2="1868.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1858.0" width="5" height="20.5" rx="2.5" fill="#0d9488" opacity="0.85"/>
+<text x="160.0" y="1872.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">findBestPlacement</text>
+<rect x="26" y="1881.5" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="168.0" y1="1868.0" x2="168.0" y2="1894.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="168.0" y1="1894.5" x2="174.0" y2="1894.5" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1884.5" width="5" height="20.5" rx="2.5" fill="#0d9488" opacity="0.85"/>
+<text x="180.0" y="1898.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPlacementScorePlugins</text>
+<text x="540.0" y="1898.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">在可行的 placement 之间打分</tspan></text>
+<rect x="192.0" y="1910.0" width="1048.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="188.0" y1="1894.5" x2="188.0" y2="1921.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="188.0" y1="1921.0" x2="194.0" y2="1921.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1911.0" width="5" height="20.5" rx="2.5" fill="#0d9488" opacity="0.85"/>
+<text x="200.0" y="1925.3" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPlacementScorePlugin</text>
+<rect x="540.0" y="1913.0" width="157.5" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
+<text x="549.0" y="1925.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.ScorePlacement()</text>
+<rect x="26" y="1934.5" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="88.0" y1="1533.5" x2="88.0" y2="1947.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="88.0" y1="1947.5" x2="94.0" y2="1947.5" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1937.5" width="5" height="20.5" rx="2.5" fill="#ea580c" opacity="0.85"/>
+<text x="100.0" y="1951.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunPodGroupPostFilterPlugins</text>
+<text x="540.0" y="1951.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">整组失败时才跑：</tspan><tspan>代替周期内单个 Pod 的 PostFilter</tspan></text>
+<rect x="112.0" y="1963.0" width="1128.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+<line x1="108.0" y1="1947.5" x2="108.0" y2="1974.0" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="108.0" y1="1974.0" x2="114.0" y2="1974.0" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1964.0" width="5" height="20.5" rx="2.5" fill="#ea580c" opacity="0.85"/>
+<text x="120.0" y="1978.3" font-size="12.4" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">runPodGroupPostFilterPlugin</text>
+<rect x="540.0" y="1966.0" width="186.9" height="16.5" rx="8" fill="#ffffff" stroke="#f59e0b"/>
+<text x="549.0" y="1978.0" font-size="12" fill="#b45309" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-weight="700">pl.PodGroupPostFilter()</text>
+<rect x="26" y="1987.5" width="1214" height="26.5" fill="#f8fafc"/>
+<line x1="88.0" y1="1533.5" x2="88.0" y2="2000.5" stroke="#94a3b8" stroke-width="1.1"/>
+<line x1="88.0" y1="2000.5" x2="94.0" y2="2000.5" stroke="#94a3b8" stroke-width="1.1"/>
+<rect x="12" y="1990.5" width="5" height="20.5" rx="2.5" fill="#0d9488" opacity="0.85"/>
+<text x="100.0" y="2004.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">submitPodGroupAlgorithmResult</text>
+<text x="540.0" y="2004.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">绑定仍按 Pod 逐个进行：</tspan><tspan>成功的 Pod 各自 prepareForBindingCycle + go runBindingCycle</tspan></text>
+<rect x="40" y="2042" width="5" height="14" rx="2.5" fill="#7c3aed" opacity="0.85"/>
+<text x="52.0" y="2053.0" font-size="12" fill="#64748b" text-anchor="start">队列</text>
+<rect x="102" y="2042" width="5" height="14" rx="2.5" fill="#2563eb" opacity="0.85"/>
+<text x="114.0" y="2053.0" font-size="12" fill="#64748b" text-anchor="start">调度周期（串行）</text>
+<rect x="236" y="2042" width="5" height="14" rx="2.5" fill="#059669" opacity="0.85"/>
+<text x="248.0" y="2053.0" font-size="12" fill="#64748b" text-anchor="start">绑定周期（goroutine）</text>
+<rect x="410.8" y="2042" width="5" height="14" rx="2.5" fill="#0d9488" opacity="0.85"/>
+<text x="422.8" y="2053.0" font-size="12" fill="#64748b" text-anchor="start">PodGroup 周期</text>
+<rect x="537.6" y="2042" width="5" height="14" rx="2.5" fill="#ea580c" opacity="0.85"/>
+<text x="549.6" y="2053.0" font-size="12" fill="#64748b" text-anchor="start">失败 / 抢占路径</text>
+<rect x="669.2" y="2040" width="30" height="17" rx="5" fill="#fef3c7" stroke="#f59e0b"/>
+<text x="707.2" y="2053.0" font-size="12" fill="#64748b" text-anchor="start">执行插件钩子</text>
+<text x="805.2" y="2053" font-size="12" fill="#1e3a8a" font-weight="700">加粗</text>
+<text x="835.2" y="2053.0" font-size="12" fill="#64748b" text-anchor="start">= 关键决策</text>
 </svg>

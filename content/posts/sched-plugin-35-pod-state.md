@@ -9,6 +9,10 @@ author: "LinPr"
 description: "PodState 是 scheduler-plugins 里的示例打分插件：节点上终止中的 Pod 越多分越高，被提名到该节点的 Pod 越多分越低。本文拆解它从 NodeInfo 和调度队列 nominator 两处取数的方式、差值加 min-max 的计分，解释这样设计背后与抢占流程的关系，以及只数个数、不看优先级、会把自己算进去等局限。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `PodState` 实现的扩展点（Score、NormalizeScore）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/35.svg" link="/images/posts/sched-plugins/callstack/35.svg" caption="PodState 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 上一篇 [NodeMetadata](/posts/sched-plugin-34-node-metadata/) 看的是节点自身的属性。本篇的 `PodState` 看的是节点上 Pod 的「状态」：有多少 Pod 正在终止，有多少 Pod 被提名要来这个节点。这两类 Pod 都是 [DefaultPreemption](/posts/sched-plugin-18-default-preemption/) 的产物，所以它和抢占的关系比名字看起来紧密得多。
 
 `PodState` 只实现 Score 扩展点（含 `NormalizeScore`），没有参数、没有 feature gate。它在 `cmd/scheduler/main.go` 的「Sample plugins」注释之后注册，README 里的成熟度勾选的是 Sample：「for demonstrating and inspiring purpose」。本文基于 scheduler-plugins 提交 `cfeb3aa`（依赖 Kubernetes v1.36.4）。

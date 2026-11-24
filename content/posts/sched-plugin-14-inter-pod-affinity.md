@@ -9,6 +9,10 @@ author: "LinPr"
 description: "InterPodAffinity 实现 Pod 间亲和与反亲和。本文从源码拆解三张拓扑计数表、Filter 的三道检查与状态码、亲和不可抢占的原因、hostname 快速路径、Score 的双向累加与 hardPodAffinityWeight，以及它的性能开销。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `InterPodAffinity` 实现的扩展点（PreFilter、Filter、PreScore、Score、NormalizeScore）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/14.svg" link="/images/posts/sched-plugins/callstack/14.svg" caption="InterPodAffinity 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-13-pod-topology-spread/)的 `PodTopologySpread` 数的是「一个拓扑域里有多少个匹配的 Pod」。`InterPodAffinity` 问的问题更朴素，也更昂贵：「这个拓扑域里**有没有**某种 Pod」。有，亲和满足；有，反亲和就不满足。而且规则是双向的——不光新 Pod 的规则要满足，已经在跑的 Pod 声明的反亲和也会把新 Pod 挡在门外。
 
 本文基于 Kubernetes master 提交 `aabdf5a2`（1.38 开发周期）。`InterPodAffinity` 默认启用，在默认 Profile 的 MultiPoint 列表里紧跟 `PodTopologySpread`，打分权重为 2。它实现了 PreFilter（带 `PreFilterExtensions`）、Filter、PreScore、Score（带 `NormalizeScore`）、`EnqueueExtensions` 和 `SignPlugin`。插件本身没有 feature gate，但有一个 1.37 新增的 Alpha gate `InterPodAffinityHostnameFastPath`（默认关闭）改变了 PreFilter/Filter 的内部实现，本文第五节单独讲。

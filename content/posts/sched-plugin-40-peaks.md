@@ -9,6 +9,10 @@ author: "LinPr"
 description: "Peaks 是 Trimaran 中唯一以功耗为目标的插件：用 P(x)=K0+K1·e^(K2·x) 的功耗模型计算把 Pod 放上节点后的功耗跳变，跳变越小分越高。本文拆解功耗模型的加载、Score 的放大取整与反向归一化，推导曲线凹凸性决定装箱还是分散，并指出无模型、无指标、预测超载的节点在归一化后反而得满分。最后回顾整个系列。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `Peaks` 实现的扩展点（Score、NormalizeScore）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/40.svg" link="/images/posts/sched-plugins/callstack/40.svg" caption="Peaks 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 上一篇[《LowRiskOverCommitment》](/posts/sched-plugin-39-low-risk-overcommitment/)用 limit 和 Beta 分布估计超卖风险。到这里，Trimaran 的前三个插件优化的都是**性能**：装到目标水位、平衡波动风险、降低超卖风险。最后一个插件 `Peaks`（Power Efficiency Aware Kubernetes Scheduler）换了目标：它要让集群的**总功耗**增加得最少。
 
 `Peaks` 实现了 Score 和 `NormalizeScore`。它是 Trimaran 四个插件里唯一一个 `NormalizeScore` 不为空的，这一点在后面很关键。它没有 PreScore，不写 CycleState，不实现 `EnqueueExtensions`，也不创建 `PodAssignEventHandler`。它不在默认 Profile 里，没有 feature gate，需要在 scheduler-plugins 的调度器（`cmd/scheduler/main.go` 中 `app.WithPlugin(peaks.Name, peaks.New)`）里启用。设计文档在 `kep/tbd-peaks-power-aware-scheduling`，KEP 编号还是 TBD。源码基线为 scheduler-plugins `cfeb3aa`，文件头的版权年份是 2024，是四个插件里最新的一个。

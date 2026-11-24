@@ -9,6 +9,10 @@ author: "LinPr"
 description: "NodeAffinity 把 nodeSelector、required/preferred 节点亲和和调度器级的 addedAffinity 合在一个插件里。本文按源码拆解它的 AND/OR 语义、PreFilter 如何从 metadata.name 推导 PreFilterResult、Filter 为什么一律返回不可抢占的状态码、Score 的权重求和与归一化，以及只在标签从不匹配变为匹配时才唤醒 Pod 的 QueueingHint。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `NodeAffinity` 实现的扩展点（PreFilter、Filter、PreScore、Score、NormalizeScore）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/06.svg" link="/images/posts/sched-plugins/callstack/06.svg" caption="NodeAffinity 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-05-taint-toleration/)的 `TaintToleration` 是从节点的角度排斥 Pod：节点打了污点，Pod 没有容忍就进不来。`NodeAffinity` 方向相反，是 Pod 自己挑节点：`nodeSelector` 和 `affinity.nodeAffinity` 写明了要什么样的标签，不满足的节点直接出局。
 
 本文基于 Kubernetes master 提交 `aabdf5a2`（1.38 开发周期）。`NodeAffinity` 在默认 Profile 的 `MultiPoint` 里排第六，紧跟 `TaintToleration`，打分权重为 2。它同时实现了 PreFilter、Filter、PreScore、Score 四个扩展点，外加 `EnqueueExtensions` 和用于批量调度的 `SignPlugin`。它不受任何 feature gate 控制，默认始终启用，只有 in-place 扩缩容相关的 `InPlacePodVerticalScalingSchedulerPreemption` 会让它对一类特殊 Pod 直接跳过（见 3.6 节）。

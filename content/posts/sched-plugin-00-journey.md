@@ -28,6 +28,7 @@ description: "系列开篇。沿着 ScheduleOne 的源码走一遍：Pod 怎么�
 - 框架层分两级：`RunXxxPlugins` 负责遍历插件、处理 Skip 和失败码、记录指标，真正调用插件方法的是它下面的 `runXxxPlugin`，两级都在 `framework/runtime/framework.go`。打分多一步：`RunScorePlugins` 先按节点并行跑 `runScorePlugin`，再按插件并行跑 `runScoreExtension` 做归一化（3.5 节）。
 - PreEnqueue 和 QueueSort 不在调度循环里执行：PreEnqueue 在 Pod 进入 `activeQ` 时由队列的 `moveToActiveQ` 调用，QueueSort 的 `Less` 则是堆每次调整时的比较函数（第二节）。
 - `runBindingCycle` 和 `handleSchedulingFailure` 都挂在 `scheduleOnePod` 下，但只会走一个：调度周期成功就起 goroutine 绑定（第四节），失败就进失败处理（第五节）。绑定周期和调度周期共用同一个 `CycleState`，所以 PreBind 还能读到 Filter 阶段写下的数据。
+- 最下面青色的一段是 PodGroup 调度周期：整组 Pod 作为一个实体出队，在 `scheduleOnePodGroup` 里逐个试放，每个 Pod 走的仍是上面同一条 `schedulingAlgorithm` 路径，额外多了 PlacementGenerate、PlacementFeasible、PlacementScore、PodGroupPostFilter 四个扩展点（第 21~23 篇）。
 
 ## 一、出发之前：Profile 决定了这趟旅程有哪些站
 

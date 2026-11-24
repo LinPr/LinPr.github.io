@@ -9,6 +9,10 @@ author: "LinPr"
 description: "VolumeRestrictions 是默认 Profile 里第一个存储插件，管两件事：几种 in-tree 内联卷在同一节点上的读写冲突，以及 ReadWriteOncePod PVC 在全集群范围内只能被一个 Pod 使用。本文拆解它的 PreFilter 计数、Filter 判定、AddPod/RemovePod 如何让 RWOP 冲突可以被抢占解决，以及几个 QueueingHint 的判断依据。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `VolumeRestrictions` 实现的扩展点（PreFilter、Filter）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/09.svg" link="/images/posts/sched-plugins/callstack/09.svg" caption="VolumeRestrictions 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 上一篇 [NodeResourcesFit](/posts/sched-plugin-08-node-resources-fit/) 把 CPU、内存、扩展资源算完之后，Filter 链进入存储段。默认 Profile 里连着四个存储插件：`VolumeRestrictions`、`NodeVolumeLimits`、`VolumeBinding`、`VolumeZone`，各管一段，本篇是第一个。
 
 本文基于 Kubernetes master 提交 `aabdf5a2`（1.38 开发周期）。`VolumeRestrictions` 在 `pkg/scheduler/apis/config/v1/default_plugins.go` 的 MultiPoint 列表中排在 `NodeResourcesFit` 之后、`NodeVolumeLimits` 之前，默认启用，不受任何 feature gate 控制。它实现了 PreFilter（带 `PreFilterExtensions`）、Filter、`EnqueueExtensions` 和 `SignPlugin`，没有 Score，所以也没有权重。

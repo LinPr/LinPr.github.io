@@ -9,6 +9,10 @@ author: "LinPr"
 description: "GangScheduling 是 kube-scheduler 内置的 all-or-nothing 插件。本文从 Pod 的 spec.schedulingGroup 与 PodGroup API 讲起，拆解它在 PreEnqueue 上的 quorum 门禁、HierarchyTracker 计数树、PlacementFeasible 的三种返回值，以及它所依托的 PodGroup 调度周期：整组出队、逐 Pod 试放、在 snapshot 里 assume、失败整体回滚。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `GangScheduling` 实现的扩展点（PreEnqueue、PlacementFeasible）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/21.svg" link="/images/posts/sched-plugins/callstack/21.svg" caption="GangScheduling 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 上一篇的 [ImageLocality](/posts/sched-plugin-20-image-locality/) 是默认 Profile 里最后一个打分插件。到这里，一个普通 Pod 的调度周期已经走完：过滤、打分、选出节点，接下来就是 Reserve、Permit 和绑定。
 
 但有一类负载不能这样一个一个地放。一个 8 卡 × 4 机的分布式训练任务，放上去 3 个 worker 和一个都不放没有区别，3 个 worker 会拿着 GPU 空等第 4 个，而第 4 个可能永远等不到资源。这就是 gang scheduling 要解决的问题：要么一组 Pod 同时拿到位置，要么谁都不占。

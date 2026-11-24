@@ -9,6 +9,10 @@ author: "LinPr"
 description: "原地扩容放不下时会被 kubelet 标记为 Deferred，新 gate 让这类已绑定的 Pod 回到调度器，借用抢占腾出资源。本文拆解 DeferredPodScheduling 的 Filter、Permit、QueueingHint 与插件顺序，以及主循环的配套改动。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `DeferredPodScheduling` 实现的扩展点（PreFilter、Filter、Permit）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/17.svg" link="/images/posts/sched-plugins/callstack/17.svg" caption="DeferredPodScheduling 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-16-node-declared-features/)的 `NodeDeclaredFeatures` 在 PreFilter 和 Filter 开头都有一行看起来与它无关的判断：`resource.IsPodResizeDeferred(pod)` 为真时直接跳过。往前翻，`PodTopologySpread`、`InterPodAffinity`、`NodeAffinity`、`NodePorts`、`VolumeBinding`……几乎每个 Filter 插件都有同样的一行。这些判断服务于同一个功能：让一个**已经绑定、正在运行**的 Pod 重新走一遍调度周期。`DeferredPodScheduling` 是这个功能在插件层面的主体。
 
 本文基于 Kubernetes master 提交 `aabdf5a2`（1.38 开发周期）。插件由 feature gate `InPlacePodVerticalScalingSchedulerPreemption` 控制，对应 [KEP-5836](https://kep.k8s.io/5836)，1.37 新增，Alpha，默认关闭，依赖 `InPlacePodVerticalScaling`（1.35 已 GA）。gate 开启时，`applyDeferredPodScheduling` 把插件插入默认 MultiPoint 列表中 `NodeResourcesFit` 的**前面**。它实现了 PreFilter、Filter、Permit 和 `EnqueueExtensions`，没有参数、没有 Score，也没有实现 `SignPlugin`。

@@ -9,6 +9,10 @@ author: "LinPr"
 description: "Trimaran 四个插件的第一篇。先拆共用的数据链路：load-watcher 如何从 Prometheus、metrics-server、SignalFx 拉指标，Collector 的 30 秒快照，PodAssignEventHandler 怎样补偿「刚调度、指标还没反映」的 Pod；再推导 TargetLoadPacking 在目标利用率处取尖顶的打分曲线，并用算例演示补偿如何改变排序。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `TargetLoadPacking` 实现的扩展点（Score、NormalizeScore）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/37.svg" link="/images/posts/sched-plugins/callstack/37.svg" caption="TargetLoadPacking 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 上一篇[《SySched》](/posts/sched-plugin-36-sysched/)按系统调用集合给节点打分，数据来自 Security Profiles Operator 的 CRD，仍然是集群里的 API 对象。从这一篇开始的四篇讲 Trimaran，它们打分用的是**节点的实际负载**。这些数据不在 API Server 里，而是从 Prometheus、metrics-server 这类监控系统中拉取的。
 
 Trimaran 是 scheduler-plugins 里 `pkg/trimaran/` 下四个插件的统称：`TargetLoadPacking`、`LoadVariationRiskBalancing`、`LowRiskOverCommitment`、`Peaks`。本文基于 scheduler-plugins 提交 `cfeb3aa`（依赖 Kubernetes v1.36.4）和它锁定的 `github.com/paypal/load-watcher v0.2.4`。四个插件在 Pod 调度过程中的位置相同：

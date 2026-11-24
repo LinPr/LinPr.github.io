@@ -9,6 +9,10 @@ author: "LinPr"
 description: "DefaultPreemption 是默认 Profile 里唯一会驱逐别人的插件。本文沿 PostFilter 的完整调用链拆解通用的 preemption.Evaluator：资格检查、只在 Unschedulable 节点上找候选、按比例抽样、SelectVictimsOnNode 的「全移除再逐个放回」、PDB 违反计数、候选节点的五级排序、nominatedNodeName 的写入与清空，以及异步抢占如何用 PreEnqueue 挡住抢占者。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `DefaultPreemption` 实现的扩展点（PreEnqueue、PostFilter、PodGroupPostFilter）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/18.svg" link="/images/posts/sched-plugins/callstack/18.svg" caption="DefaultPreemption 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 前面十几篇读的都是「判断」：节点能不能放、放哪里更好。[上一篇的 DeferredPodScheduling](/posts/sched-plugin-17-deferred-pod-scheduling/) 结尾已经提到，它自己不腾地方，腾地方要靠抢占。本篇读的 `DefaultPreemption` 是默认 Profile 里唯一会**改变集群现状**的插件：所有节点都没通过 Filter 时，它在内存里模拟驱逐低优先级 Pod，找到一个可行的节点，然后真的去删 Pod，并把这个节点记进抢占者的 `status.nominatedNodeName`。本文基于 Kubernetes master 提交 `aabdf5a2`。
 
 它在默认 Profile 的 MultiPoint 列表里没有权重，紧跟在 `DynamicResources` 之后（[第 15 篇](/posts/sched-plugin-15-dynamic-resources/)解释过为什么 DRA 要排在前面：先释放闲置 claim，再考虑驱逐 Pod）。实现了 PostFilter 和 PreEnqueue 两个扩展点，`GenericWorkload` 开启时还有 PodGroupPostFilter。插件本身不受 gate 控制，默认启用；它的行为由 `SchedulerAsyncPreemption`（1.33 起 Beta，默认开）和 `GenericWorkload` 等 gate 调整。

@@ -9,6 +9,10 @@ author: "LinPr"
 description: "NodeMetadata 读取节点上的一个 label 或 annotation，按数值高低或时间新旧给节点打分，用来表达成本、硬件代际、维护时间之类的软偏好。本文拆解它的参数与校验、数值和时间戳两条解析路径、为无效数据预留 0 分的归一化算法，并给出带数字的算例和只有读代码才能发现的截断、溢出与 label 格式限制。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `NodeMetadata` 实现的扩展点（Score、NormalizeScore）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/34.svg" link="/images/posts/sched-plugins/callstack/34.svg" caption="NodeMetadata 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 上一篇 [NodeResourcesAllocatable](/posts/sched-plugin-33-node-resources-allocatable/) 用节点规格给节点打一个静态的分。规格只是节点众多属性中的一个，运维常常还想表达「便宜的节点优先」「新上架的硬件优先」「最近做过维护的节点优先」这类偏好。这些信息通常已经以 label 或 annotation 的形式挂在 Node 上，`NodeMetadata` 就是把它们直接变成分数的插件。
 
 它只实现 Score 扩展点（含 `NormalizeScore`），通过 `app.WithPlugin(nodemetadata.Name, nodemetadata.New)` 注册到 scheduler-plugins 的调度器二进制中，需要在 Profile 中显式启用，没有 feature gate。设计文档是 `kep/942-node-metadata-scoring`。本文基于 scheduler-plugins 提交 `cfeb3aa`（依赖 Kubernetes v1.36.4）。

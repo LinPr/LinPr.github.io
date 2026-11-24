@@ -9,6 +9,10 @@ author: "LinPr"
 description: "kubectl cordon 只改了 Node 的 spec.unschedulable 一个字段，NodeUnschedulable 插件负责让调度器尊重它，而容忍 node.kubernetes.io/unschedulable 污点的 Pod 可以例外。本文拆开插件的 Filter 判定、QueueingHint 如何识别 uncordon、spec 字段与 node-lifecycle-controller 补上的同名污点之间的时间差，以及 kubelet 为什么不检查这个字段。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `NodeUnschedulable` 实现的扩展点（PreFilter、Filter）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/04.svg" link="/images/posts/sched-plugins/callstack/04.svg" caption="NodeUnschedulable 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-03-node-name/)的 `NodeName` 是 Filter 链上的第一个插件，它几乎不淘汰节点。第二个插件 `NodeUnschedulable` 处理的是运维最常用的操作之一：`kubectl cordon`。它在默认 Profile 的 `MultiPoint` 列表里排第四，挂在 PreFilter 和 Filter 上，没有打分，没有参数，默认启用。本文基于 Kubernetes master 提交 `aabdf5a2`。
 
 ## 一、cordon 改了什么

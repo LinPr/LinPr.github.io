@@ -9,6 +9,10 @@ author: "LinPr"
 description: "TaintToleration 是默认 Profile 里权重最高的打分插件，同时也是硬过滤器：Filter 只看 NoSchedule 和 NoExecute，Score 只数不被容忍的 PreferNoSchedule。本文拆开容忍匹配的四条规则、Filter 与 Score 各自筛选污点和容忍的方式、反向归一化的算例与边界、QueueingHint 的判断，以及 NoExecute 在调度器、kubelet 准入和 taint-eviction-controller 之间的分工。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `TaintToleration` 实现的扩展点（PreFilter、Filter、PreScore、Score、NormalizeScore）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/05.svg" link="/images/posts/sched-plugins/callstack/05.svg" caption="TaintToleration 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-04-node-unschedulable/)看到，`kubectl cordon` 最终会被 node-lifecycle-controller 镜像成一个 `NoSchedule` 污点，由 `TaintToleration` 插件接手。这个插件是默认 Profile 里第一个同时有 Filter 和 Score 的插件：在 `MultiPoint` 列表里排第五，挂在 PreFilter、Filter、PreScore、Score 四个扩展点上，打分权重是 3，在所有默认插件里最高。默认启用，没有插件参数。本文基于 Kubernetes master 提交 `aabdf5a2`。
 
 ## 一、污点的三种效果

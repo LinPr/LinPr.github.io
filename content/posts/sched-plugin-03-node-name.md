@@ -9,6 +9,10 @@ author: "LinPr"
 description: "NodeName 检查 spec.nodeName 是否等于当前节点。但写了 nodeName 的 Pod 通常根本不进调度队列，它在调度器里真正生效的场景只有原地扩容被推迟的 Pod。本文拆开它的 PreFilterResult 如何缩小候选节点、被排除的节点为什么不能参与抢占、为什么有了 PreFilter 还要保留 Filter，以及它和 DaemonSet、kubelet 准入的关系。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `NodeName` 实现的扩展点（PreFilter、Filter）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/03.svg" link="/images/posts/sched-plugins/callstack/03.svg" caption="NodeName 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 Pod 从 `activeQ` 出队后（[上一篇](/posts/sched-plugin-02-priority-sort/)讲了出队顺序），进入调度周期。第一步是 PreFilter，第一个被调用的 PreFilter 插件是 `NodeName`。它在默认 Profile 的 `MultiPoint` 列表里排第三，同时挂在 PreFilter 和 Filter 两个扩展点上，没有打分，没有参数，默认启用，不受 feature gate 控制。本文基于 Kubernetes master 提交 `aabdf5a2`。
 
 它的语义一句话就能说完：Pod 写了 `spec.nodeName`，就只能放在这个节点上。但这句话背后有一个反直觉的事实：**写了 `spec.nodeName` 的 Pod，调度器通常根本看不到**。读懂这个插件，关键是弄清它到底在什么时候生效。

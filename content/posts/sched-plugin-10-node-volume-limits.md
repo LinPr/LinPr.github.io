@@ -9,6 +9,10 @@ author: "LinPr"
 description: "云盘能挂到一台机器上的数量有硬上限，NodeVolumeLimits 负责在调度时把这个上限算进去。本文拆解它如何从 CSINode 读取 allocatable.count、如何把 PVC、generic ephemeral 卷、in-tree 迁移卷统一换算成「驱动名/volumeHandle」去重计数、为什么还要数 VolumeAttachment，以及 VolumeLimitScaling、QueueingHint 和抢占中的几个细节。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `NodeVolumeLimits` 实现的扩展点（PreFilter、Filter）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/10.svg" link="/images/posts/sched-plugins/callstack/10.svg" caption="NodeVolumeLimits 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 上一篇 [VolumeRestrictions](/posts/sched-plugin-09-volume-restrictions/) 检查的是「同一块盘能不能被两个 Pod 用」。接下来的问题是：这个节点还能不能再挂一块盘。
 
 AWS 上一台 Nitro 实例能挂的 EBS 卷数量有限，GCE、Azure 也都有类似的上限。超过之后 attach 会失败，Pod 卡在 `ContainerCreating`。`NodeVolumeLimits` 把这个上限前移到调度阶段。本文基于 Kubernetes master 提交 `aabdf5a2`。它在默认 Profile 的 MultiPoint 列表里紧跟 `VolumeRestrictions`，默认启用，实现了 PreFilter、Filter、`EnqueueExtensions`、`SignPlugin`，没有 Score，没有 Args。插件的启用不受 feature gate 控制，但其中一段逻辑受 `VolumeLimitScaling`（1.37 beta，默认开启）控制。

@@ -9,6 +9,10 @@ author: "LinPr"
 description: "limit 之和超过节点容量，就是超卖。LowRiskOverCommitment 把风险拆成两部分：limit 超出容量的比例，以及实际负载越过已分配 request 的概率（用 Beta 分布矩匹配求得），再按权重合成、取 CPU 与内存中较差者。本文逐行拆解 PreScore、computeRisk 与 beta.go，推导公式，给出两节点算例，并讨论平滑窗口、条件概率和各种退化情形。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `LowRiskOverCommitment` 实现的扩展点（PreScore、Score、NormalizeScore）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/39.svg" link="/images/posts/sched-plugins/callstack/39.svg" caption="LowRiskOverCommitment 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 上一篇[《LoadVariationRiskBalancing》](/posts/sched-plugin-38-load-variation-risk-balancing/)把节点负载的均值和标准差合成一个线性风险，但它只用 request 估计新 Pod 的负载。在超卖的集群中，request 和 limit 往往差好几倍。一个节点上所有 Pod 的 limit 加起来可能是容量的两三倍，这些 Pod 一旦同时冲向 limit，CPU 会被节流，内存会触发 OOM。`LowRiskOverCommitment`（下文简称 LROC）把 limit 纳入模型，并用 Beta 分布代替上一篇的「μ + σ」经验公式，直接估计一个概率。
 
 LROC 实现了 PreScore 和 Score（`NormalizeScore` 为空实现）。它不在默认 Profile 里，没有 feature gate，在 scheduler-plugins 的调度器中启用。和前两篇一样，它不实现 `EnqueueExtensions`，因为 Score 插件不会拒绝 Pod。与前两个插件不同，它**完全不创建 `PodAssignEventHandler`**。原因在后面：它用来算 request/limit 的数据来自调度器自己的 `NodeInfo` 快照，本来就没有滞后。源码基线为 scheduler-plugins `cfeb3aa`。

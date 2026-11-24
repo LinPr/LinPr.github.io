@@ -9,6 +9,10 @@ author: "LinPr"
 description: "VolumeBinding 让 PVC 的绑定与动态供给等到 Pod 选定节点之后再做，是唯一横跨调度周期和绑定周期的存储插件。本文按 PreFilter、Filter、Score、Reserve、PreBind、Unreserve 的顺序拆解它的源码：PVC 分类、静态 PV 匹配、selected-node 注解、CSIStorageCapacity 容量检查、Score 的 shape、assume cache 的版本号语义，以及它与 PV 控制器、external-provisioner 的接力。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `VolumeBinding` 实现的扩展点（PreFilter、Filter、PreScore、Score、Reserve、PreBind）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/11.svg" link="/images/posts/sched-plugins/callstack/11.svg" caption="VolumeBinding 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 上一篇 [NodeVolumeLimits](/posts/sched-plugin-10-node-volume-limits/) 回答了「这个节点还能不能再挂一块盘」。但一个 PVC 到底对应哪块盘，可能还没有定下来：它也许尚未绑定，要由调度器挑一块合适的 PV，或者通知外部供给器在选定的节点附近新建一块。这件事由 `VolumeBinding` 负责。
 
 本文基于 Kubernetes master 提交 `aabdf5a2`（1.38 开发周期）。`VolumeBinding` 在默认 Profile 的 MultiPoint 列表里排在 `NodeVolumeLimits` 之后、`VolumeZone` 之前，默认启用。它实现的扩展点比任何其它 in-tree 插件都多：PreFilter、Filter、PreScore、Score、Reserve（含 Unreserve）、PreBind（含 `PreBindPreFlight`），外加 `EnqueueExtensions` 和 `SignPlugin`。

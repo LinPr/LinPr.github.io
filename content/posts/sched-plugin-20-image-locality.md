@@ -9,6 +9,10 @@ author: "LinPr"
 description: "ImageLocality 给已经缓存了 Pod 所需镜像的节点加分，减少拉镜像的时间。本文拆解它的打分公式：镜像大小乘以镜像在集群中的铺开比例、23MiB 与 1000MiB×镜像数的上下阈值、为什么要按节点数缩放来避免节点过热，以及它依赖的数据从哪里来——kubelet 只上报最大的 50 个镜像、调度器缓存如何维护镜像到节点的映射。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `ImageLocality` 实现的扩展点（Score）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/20.svg" link="/images/posts/sched-plugins/callstack/20.svg" caption="ImageLocality 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-19-balanced-allocation/)的 `NodeResourcesBalancedAllocation` 关心资源配比。默认 Profile 里最后一个打分插件 `ImageLocality` 关心的是另一种成本：Pod 被调度到一个没有镜像的节点上，kubelet 要先把镜像拉下来，几 GB 的模型推理镜像可能要拉好几分钟。如果某个可行节点上已经有这个镜像，Pod 可以几乎立刻启动。
 
 本文基于 Kubernetes master 提交 `aabdf5a2`。`ImageLocality` 只实现了 Score 一个扩展点，没有 PreScore、没有 NormalizeScore，权重 1，没有参数，也没有 feature gate。它是少数几个直接注册 `New`、不经过 `runtime.FactoryAdapter` 注入 feature 开关的插件：

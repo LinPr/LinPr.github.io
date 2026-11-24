@@ -9,6 +9,10 @@ author: "LinPr"
 description: "DefaultBinder 只有一个 Bind 方法：构造 v1.Binding，POST 到 pods/binding 子资源。真正值得读的是它所在的绑定周期：assume 如何让调度与绑定解耦、绑定 goroutine 里各步的失败如何回滚、API Server 端 binding 子资源做了哪些检查、SchedulerAsyncAPICalls 的 API dispatcher 如何合并同一 Pod 的调用，以及怎样用 extender 或自定义 Bind 插件替换它。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `DefaultBinder` 实现的扩展点（Bind）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/24.svg" link="/images/posts/sched-plugins/callstack/24.svg" caption="DefaultBinder 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇的 PodGroupPodsCount](/posts/sched-plugin-23-podgroup-pods-count/) 为 PodGroup 的放置方案打分，到这里，一个 Pod（或一组 Pod）已经确定了要去哪个节点。默认 Profile 里剩下的最后一个插件是 `DefaultBinder`，它负责把这个决定写进 API Server。本文基于 Kubernetes master 提交 `aabdf5a2`，这也是本系列 in-tree 部分的最后一篇。
 
 `DefaultBinder` 是默认 Profile 里**唯一的 Bind 插件**，排在 MultiPoint 列表最后，没有权重，不受任何 feature gate 控制。它在注册表里直接注册 `New`，没有像大多数插件那样套一层 `runtime.FactoryAdapter(fts, …)`，因为它根本不读 feature gate：

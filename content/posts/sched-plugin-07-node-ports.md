@@ -9,6 +9,10 @@ author: "LinPr"
 description: "NodePorts 检查 Pod 的 hostPort 是否和节点上已有 Pod 冲突。本文拆解它从哪些容器收集端口、HostPortInfo 如何用 (hostIP, protocol, port) 三元组判冲突以及 0.0.0.0 的特殊语义、为什么冲突返回可被抢占解决的 Unschedulable，以及只在占用相同端口的 Pod 被删除时才唤醒的 QueueingHint。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `NodePorts` 实现的扩展点（PreFilter、Filter）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/07.svg" link="/images/posts/sched-plugins/callstack/07.svg" caption="NodePorts 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-06-node-affinity/)的 `NodeAffinity` 看的是节点的标签，失败了谁也改变不了。`NodePorts` 看的是节点上已经被占用的 `hostPort`，失败的原因是「别的 Pod 先占了」，这就有了商量的余地。
 
 本文基于 Kubernetes master 提交 `aabdf5a2`。`NodePorts` 在默认 Profile 的 `MultiPoint` 里排第七，只实现 PreFilter 和 Filter，不参与打分，没有插件参数，默认启用。它和 `NodeAffinity` 一样只在 `InPlacePodVerticalScalingSchedulerPreemption`（1.37 Alpha，默认关）打开时，对 resize 被推迟的 Pod 直接跳过。整个插件不到 200 行，但它是默认 Filter 链里少数返回 `Unschedulable` 而不是 `UnschedulableAndUnresolvable` 的插件，抢占能不能帮上忙就取决于这个区别。

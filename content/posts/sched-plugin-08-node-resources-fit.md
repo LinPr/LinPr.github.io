@@ -9,6 +9,10 @@ author: "LinPr"
 description: "NodeResourcesFit 是默认调度链里计算量最大的插件：它先回答 Pod 到底请求了多少资源（init 容器、sidecar、pod 级 resources、overhead、扩展资源），再判断节点放不放得下并决定失败能否靠抢占解决，最后用 LeastAllocated、MostAllocated、RequestedToCapacityRatio 三种策略打分。本文按源码逐层拆解，附算例，并讲清 QueueingHint 如何识别节点变大、Pod 缩小以及 in-place resize 带来的新逻辑。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `NodeResourcesFit` 实现的扩展点（PreFilter、Filter、PreScore、Score、PlacementScore）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/08.svg" link="/images/posts/sched-plugins/callstack/08.svg" caption="NodeResourcesFit 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-07-node-ports/)的 `NodePorts` 查的是一张端口表，节点上的每个端口只有「占用」和「空闲」两种状态。`NodeResourcesFit` 面对的是连续的量：CPU、内存、临时存储、hugepages、GPU 等扩展资源。它要回答三个问题：
 
 1. 这个 Pod 到底请求了多少资源？

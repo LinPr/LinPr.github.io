@@ -9,6 +9,10 @@ author: "LinPr"
 description: "NodeResourcesBalancedAllocation 让各种资源在节点上被均匀地请求，避免 CPU 用满而内存闲置。本文从源码拆解它的标准差算法、为什么当前实现比较的是放上 Pod 前后的均衡度改善量而不是放上之后的绝对值、分数如何被压回 50 到 100、与 NodeResourcesFit 共享的 resourceAllocationScorer 有哪些差异，以及 BestEffort Pod 为什么直接跳过。"
 ---
 
+> 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `NodeResourcesBalancedAllocation` 实现的扩展点（PreScore、Score）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
+
+{{< figure src="/images/posts/sched-plugins/callstack/19.svg" link="/images/posts/sched-plugins/callstack/19.svg" caption="NodeResourcesBalancedAllocation 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
+
 [上一篇](/posts/sched-plugin-18-default-preemption/)的 `DefaultPreemption` 是 Filter 全军覆没之后的补救。如果 Filter 留下了可行节点，调度周期就进入打分阶段。前面几篇里，`TaintToleration`、`NodeAffinity`、`NodeResourcesFit`、`PodTopologySpread`、`InterPodAffinity` 等插件已经各自讲过自己的打分逻辑，它们都是「既过滤又打分」。默认 Profile 里还剩两个**只打分、从不拒绝 Pod** 的插件，本篇讲第一个：`NodeResourcesBalancedAllocation`。
 
 本文基于 Kubernetes master 提交 `aabdf5a2`。它在默认 Profile 的 `MultiPoint` 里排在 `DefaultPreemption` 之后，权重 1，只实现 PreScore 和 Score，没有 feature gate，默认启用：
