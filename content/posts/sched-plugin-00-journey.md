@@ -17,6 +17,17 @@ description: "系列开篇。沿着 ScheduleOne 的源码走一遍：Pod 怎么�
 
 {{< figure src="/images/posts/sched-plugins/00-journey.svg" link="/images/posts/sched-plugins/00-journey.svg" caption="一个 Pod 的调度旅程：左侧是扩展点，右侧是本系列在该位置重点讲的插件（点击查看大图）" >}}
 
+上面这张图是按扩展点画的。落到代码里，这些扩展点分别由哪个函数触发，可以看下面这张调用栈。它从调度循环的入口 `ScheduleOne` 开始，缩进表示谁调用了谁，右侧说明这一步在做什么；后文各节会沿着这棵树逐段展开：
+
+{{< figure src="/images/posts/sched-plugins/00-call-stack.svg" link="/images/posts/sched-plugins/00-call-stack.svg" caption="从 ScheduleOne 到绑定周期的调用栈：紫色是队列和调度循环，蓝色是调度周期，绿色是绑定周期的 goroutine，橙色只在失败时执行（点击查看大图）" >}}
+
+先记住几处容易看错的地方，读后面的源码时会更顺：
+
+- `NextEntity` 不是普通方法，它在 `scheduler.go` 里被赋成 `podQueue.Pop`，出队实际发生在 `PriorityQueue` 里，QueueSort 插件就在这一步起作用（第二节）。
+- `findNodesThatFitPod` 下面的三个函数是按顺序尝试的：先 PreFilter，再单独试提名节点，最后才遍历候选节点跑 Filter；提名节点通过就直接返回（3.2 节）。
+- `prioritizeNodes` 是包级函数，内部依次调 `RunPreScorePlugins`、`RunScorePlugins` 和归一化。框架层的 `Run*` 函数都在 `framework/runtime/framework.go`，是插件真正被执行的地方（3.5 节）。
+- `runBindingCycle` 和 `handleSchedulingFailure` 都挂在 `scheduleOnePod` 下，但只会走一个：调度周期成功就起 goroutine 绑定（第四节），失败就进失败处理（第五节）。绑定周期和调度周期共用同一个 `CycleState`，所以 PreBind 还能读到 Filter 阶段写下的数据。
+
 ## 一、出发之前：Profile 决定了这趟旅程有哪些站
 
 ### 1.1 插件链来自 Profile
@@ -299,19 +310,6 @@ func (a *SchedulingAlgorithm) numFeasibleNodesToFind(percentageOfNodesToScore *i
 **Assume + Reserve**：在缓存里把 Pod 记到目标节点上，然后调用各插件的 Reserve。有状态的插件在这里记账，比如 `VolumeBinding` 把选中的 PV 假定绑定，`CapacityScheduling` 把用量计入配额。之后任何一步失败，都会调用 Unreserve 把账退回去。
 
 **Permit**：最后一道关卡，可以批准、拒绝或让 Pod 等待。等待的 Pod 已经占着资源，但不会进入绑定。成组调度最早就靠这个机制：一组 Pod 逐个通过调度周期，在 Permit 处等齐了再一起放行。scheduler-plugins 的 `Coscheduling` 用的就是这种方式（第 27 篇），v1.36 的 in-tree `GangScheduling` 也是 PreEnqueue 加 Permit 等待。master 上的 `GangScheduling` 已经换了做法：整组作为一个实体出队，在专门的 PodGroup 调度周期里一起试放，不再依赖 Permit 等待（第 21 篇）。
-
-### 3.7 一张图看清整条调用链
-
-前面几节提到的函数散落在三个文件里：调度循环在 `schedule_one.go`，过滤和打分算法在 `algorithm.go`，绑定周期又回到 `schedule_one.go`。图里把它们按调用关系排成一棵树，缩进表示谁调用了谁，右侧说明这一步在做什么：
-
-{{< figure src="/images/posts/sched-plugins/00-call-stack.svg" link="/images/posts/sched-plugins/00-call-stack.svg" caption="从 ScheduleOne 到绑定周期的调用栈：紫色是队列和调度循环，蓝色是调度周期，绿色是绑定周期的 goroutine，橙色只在失败时执行（点击查看大图）" >}}
-
-读这张图时有几处值得留意：
-
-- `NextEntity` 不是普通的方法调用，它在 `scheduler.go` 里被赋成 `podQueue.Pop`，所以出队实际上发生在 `PriorityQueue` 里，QueueSort 插件正是在这一步起作用。
-- `findNodesThatFitPod` 下面的三个函数是按顺序尝试的：先 PreFilter，再单独试提名节点，最后才遍历候选节点跑 Filter。提名节点通过就直接返回，后面两个都不执行。
-- `prioritizeNodes` 是包级函数，不在 `SchedulingAlgorithm` 上；它内部依次调 `RunPreScorePlugins`、`RunScorePlugins` 和归一化。框架层的 `Run*` 函数都在 `framework/runtime/framework.go`，是插件真正被执行的地方。
-- `runBindingCycle` 与 `handleSchedulingFailure` 都挂在 `scheduleOnePod` 下，但二者只会走一个：调度周期成功就起 goroutine 绑定，失败就进失败处理。绑定周期里的每一步和调度周期共用同一个 `CycleState`，所以 `RunPreBindPlugins` 还能读到 Filter 阶段写下的数据。
 
 ## 四、绑定周期：异步地写回 API Server
 
