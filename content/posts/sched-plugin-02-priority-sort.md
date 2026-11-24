@@ -62,7 +62,7 @@ type QueueSortPlugin interface {
 }
 ```
 
-参数类型是 `QueuedEntityInfo`，不是 `QueuedPodInfo`。开启 `GenericWorkload` 后，队列里排队的除了单个 Pod，还有整个 PodGroup（`QueuedPodGroupInfo`），两种实体放在同一个堆里比较。Less 只依赖接口上的 `GetPriority()` 和 `GetTimestamp()`，不关心实体是什么类型。
+参数类型是 `QueuedEntityInfo`，不是 `QueuedPodInfo`。开启 `GenericWorkload` 后，队列里排队的除了单个 Pod，还有整个 PodGroup（`QueuedPodGroupInfo`），两种 entity 放在同一个堆里比较。Less 只依赖接口上的 `GetPriority()` 和 `GetTimestamp()`，不关心 entity 是什么类型。
 
 这个插件值得一读的地方不在 Less 本身，而在它的两个输入：priority 从哪里来，timestamp 从哪里来。
 
@@ -158,7 +158,7 @@ description: "批处理高优先级作业"
 
 `QueuedPodGroupInfo` 的优先级来自 PodGroup 对象自己的 `spec.priority`，同样由 `Priority` 准入插件在创建 PodGroup 时根据它的 `priorityClassName` 解析（`admitPodGroup`）。组内各 Pod 的 priority 不参与组的排序，所以**一个 PodGroup 的排队位置由组的 PriorityClass 决定，而不是组里优先级最高的那个 Pod**。
 
-priority 是实体自带的、创建后不再变的属性。Less 的另一个输入正好相反，它每失败一次就会被刷新。
+priority 是 entity 自带的、创建后不再变的属性。Less 的另一个输入正好相反，它每失败一次就会被刷新。
 
 ## 三、timestamp 从哪里来
 
@@ -198,7 +198,7 @@ func (p *PriorityQueue) AddUnschedulablePodIfNotPresent(ctx context.Context, pIn
 }
 ```
 
-除此之外，实体在 `unschedulableEntities`、`backoffQ`、`activeQ` 之间移动，Pod 对象被更新，周期性刷新（`flushUnschedulableEntitiesLeftover` 改的是另一个字段 `FlushTimestamp`），都不会改 `Timestamp`。
+除此之外，entity 在 `unschedulableEntities`、`backoffQ`、`activeQ` 之间移动，Pod 对象被更新，周期性刷新（`flushUnschedulableEntitiesLeftover` 改的是另一个字段 `FlushTimestamp`），都不会改 `Timestamp`。
 
 刷新的效果是：**同优先级内，失败过的 Pod 排到后面去**。下图是一个例子。
 
@@ -249,7 +249,7 @@ func (f *frameworkImpl) QueueSortFunc() fwk.LessFunc {
 	pq.activeQ = newActiveQueue(heap.NewWithRecorder(queuedEntityKeyFunc, heap.LessFunc[framework.QueuedEntityInfo](lessConverted), metrics.NewActiveEntitiesRecorder()), options.metricsRecorder, backoffQPopper)
 ```
 
-堆的实现在 `pkg/scheduler/backend/heap`，是对 `container/heap` 的封装，额外维护了一个 `keyIndex map[string]int`，从实体 key 映射到数组下标，这样按 key 删除或更新时不用线性查找：
+堆的实现在 `pkg/scheduler/backend/heap`，是对 `container/heap` 的封装，额外维护了一个 `keyIndex map[string]int`，从 entity key 映射到数组下标，这样按 key 删除或更新时不用线性查找：
 
 ```go
 // pkg/scheduler/backend/heap/heap.go
@@ -289,7 +289,7 @@ func (bq *backoffQueue) lessBackoffCompletedWithPriority(entity1, entity2 framew
 }
 ```
 
-退避到期时间会被 `alignToWindow` 截断到 1 秒的窗口（`backoffQOrderingWindowDuration`），**所以只有同一秒内到期的实体之间才按 Less 排序**。这个 feature 打开后，`activeQ` 为空时 `Pop` 会直接从 `backoffQ` 取，取出的顺序因此也基本符合优先级。只有 `entityErrorBackoffQ`（因 `Error` 状态退避的实体）仍然只按到期时间排序。
+退避到期时间会被 `alignToWindow` 截断到 1 秒的窗口（`backoffQOrderingWindowDuration`），**所以只有同一秒内到期的 entity 之间才按 Less 排序**。这个 feature 打开后，`activeQ` 为空时 `Pop` 会直接从 `backoffQ` 取，取出的顺序因此也基本符合优先级。只有 `entityErrorBackoffQ`（因 `Error` 状态退避的 entity）仍然只按到期时间排序。
 
 两个堆用的是同一份 Less。这不是巧合：整个调度器只有一个 `PriorityQueue`，也就只有一份比较函数，框架对此有强校验。
 
@@ -371,7 +371,7 @@ func rankMemoryPressure(pods []*v1.Pod, stats statsFunc) {
 
 **globalDefault 只影响之后创建的 Pod。** 集群运行一段时间后再创建 `globalDefault: true` 的 PriorityClass，已有 Pod 的 priority 仍然是 0。
 
-**Less 的严格弱序。** 两个优先级相同、`Timestamp` 也完全相同的实体，Less 双向都为假，出队先后取决于堆的内部结构。测试里用假时钟时容易遇到这种「看起来随机」的顺序。
+**Less 的严格弱序。** 两个优先级相同、`Timestamp` 也完全相同的 entity，Less 双向都为假，出队先后取决于堆的内部结构。测试里用假时钟时容易遇到这种「看起来随机」的顺序。
 
 ## 八、发散：排序之外还能怎么排
 
@@ -379,10 +379,10 @@ func rankMemoryPressure(pods []*v1.Pod, stats statsFunc) {
 
 - 按 QoS 排序：scheduler-plugins 的 `QOSSort` 在优先级相同时先比 QoS 等级，再比 `Timestamp`，见[第 25 篇](/posts/sched-plugin-25-qos-sort/)。注意 scheduler-plugins 依赖的是 v1.36，那里的 `Less` 签名还是 `Less(fwk.QueuedPodInfo, fwk.QueuedPodInfo)`，master 上已经改成了 `QueuedEntityInfo`。
 - 按依赖关系排序：`TopologicalSort` 让同一个应用内被依赖的 Pod 先出队（[第 26 篇](/posts/sched-plugin-26-topological-sort/)）。
-- 成组出队：`Coscheduling` 在优先级相同时比较的是 PodGroup 的创建时间而不是 Pod 的入队时间，于是同一组的 Pod 在队列里挨在一起（[第 27 篇](/posts/sched-plugin-27-coscheduling/)）。in-tree 的 `GenericWorkload` 走了另一条路，直接把 PodGroup 作为一个实体放进堆里，仍然由 `PrioritySort` 排序。
+- 成组出队：`Coscheduling` 在优先级相同时比较的是 PodGroup 的创建时间而不是 Pod 的入队时间，于是同一组的 Pod 在队列里挨在一起（[第 27 篇](/posts/sched-plugin-27-coscheduling/)）。in-tree 的 `GenericWorkload` 走了另一条路，直接把 PodGroup 作为一个 entity 放进堆里，仍然由 `PrioritySort` 排序。
 - 租户间公平：`PrioritySort` 没有租户概念，一个租户提交大量同优先级作业会排在其他租户前面。这类需求通常在队列之外解决，比如 Kueue 用 `schedulingGates` 控制每个租户放进调度器的 Pod 数量，调度器内部仍然只看优先级。
 
-从数据结构的角度看，QueueSort 插件能控制的只是一个全序关系，而且必须是便宜的、只依赖实体自身字段的比较。凡是需要全局视角的排序（比如「这个租户已经占用了多少资源」），都不适合放在 Less 里，因为堆不会在外部状态变化时重新排序。这也是为什么配额、公平共享这类功能更多地在 PreEnqueue 或者调度器外部实现。
+从数据结构的角度看，QueueSort 插件能控制的只是一个全序关系，而且必须是便宜的、只依赖 entity 自身字段的比较。凡是需要全局视角的排序（比如「这个租户已经占用了多少资源」），都不适合放在 Less 里，因为堆不会在外部状态变化时重新排序。这也是为什么配额、公平共享这类功能更多地在 PreEnqueue 或者调度器外部实现。
 
 ## 九、小结
 

@@ -1,12 +1,12 @@
 ---
-title: 'scheduler-plugins 21 [in-tree] GangScheduling：整组调度的门禁与计数器'
+title: 'scheduler-plugins 21 [in-tree] GangScheduling：整组调度的放行条件与计数'
 date: 2026-11-19T11:30:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "gang-scheduling", "podgroup", "workload"]
 categories: ["Kubernetes"]
 series: ["scheduler-plugins"]
 author: "LinPr"
-description: "GangScheduling 是 kube-scheduler 内置的 all-or-nothing 插件。本文从 Pod 的 spec.schedulingGroup 与 PodGroup API 讲起，拆解它在 PreEnqueue 上的 quorum 门禁、HierarchyTracker 计数树、PlacementFeasible 的三种返回值，以及它所依托的 PodGroup 调度周期：整组出队、逐 Pod 试放、在 snapshot 里 assume、失败整体回滚。"
+description: "GangScheduling 是 kube-scheduler 内置的 all-or-nothing 插件。本文从 Pod 的 spec.schedulingGroup 与 PodGroup API 讲起，拆解它在 PreEnqueue 上的 quorum gate、HierarchyTracker 计数树、PlacementFeasible 的三种返回值，以及它所依托的 PodGroup 调度周期：整组出队、逐 Pod 试放、在 snapshot 里 assume、失败整体回滚。"
 ---
 
 > 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `GangScheduling` 实现的扩展点（PreEnqueue、PlacementFeasible）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
@@ -198,9 +198,9 @@ spec:
 
 {{< figure src="/images/posts/sched-plugins/21-podgroup-cycle.svg" link="/images/posts/sched-plugins/21-podgroup-cycle.svg" caption="PodGroup 调度周期全景：左侧队列侧负责凑齐与放行，右侧 scheduleOnePodGroup 负责整组试放与提交（点击查看大图）" >}}
 
-### 3.1 队列里的实体不再只是 Pod
+### 3.1 队列里的 entity 不再只是 Pod
 
-调度主循环每次从队列里取出的是一个「实体」，可能是 Pod，也可能是 PodGroup：
+调度主循环每次从队列里取出的是一个 entity，可能是 Pod，也可能是 PodGroup：
 
 ```go
 // pkg/scheduler/schedule_one.go
@@ -289,7 +289,7 @@ func (p *PriorityQueue) addPodGroupMember(logger klog.Logger, pInfo *framework.Q
 }
 ```
 
-`QueuedPodGroupInfo` 以根组为单位：没有 CompositePodGroup 时根组就是 PodGroup 自己；有的话，整棵树上所有叶子 PodGroup 的 Pod 合成一个实体出队。
+`QueuedPodGroupInfo` 以根组为单位：没有 CompositePodGroup 时根组就是 PodGroup 自己；有的话，整棵树上所有叶子 PodGroup 的 Pod 合成一个 entity 出队。
 
 **排序仍然交给 QueueSort 插件**：`PrioritySort.Less` 现在比较的是 `fwk.QueuedEntityInfo`，组的优先级和时间戳与单个 Pod 同等参与排序（见[第 02 篇](/posts/sched-plugin-02-priority-sort/)）。组内 Pod 的顺序由 `PodGroupMemberPodsOrderingFunc` 决定：优先级高的在前，其次尝试次数多的在前，再按时间戳、最后按 Pod 名，保证每轮试放的顺序是确定的。
 
@@ -620,7 +620,7 @@ type HierarchyTracker struct {
 }
 ```
 
-叶子 PodGroup 用一个 UID 集合数 Pod，CompositePodGroup 用一个整数数「已就绪的子组」。一个组就绪的条件统一成 `readyCount() >= minCount`。**用 UID 集合而不是计数器，是为了让重复的 Add 事件幂等**（`addPod` 开头先 `Has` 检查）。
+叶子 PodGroup 用一个 UID 集合数 Pod，CompositePodGroup 用一个整数数「已就绪的子组」。一个组就绪的条件统一成 `readyCount() >= minCount`。**用 UID 集合而不是一个计数，是为了让重复的 Add 事件幂等**（`addPod` 开头先 `Has` 检查）。
 
 CompositePodGroup 是更高一层的组：比如一个训练任务由 `worker-a`、`worker-b`、`ps` 三个 PodGroup 组成，外面套一个 CompositePodGroup，用 `minGroupCount` 表示至少几个子组同时就绪。不开 `CompositePodGroup` 时 `parentKey` 一律被忽略，每个 PodGroup 自己就是根。
 
@@ -751,7 +751,7 @@ func (p *PriorityQueue) runPreEnqueuePlugins(ctx context.Context, entity framewo
 }
 ```
 
-**任何一个 Pod 被拦，整个实体都不出队。** 这条规则对 [SchedulingGates](/posts/sched-plugin-01-scheduling-gates/) 也成立：组里只要有一个 Pod 带着 scheduling gate，整组都停在 gated 状态。
+**任何一个 Pod 被拦，整个 entity 都不出队。** 这条规则对 [SchedulingGates](/posts/sched-plugin-01-scheduling-gates/) 也成立：组里只要有一个 Pod 带着 scheduling gate，整组都停在 gated 状态。
 
 ## 六、EventsToRegister：谁能把被拦下的组叫回来
 
@@ -848,7 +848,7 @@ func (p *PriorityQueue) isEntityWorthRequeuing(logger klog.Logger, entity framew
 
 ### 7.2 AddAttemptedPodGroupIfNeeded
 
-回队分两步。`FailureHandler` 把每个失败的 Pod 交给队列，此时根组仍是「最近一次 Pop 出来的实体」，于是这些 Pod 被放进 `pendingPodGroupPods`。周期末尾 `AddAttemptedPodGroupIfNeeded` 把它们重新组装成一个 `QueuedPodGroupInfo`：
+回队分两步。`FailureHandler` 把每个失败的 Pod 交给队列，此时根组仍是「最近一次 Pop 出来的 entity」，于是这些 Pod 被放进 `pendingPodGroupPods`。周期末尾 `AddAttemptedPodGroupIfNeeded` 把它们重新组装成一个 `QueuedPodGroupInfo`：
 
 ```go
 // pkg/scheduler/backend/queue/scheduling_queue.go
@@ -916,7 +916,7 @@ out-of-tree 的 Coscheduling 至今仍是 Permit 方案，第 27 篇会把两者
 
 ### 9.2 一个组的调度代价
 
-PodGroup 调度周期是串行的：主循环拿到一个组之后，要把组里每个 Pod 的 Filter、Score 都跑完才会处理下一个实体。一个 512 Pod 的组，相当于在一个调度周期里做了 512 次单 Pod 调度，期间其他 Pod 都在排队。开启拓扑感知后还要乘以被评估的 placement 数（第 22 篇讲它的上限是怎么算的）。代码里也留了 TODO（#142269），提到组状态的 API 更新目前是同步串行的，大层级结构下会阻塞队列。
+PodGroup 调度周期是串行的：主循环拿到一个组之后，要把组里每个 Pod 的 Filter、Score 都跑完才会处理下一个 entity。一个 512 Pod 的组，相当于在一个调度周期里做了 512 次单 Pod 调度，期间其他 Pod 都在排队。开启拓扑感知后还要乘以被评估的 placement 数（第 22 篇讲它的上限是怎么算的）。代码里也留了 TODO（#142269），提到组状态的 API 更新目前是同步串行的，大层级结构下会阻塞队列。
 
 可观测性方面，调度器为组调度单独加了一批指标：`scheduler_podgroup_schedule_attempts_total`（按 scheduled/unschedulable/error 等结果计数）、`scheduler_podgroup_scheduling_algorithm_duration_seconds`、`scheduler_podgroup_scheduling_attempt_duration_seconds`，以及整组抢占的 `scheduler_workload_preemption_attempts_total`。上线 gang 调度后，前两个指标的 P99 是判断「组太大、拖慢全局」的直接依据。
 

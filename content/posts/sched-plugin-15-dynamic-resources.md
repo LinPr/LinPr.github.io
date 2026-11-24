@@ -499,7 +499,7 @@ Filter 先遍历所有 claim，对已分配的 claim 做三项检查，任何一
 
 `stable` 只支持 AdminAccess、PrioritizedList、PartitionableDevices、DeviceTaints 四项；按本提交的默认 gate，`DRADeviceBindingConditions`、`DRAConsumableCapacity` 都是开的，所以默认集群实际跑的是 `incubating`。
 
-三个实现的骨架相同：先 `GatherPools` 收集当前节点可达的 pool，然后对「claim → request → 第 N 个设备」做深度优先搜索：
+三个实现的结构相同：先 `GatherPools` 收集当前节点可达的 pool，然后对「claim → request → 第 N 个设备」做深度优先搜索：
 
 {{< figure src="/images/posts/sched-plugins/15-dra-allocator.svg" caption="一个带 matchAttribute 约束的 claim 在节点上的搜索过程：gpu0 分支走不通后回溯，gpu1 分支找到 {gpu1, gpu2} 后立即返回（点击查看大图）" link="/images/posts/sched-plugins/15-dra-allocator.svg" >}}
 
@@ -590,7 +590,7 @@ PreBind 时才真正在 API Server 里 `Create` 这个 claim（名字由 `Genera
 
 这种设备分配出去后，`NodeResourcesFit` 那边的账也要跟着变。Filter 里 `calculateAndCheckNodeAllocatableResources` 计算 Pod 通过 DRA 拿到的节点资源足迹并检查是否放得下，结果存进 `nodeAllocation.nodeAllocatableResourceClaimStatuses`。
 
-调度器在 assume Pod 时把它拷进 `pod.Status.NodeAllocatableResourceClaimStatuses`，让缓存里的 NodeInfo 记账正确；PreBind 再 patch 到 API。
+调度器在 assume Pod 时把它拷进 `pod.Status.NodeAllocatableResourceClaimStatuses`，让缓存里的 NodeInfo 统计正确；PreBind 再 patch 到 API。
 
 两条附加路径都不改变主流程，只是在 Filter 里多算一份。真正的并发问题从 Reserve 开始。
 
@@ -870,7 +870,7 @@ func statusUnschedulable(logger klog.Logger, reason string, kv ...interface{}) *
 即使改成 `Unschedulable`，抢占也帮不上忙，原因有三：
 
 1. 没有 PreFilterExtensions。抢占模拟靠 `RemovePod` 让插件更新 CycleState。`DynamicResources` 的分配器在 PreFilter 时就固定了「已分配设备集合」，移除一个受害者 Pod 不会让任何设备变成空闲。
-2. 设备记账在 claim 上。真正释放设备要等受害者 Pod 被删除、resourceclaim controller 把它从 `reservedFor` 移除并清空 allocation。这条链路不在调度器的模拟范围内。
+2. 设备计数在 claim 上。真正释放设备要等受害者 Pod 被删除、resourceclaim controller 把它从 `reservedFor` 移除并清空 allocation。这条链路不在调度器的模拟范围内。
 3. 共享 claim。一个 claim 可能被多个 Pod 共享，驱逐一个 Pod 不一定释放 claim。
 
 **所以 DRA 的「腾位置」走的是另一条路：PostFilter 释放闲置 claim。** 这也是 `default_plugins.go` 里把它排在 `DefaultPreemption` 前面的原因。
@@ -945,7 +945,7 @@ ResourceClaim 事件是最频繁的，所以有两层过滤。
 | `DRADeviceTaints` | 1.37 GA | 设备污点与容忍；slice 视图叠加 `DeviceTaintRule` |
 | `DRAExtendedResource` | 1.37 GA，锁定开 | 第七节的特殊 claim |
 | `DRAResourceClaimDeviceStatus` | 1.37 GA，锁定开 | `claim.status.devices` |
-| `DRAPartitionableDevices` | Beta，开 | 可分区设备的 counter 记账 |
+| `DRAPartitionableDevices` | Beta，开 | 可分区设备的计数 |
 | `DRAConsumableCapacity` | Beta，开 | 一块设备按容量分给多个 claim |
 | `DRADeviceBindingConditions` | Beta，开 | PreBind 等待 binding conditions；`bindingTimeout` |
 | `DRASchedulerFilterTimeout` | Beta，开 | `filterTimeout` |
@@ -983,6 +983,6 @@ DRA 把选择提前到调度器，代价是调度器要做一次真正的组合�
 - 默认 gate 下实际使用的是 `incubating` 分配器，它用 `startLocation` 把同一请求内的搜索从排列降到组合。
 - Reserve 只写 in-flight 表，PreBind 先加 finalizer、再写 allocation 与 reservedFor，成功后放进 assume cache 并撤掉 in-flight；Unreserve 按进度分别回滚。
 - Score 只对 `firstAvailable` 打分，选中第 `i` 个备选得 `8 - i` 分。
-- 内部的 `statusUnschedulable` 返回的是 `UnschedulableAndUnresolvable`，加上没有 PreFilterExtensions、设备记账在 claim 上，DRA 的失败几乎不会触发抢占；它用 PostFilter 释放闲置 claim 来代替。
+- 内部的 `statusUnschedulable` 返回的是 `UnschedulableAndUnresolvable`，加上没有 PreFilterExtensions、设备计数在 claim 上，DRA 的失败几乎不会触发抢占；它用 PostFilter 释放闲置 claim 来代替。
 
 下一篇看一个小得多的插件：[NodeDeclaredFeatures](/posts/sched-plugin-16-node-declared-features/)，它检查的是节点声明的特性集合，DRA 的 `DRAOptionalNodeOperations` 就依赖它。

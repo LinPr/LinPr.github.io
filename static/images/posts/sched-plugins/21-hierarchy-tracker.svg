@@ -63,7 +63,7 @@
 <rect x="510.0" y="340.0" width="440.0" height="76.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
 <text x="520.0" y="364.7" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">worker-a / worker-b / ps 的所有 Pod 跑 PreEnqueue：</text>
 <text x="520.0" y="382.9" font-size="12.5" fill="#059669" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-weight="700">根组 readyChildren = 2 ≥ 2，IsReady = true</text>
-<text x="520.0" y="400.4" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">PreEnqueue 返回 nil，整组实体进入 activeQ</text>
+<text x="520.0" y="400.4" font-size="12" fill="#334155" text-anchor="start" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">PreEnqueue 返回 nil，整组 entity 进入 activeQ</text>
 <polyline points="472.0,272.0 502.0,272.0" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#ab)"/>
 <rect x="461.8" y="251.6" width="50.5" height="14.9" fill="#ffffff" opacity="0.92"/>
 <text x="487.0" y="262.0" font-size="11" fill="#2563eb" text-anchor="middle" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">Pod Add</text>

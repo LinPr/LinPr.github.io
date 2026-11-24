@@ -28,7 +28,7 @@ description: "系列开篇。沿着 ScheduleOne 的源码走一遍：Pod 怎么�
 - 框架层分两级：`RunXxxPlugins` 负责遍历插件、处理 Skip 和失败码、记录指标，真正调用插件方法的是它下面的 `runXxxPlugin`，两级都在 `framework/runtime/framework.go`。打分多一步：`RunScorePlugins` 先按节点并行跑 `runScorePlugin`，再按插件并行跑 `runScoreExtension` 做归一化（3.5 节）。
 - PreEnqueue 和 QueueSort 不在调度循环里执行：PreEnqueue 在 Pod 进入 `activeQ` 时由队列的 `moveToActiveQ` 调用，QueueSort 的 `Less` 则是堆每次调整时的比较函数（第二节）。
 - `runBindingCycle` 和 `handleSchedulingFailure` 都挂在 `scheduleOnePod` 下，但只会走一个：调度周期成功就起 goroutine 绑定（第四节），失败就进失败处理（第五节）。绑定周期和调度周期共用同一个 `CycleState`，所以 PreBind 还能读到 Filter 阶段写下的数据。
-- 最下面青色的一段是 PodGroup 调度周期：整组 Pod 作为一个实体出队，在 `scheduleOnePodGroup` 里逐个试放，每个 Pod 走的仍是上面同一条 `schedulingAlgorithm` 路径，额外多了 PlacementGenerate、PlacementFeasible、PlacementScore、PodGroupPostFilter 四个扩展点（第 21~23 篇）。
+- 最下面青色的一段是 PodGroup 调度周期：整组 Pod 作为一个 entity 出队，在 `scheduleOnePodGroup` 里逐个试放，每个 Pod 走的仍是上面同一条 `schedulingAlgorithm` 路径，额外多了 PlacementGenerate、PlacementFeasible、PlacementScore、PodGroupPostFilter 四个扩展点（第 21~23 篇）。
 
 ## 一、出发之前：Profile 决定了这趟旅程有哪些站
 
@@ -136,7 +136,7 @@ Pod 被 informer 发现后，进入调度队列 `PriorityQueue`。它内部有�
 
 ### 2.2 出队的不一定是单个 Pod
 
-调度循环的入口是 `ScheduleOne`，现在从队列里取出来的是一个「调度实体」：
+调度循环的入口是 `ScheduleOne`，现在从队列里取出来的是一个 entity：
 
 ```go
 // pkg/scheduler/schedule_one.go
@@ -157,7 +157,7 @@ func (sched *Scheduler) ScheduleOne(ctx context.Context) {
 }
 ```
 
-实体可能是一个 Pod，也可能是一个 PodGroup。后者是 `GenericWorkload` 系列 feature 引入的成组调度路径（`schedule_one_podgroup.go`），整组 Pod 在一次周期里一起评估放置方案。第 21 篇会单独讲这条路径，这里先沿着单个 Pod 走。
+entity 可能是一个 Pod，也可能是一个 PodGroup。后者是 `GenericWorkload` 系列 feature 引入的成组调度路径（`schedule_one_podgroup.go`），整组 Pod 在一次周期里一起评估放置方案。第 21 篇会单独讲这条路径，这里先沿着单个 Pod 走。
 
 ## 三、调度周期：串行地选出一个节点
 
@@ -328,11 +328,11 @@ func (a *SchedulingAlgorithm) numFeasibleNodesToFind(percentageOfNodesToScore *i
 	}
 ```
 
-**Assume + Reserve**：在缓存里把 Pod 记到目标节点上，然后调用各插件的 Reserve。有状态的插件在这里记账，比如 `VolumeBinding` 把选中的 PV 假定绑定，`CapacityScheduling` 把用量计入配额。之后任何一步失败，都会调用 Unreserve 把账退回去。
+**Assume + Reserve**：在缓存里把 Pod 记到目标节点上，然后调用各插件的 Reserve。有状态的插件在这里记录状态，比如 `VolumeBinding` 把选中的 PV 假定绑定，`CapacityScheduling` 把用量计入配额。之后任何一步失败，都会调用 Unreserve 把记录的状态退回去。
 
-**Permit**：最后一道关卡，可以批准、拒绝或让 Pod 等待。等待的 Pod 已经占着资源，但不会进入绑定。成组调度最早就靠这个机制：一组 Pod 逐个通过调度周期，在 Permit 处等齐了再一起放行。scheduler-plugins 的 `Coscheduling` 用的就是这种方式（第 27 篇），v1.36 的 in-tree `GangScheduling` 也是 PreEnqueue 加 Permit 等待。master 上的 `GangScheduling` 已经换了做法：整组作为一个实体出队，在专门的 PodGroup 调度周期里一起试放，不再依赖 Permit 等待（第 21 篇）。
+**Permit**：最后一道关卡，可以批准、拒绝或让 Pod 等待。等待的 Pod 已经占着资源，但不会进入绑定。成组调度最早就靠这个机制：一组 Pod 逐个通过调度周期，在 Permit 处等齐了再一起放行。scheduler-plugins 的 `Coscheduling` 用的就是这种方式（第 27 篇），v1.36 的 in-tree `GangScheduling` 也是 PreEnqueue 加 Permit 等待。master 上的 `GangScheduling` 已经换了做法：整组作为一个 entity 出队，在专门的 PodGroup 调度周期里一起试放，不再依赖 Permit 等待（第 21 篇）。
 
-走到这里，调度周期该做的都做完了：节点选好了，账记好了，Permit 也过了（或者正在等）。剩下的事交给另一个 goroutine。
+走到这里，调度周期该做的都做完了：节点选好了，状态记好了，Permit 也过了（或者正在等）。剩下的事交给另一个 goroutine。
 
 ## 四、绑定周期：异步地写回 API Server
 

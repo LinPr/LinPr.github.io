@@ -13,7 +13,7 @@ description: "CrossNodePreemption 想解决 in-tree 抢占无法跨节点选受�
 
 {{< figure src="/images/posts/sched-plugins/callstack/32.svg" link="/images/posts/sched-plugins/callstack/32.svg" caption="CrossNodePreemption 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
 
-上一篇的 [PreemptionToleration](/posts/sched-plugin-31-preemption-toleration/) 在 in-tree 抢占的骨架上改了「谁可以被抢」。本篇的 `CrossNodePreemption` 想改的是另一个更根本的约束：受害者必须和抢占者在同一个节点上。
+上一篇的 [PreemptionToleration](/posts/sched-plugin-31-preemption-toleration/) 在 in-tree 抢占的流程上改了「谁可以被抢」。本篇的 `CrossNodePreemption` 想改的是另一个更根本的约束：受害者必须和抢占者在同一个节点上。
 
 它在 scheduler-plugins 里的处境很特殊。本文基于 scheduler-plugins 提交 `cfeb3aa`（依赖 Kubernetes v1.36.4），在这个版本里，`cmd/scheduler/main.go` 中它的注册是注释掉的：
 
@@ -82,9 +82,9 @@ scheduled due to "cross node" constraints such as PodTopologySpread and PodAntiA
 
 ## 二、实现：枚举所有受害者组合
 
-实现把「在哪个节点上动手」换成了「移除哪些 Pod」：先收集潜在节点上的低优先级 Pod，再对它们的每个子集做一次模拟。PostFilter 的骨架没有变，变的只是其中一步。
+实现把「在哪个节点上动手」换成了「移除哪些 Pod」：先收集潜在节点上的低优先级 Pod，再对它们的每个子集做一次模拟。PostFilter 的流程没有变，变的只是其中一步。
 
-### 2.1 PostFilter 的骨架
+### 2.1 PostFilter 的实现
 
 PostFilter 本身只做一层包装：调用 `preempt`，把拿到的提名节点组装成返回值，空字符串则转成 `Unschedulable`。
 

@@ -388,7 +388,7 @@ func (sched *Scheduler) handleBindingCycleError(
 		} else {
 ```
 
-**如果 informer 里的 Pod 已经有 `nodeName`，就不再放回队列。** 此时 cache 里 assumed 的副本已经被 Forget 了，等 informer 的 Update 事件到达时，`AddPod` 走 `!ok` 分支，把它当作一个普通的已分配 Pod 加进来。资源记账在这个短暂窗口里少算了一次，但很快会自我修正。
+**如果 informer 里的 Pod 已经有 `nodeName`，就不再放回队列。** 此时 cache 里 assumed 的副本已经被 Forget 了，等 informer 的 Update 事件到达时，`AddPod` 走 `!ok` 分支，把它当作一个普通的已分配 Pod 加进来。资源统计在这个短暂窗口里少算了一次，但很快会自我修正。
 
 如果事件比 Forget 先到呢？那时 `AddPod` 走 assumed 分支，状态变成 Added；随后 `ForgetPod` 发现它已经不在 `assumedPods` 里，`validateAssumedPod` 报错，`handleBindingCycleError` 记录 `ForgetPod failed` 并跳过广播。cache 的状态仍然是对的。
 

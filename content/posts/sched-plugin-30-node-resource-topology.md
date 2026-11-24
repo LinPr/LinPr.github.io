@@ -735,7 +735,7 @@ func (rs *resourceStore) UpdateNRT(nrt *topologyv1alpha2.NodeResourceTopology, l
 }
 ```
 
-这就是 Over-Reserve 名字的由来：一个 4 核 Pod 在双 NUMA 节点上会让两个 zone 各少 4 核，账面上「占用」了 8 核。随着预留累积，节点在缓存眼里越来越满，最终某个 Pod 被 Filter 拒绝，`NodeMaybeOverReserved` 把节点计入 `nodesMaybeOverreserved`。
+这就是 Over-Reserve 名字的由来：一个 4 核 Pod 在双 NUMA 节点上会让两个 zone 各少 4 核，记录里「占用」了 8 核。随着预留累积，节点在缓存眼里越来越满，最终某个 Pod 被 Filter 拒绝，`NodeMaybeOverReserved` 把节点计入 `nodesMaybeOverreserved`。
 
 缓存不区分「真的满了」和「被悲观扣满了」，交给重同步去判断。
 
@@ -773,17 +773,17 @@ func checkPodFingerprintForNode(lh logr.Logger, objs []podData, nodeName, pfpExp
 
 两个指纹相等，说明代理生成这份 NRT 时看到的 Pod 集合，和调度器此刻知道的 Pod 集合一致，NRT 已经「追上」了调度器的认知，这时用它替换快照、清空预留才安全。
 
-这个门控就是整个缓存设计的关键：它把「NRT 新不新」这个无法直接判断的问题，转换成了「两边的 Pod 集合是否相同」。
+这道校验就是整个缓存设计的关键：它把「NRT 新不新」这个无法直接判断的问题，转换成了「两边的 Pod 集合是否相同」。
 
 `resyncMethod` 决定指纹的口径：`All` 计入所有 Pod；`OnlyExclusiveResources` 只计入持有独占资源的 Pod（整数核的 Guaranteed CPU、Guaranteed 的内存/hugepages、NRT 中出现的设备）；默认 `Autodetect` 读 NRT 属性 `nodeTopologyPodsFingerprintMethod`，值为 `with-exclusive-resources` 时用后者，否则用前者。
 
 两边口径必须一致，否则指纹永远对不上，节点永远无法 Flush。
 
-`FlushNodes` 替换快照后，删除该节点的预留和三个计数器，并把 `generation` 加一。
+`FlushNodes` 替换快照后，删除该节点的预留和三个计数，并把 `generation` 加一。
 
 ### 7.5 外来 Pod
 
-调度器只对自己调度的 Pod 做了预留。如果别的调度器（典型场景是 NRT 插件跑在第二调度器里，默认调度器也在往同一批节点放 Pod）把 Pod 放到节点上，缓存的账就错了，而且错的方向是乐观的，这是唯一不能接受的方向。
+调度器只对自己调度的 Pod 做了预留。如果别的调度器（典型场景是 NRT 插件跑在第二调度器里，默认调度器也在往同一批节点放 Pod）把 Pod 放到节点上，缓存的用量就错了，而且错的方向是乐观的，这是唯一不能接受的方向。
 
 ```go
 // pkg/noderesourcetopology/cache/foreign_pods.go
@@ -803,7 +803,7 @@ func IsForeignPod(pod *corev1.Pod, nrtResources sets.Set[corev1.ResourceName]) b
 }
 ```
 
-`schedProfileNames` 是包级全局变量，每个启用了该插件的 Profile 在 `New` 时注册自己的名字。Pod informer 的 Add、Update、Delete 事件中只要出现了外来 Pod，就调用 `NodeHasForeignPods`。被标记的节点在 `GetCachedNRTCopy` 里返回 `nil` 和 `Fresh=false`：Filter 拒绝、Score 记 0，直到重同步通过指纹门控。
+`schedProfileNames` 是包级全局变量，每个启用了该插件的 Profile 在 `New` 时注册自己的名字。Pod informer 的 Add、Update、Delete 事件中只要出现了外来 Pod，就调用 `NodeHasForeignPods`。被标记的节点在 `GetCachedNRTCopy` 里返回 `nil` 和 `Fresh=false`：Filter 拒绝、Score 记 0，直到重同步通过指纹校验。
 
 默认 `foreignPodsDetect: All` 意味着 DaemonSet 的 Pod（由默认调度器或直接指定 `nodeName` 创建）也算外来 Pod。每次 DaemonSet 滚动，相关节点都会短暂对 NRT 插件「不可用」。
 
@@ -915,7 +915,7 @@ func (tm *TopologyMatch) EventsToRegister(_ context.Context) ([]fwk.ClusterEvent
 
 实际效果：代理通常周期性地更新 NRT，每一次 Update 都会把所有被 NRT 插件拒绝的 Pod 移回活跃队列，不管更新的是哪个节点、资源有没有变化。
 
-在 OverReserve 模式下，这些重试多半是无效的，因为快照要等重同步通过指纹门控才会变；一个被拒的 Pod 真正能被放下，往往要等到下一个 Resync 周期之后的某次 NRT 更新。
+在 OverReserve 模式下，这些重试多半是无效的，因为快照要等重同步通过指纹校验才会变；一个被拒的 Pod 真正能被放下，往往要等到下一个 Resync 周期之后的某次 NRT 更新。
 
 ## 十、生产中的坑
 
@@ -954,7 +954,7 @@ func (tm *TopologyMatch) EventsToRegister(_ context.Context) ([]fwk.ClusterEvent
 - NRT 插件读取节点代理上报的 `NodeResourceTopology`，在 Filter 中用 kubelet 的 `bitmask` 预演 `single-numa-node` 准入：逐资源求可行 zone 位图再取交集，container 作用域逐容器扣减，pod 作用域整体判定；拒绝时返回 `Unschedulable`，可以触发抢占。
 - 没有 NRT、策略不是 `single-numa-node`、BestEffort Pod，都直接放行；策略和作用域必须由代理通过 `attributes` 上报，zone 名必须是 `node-N`。
 - Score 只对 Guaranteed Pod 生效；前三种策略每个 zone 单独打分、节点取非零最小值，分母是 `Available`，与 kubelet 的实际 zone 选择并不对应；`LeastNUMANodes` 偏好跨越最少 NUMA 的节点，适用于所有策略。
-- NRT 数据天然落后。默认的 Passthrough 每次直接 GET 且不纠偏；OverReserve 在所有 zone 上悲观扣减预留，由 Pod 指纹门控决定何时用新 NRT 替换快照，外来 Pod 会让节点暂时不可用。
+- NRT 数据天然落后。默认的 Passthrough 每次直接 GET 且不纠偏；OverReserve 在所有 zone 上悲观扣减预留，由 Pod 指纹校验决定何时用新 NRT 替换快照，外来 Pod 会让节点暂时不可用。
 - 抢占模拟依赖 OverReserve 和代理上报的 NUMA 放置数据，默认关闭。
 
 下一篇 [PreemptionToleration](/posts/sched-plugin-31-preemption-toleration/) 进入 PostFilter：同样是抢占，它让受害者可以声明「在多长时间内不愿被抢占」。

@@ -92,7 +92,7 @@ type Interface interface {
 }
 ```
 
-流程骨架在 `Evaluator` 里，策略在 `Interface` 里。这是一个典型的模板方法模式。
+流程结构在 `Evaluator` 里，策略在 `Interface` 里。这是一个典型的模板方法模式。
 
 ### 2.1 参数
 
@@ -112,7 +112,7 @@ func SetDefaults_DefaultPreemptionArgs(obj *configv1.DefaultPreemptionArgs) {
 
 校验规则：百分比在 `[0, 100]`，绝对值不小于 0，两者不能同时为 0。它们的用法在第五节讲。
 
-到这里，插件的账面结构已经清楚了。下面按一次抢占的实际顺序走：入口、资格检查、找候选、模拟受害者、排序、执行。
+到这里，插件的整体结构已经清楚了。下面按一次抢占的实际顺序走：入口、资格检查、找候选、模拟受害者、排序、执行。
 
 ## 三、PostFilter 的入口与返回值语义
 
@@ -786,7 +786,7 @@ gated 的 Pod 只会被**gating 插件注册过的事件**考虑。注册 `Assig
 
 `preemption.Interface` 的五个方法就是扩展点，但 scheduler-plugins 里的两个抢占插件走了不同的路：
 
-- `PreemptionToleration`（[第 31 篇](/posts/sched-plugin-31-preemption-toleration/)）实现了完整的 `preemption.Interface`，在自己的 PostFilter 里 `NewEvaluator(…, pl, …)` 复用骨架，主要改写 `SelectVictimsOnNode`：PriorityClass 上声明了容忍策略的 Pod，在容忍期内不会成为受害者。它传入的 Executor 不开任何 feature，所以总是同步抢占。
+- `PreemptionToleration`（[第 31 篇](/posts/sched-plugin-31-preemption-toleration/)）实现了完整的 `preemption.Interface`，在自己的 PostFilter 里 `NewEvaluator(…, pl, …)` 复用这套结构，主要改写 `SelectVictimsOnNode`：PriorityClass 上声明了容忍策略的 Pod，在容忍期内不会成为受害者。它传入的 Executor 不开任何 feature，所以总是同步抢占。
 - `CrossNodePreemption`（[第 32 篇](/posts/sched-plugin-32-cross-node-preemption/)）没有复用 `Evaluator`，而是复刻了一遍早期的抢占流程，用 DFS 暴力枚举跨节点的受害者组合。它的代码还停留在旧版 framework API 上，在 `cmd/scheduler/main.go` 里的注册语句是注释掉的。
 
 ### 14.4 历史演进

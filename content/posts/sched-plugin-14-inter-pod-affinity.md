@@ -175,7 +175,7 @@ func (m topologyToMatchedTermCount) update(node *v1.Node, tk string, value int64
 
 计数降到 0 就删除键。这不是为了省内存，而是语义需要：Filter 的自亲和判断用 `len(clusterWideAffinityCounts) == 0` 表示「全集群没有任何匹配 Pod」，`RemovePod` 把最后一个匹配 Pod 减掉后，必须让表真正变空。
 
-另外节点没有 `topologyKey` 标签时，这个 Pod 不被记账。对反亲和，这意味着「没有这个标签的节点上的 Pod 不会排斥任何人」。
+另外节点没有 `topologyKey` 标签时，这个 Pod 不被计数。对反亲和，这意味着「没有这个标签的节点上的 Pod 不会排斥任何人」。
 
 ### 3.2 两次并行扫描
 
@@ -233,7 +233,7 @@ func (m topologyToMatchedTermCount) update(node *v1.Node, tk string, value int64
 
 并行阶段每个节点产出一个 `topologyToMatchedTermCountList`（切片，不是 map），用原子自增的下标紧凑地写入结果数组，没有匹配的节点不占位；并行结束后单线程合并成 map。源码注释说明了用切片的原因：合并时遍历切片比遍历 map 快。在几千个节点、每个节点都要产出局部结果的场景里，局部结果用 map 会带来大量小 map 的分配和哈希开销。
 
-亲和项的记账规则是「全匹配才记」：
+亲和项的计数规则是「全匹配才记」：
 
 ```go
 // pkg/scheduler/framework/plugins/interpodaffinity/filtering.go
@@ -247,7 +247,7 @@ func (m *topologyToMatchedTermCountList) appendWithAffinityTerms(
 }
 ```
 
-一个已有 Pod 同时满足全部亲和项，才会在每一项的拓扑对上各记一次。这正是「同一个 Pod 满足全部项」的语义：如果 Pod A 满足项 1、Pod B 满足项 2，它们都不会被记账。
+一个已有 Pod 同时满足全部亲和项，才会在每一项的拓扑对上各记一次。这正是「同一个 Pod 满足全部项」的语义：如果 Pod A 满足项 1、Pod B 满足项 2，它们都不会被计数。
 
 ### 3.3 Skip 条件与 Clone
 
@@ -540,7 +540,7 @@ func nodePodsSatisfyAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) bool 
 	}
 ```
 
-一个被增减的 Pod 同时影响三张表：它自己的反亲和规则可能排斥新 Pod，它也可能被新 Pod 的亲和/反亲和规则选中。快速路径下 hostname 项不在表里，只需维护自亲和计数器；本机的 hostname 检查在 Filter 中直接读 `NodeInfo`，而抢占模拟时 `NodeInfo` 本身已经被 `RemovePod`/`AddPodInfo` 修改过，自然是最新的。
+一个被增减的 Pod 同时影响三张表：它自己的反亲和规则可能排斥新 Pod，它也可能被新 Pod 的亲和/反亲和规则选中。快速路径下 hostname 项不在表里，只需维护自亲和计数；本机的 hostname 检查在 Filter 中直接读 `NodeInfo`，而抢占模拟时 `NodeInfo` 本身已经被 `RemovePod`/`AddPodInfo` 修改过，自然是最新的。
 
 调用场景与上一篇相同：nominated Pod 的占位，以及抢占的「全部移除、逐个加回」。
 
@@ -564,7 +564,7 @@ type preScoreState struct {
 }
 ```
 
-对每个已有 Pod，`processExistingPod` 累加五类贡献，记账位置都是「已有 Pod 所在节点」的拓扑值：
+对每个已有 Pod，`processExistingPod` 累加五类贡献，计数位置都是「已有 Pod 所在节点」的拓扑值：
 
 ```go
 // pkg/scheduler/framework/plugins/interpodaffinity/scoring.go
@@ -664,7 +664,7 @@ Score 只是按节点标签把表里对应的值加起来，可以为负。`Norm
 
 与 `PodTopologySpread` 的翻转公式不同，这里最低分的节点得 0，最高分的得 100，中间按比例截断取整。所有节点原始分相同时全部得 0。
 
-{{< figure src="/images/posts/sched-plugins/14-ipa-score.svg" caption="打分算例：五类贡献按已有 Pod 所在节点的拓扑值记账，Score 按候选节点标签求和，NormalizeScore 做 min-max（点击查看大图）" link="/images/posts/sched-plugins/14-ipa-score.svg" >}}
+{{< figure src="/images/posts/sched-plugins/14-ipa-score.svg" caption="打分算例：五类贡献按已有 Pod 所在节点的拓扑值计数，Score 按候选节点标签求和，NormalizeScore 做 min-max（点击查看大图）" link="/images/posts/sched-plugins/14-ipa-score.svg" >}}
 
 算例里有三处值得对照：
 

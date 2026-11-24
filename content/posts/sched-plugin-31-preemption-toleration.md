@@ -15,7 +15,7 @@ description: "PreemptionToleration 在 PriorityClass 上用两个 annotation 声
 
 上一篇的 [NodeResourceTopologyMatch](/posts/sched-plugin-30-node-resource-topology/) 处理的是 Filter 和 Score 阶段的 NUMA 对齐。从本篇开始的两篇回到 PostFilter，也就是 Filter 全部失败之后的抢占。
 
-in-tree 的 [DefaultPreemption](/posts/sched-plugin-18-default-preemption/) 已经详细拆过抢占的骨架，这两篇看的是 scheduler-plugins 在这副骨架上做的两种改造：本篇的 `PreemptionToleration` 改的是「谁可以被抢」，下一篇的 `CrossNodePreemption` 试图改的是「受害者可以在哪」。
+in-tree 的 [DefaultPreemption](/posts/sched-plugin-18-default-preemption/) 已经详细拆过抢占的流程，这两篇看的是 scheduler-plugins 在这套流程上做的两种改造：本篇的 `PreemptionToleration` 改的是「谁可以被抢」，下一篇的 `CrossNodePreemption` 试图改的是「受害者可以在哪」。
 
 本文基于 scheduler-plugins 提交 `cfeb3aa`，它依赖 Kubernetes v1.36.4；对比用的 in-tree 代码来自 `k8s.io/kubernetes@v1.36.4`，涉及主干时以 master 提交 `aabdf5a2` 为准。
 

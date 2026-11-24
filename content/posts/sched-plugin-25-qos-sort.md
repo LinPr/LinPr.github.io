@@ -353,7 +353,7 @@ type QueueSortPlugin interface {
 
 `QueuedEntityInfo` 可以是单个 Pod，也可以是 PodGroup（`EntityKeyType` 取值 `pod`、`podgroup`、`compositepodgroup`），PrioritySort 相应地改成了 `entity1.GetPriority()`。
 
-QOSSort 现在拿到的是 `QueuedPodInfo`，升级到这套接口后需要先按实体类型分流：PodGroup 没有天然的 QoS，要么取成员的某种聚合，要么跳过 QoS 这一层。这是 scheduler-plugins 跟进新版本时 QueueSort 类插件都要面对的改动。
+QOSSort 现在拿到的是 `QueuedPodInfo`，升级到这套接口后需要先按 entity 类型分流：PodGroup 没有天然的 QoS，要么取成员的某种聚合，要么跳过 QoS 这一层。这是 scheduler-plugins 跟进新版本时 QueueSort 类插件都要面对的改动。
 
 ## 五、边界与坑
 

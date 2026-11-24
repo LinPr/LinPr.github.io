@@ -933,7 +933,7 @@ func (b *volumeBinder) BindPodVolumes(ctx context.Context, assumedPod *v1.Pod, p
 
 分两段。`bindAPIUpdate` 把 Reserve 准备好的对象逐个 `Update` 到 API server：先更新 PV（写 `claimRef`），再更新 PVC（写 `selected-node`）。
 
-用 `lastProcessedBinding`、`lastProcessedProvisioning` 两个计数器记录已经成功的数量，出错时 defer 只撤销**还没写成功**的那些假设；已经写进 API 的不回滚，注释直白地写着「There is no API rollback if the actual binding fails」。
+用 `lastProcessedBinding`、`lastProcessedProvisioning` 两个计数记录已经成功的数量，出错时 defer 只撤销**还没写成功**的那些假设；已经写进 API 的不回滚，注释直白地写着「There is no API rollback if the actual binding fails」。
 
 然后 `checkBindings` 每秒轮询一次，最长 `bindTimeout`（默认 600 秒）。它读的是 `GetAPIObj`，即 informer store 里的真实版本而不是假设版本，原因注释里也说了：假设版本可能在主调度循环里被再次覆盖，只有 API 状态才和 PV 控制器、供给器共享。检查项包括：
 

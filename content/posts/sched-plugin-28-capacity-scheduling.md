@@ -1,12 +1,12 @@
 ---
-title: 'scheduler-plugins 28 [out-of-tree] CapacityScheduling：调度器自己记账的弹性配额'
+title: 'scheduler-plugins 28 [out-of-tree] CapacityScheduling：调度器自己记录用量的弹性配额'
 date: 2026-11-19T12:40:00+08:00
 draft: false
 tags: ["kubernetes", "scheduler", "scheduler-plugins", "ElasticQuota", "preemption"]
 categories: ["Kubernetes"]
 series: ["scheduler-plugins"]
 author: "LinPr"
-description: "CapacityScheduling 用 ElasticQuota 的 min/max 实现租户间的资源借用与回收。本文从源码拆解插件内存账本 ElasticQuotaInfos 的维护方式、PreFilter 的两道配额检查、Reserve/Unreserve 记账、PostFilter 如何借用 in-tree 的 preemption.Evaluator 并改写受害者选择，以及 EventsToRegister 和 controller 写 status.used 的细节与坑。"
+description: "CapacityScheduling 用 ElasticQuota 的 min/max 实现租户间的资源借用与回收。本文从源码拆解插件内存里的用量记录 ElasticQuotaInfos 的维护方式、PreFilter 的两道配额检查、Reserve/Unreserve 计量、PostFilter 如何借用 in-tree 的 preemption.Evaluator 并改写受害者选择，以及 EventsToRegister 和 controller 写 status.used 的细节与坑。"
 ---
 
 > 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `CapacityScheduling` 实现的扩展点（PreFilter、PostFilter、Reserve）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
@@ -42,7 +42,7 @@ profiles:
 
 Kubernetes 自带的 `ResourceQuota` 是准入阶段的硬上限：Namespace 里所有 Pod 的 requests 加起来不能超过 `hard`，超了 Pod 连创建都会被拒。它有两个问题。
 
-第一，额度是死的。团队 A 的额度闲着，团队 B 排着长队，B 也用不了 A 的那一份。第二，记账发生在创建时而不是调度时，一个卡在 Pending 的 Pod 同样占着额度。
+第一，额度是死的。团队 A 的额度闲着，团队 B 排着长队，B 也用不了 A 的那一份。第二，计量发生在创建时而不是调度时，一个卡在 Pending 的 Pod 同样占着额度。
 
 `CapacityScheduling` 借用了 Yarn capacity scheduler 的思路，把额度拆成两个数：
 
@@ -91,15 +91,15 @@ spec:
 
 `ElasticQuota` 是 Namespace 级的 CRD，一个 Namespace 只认一个。它约束的是调度，不是创建：Pod 照样能建出来，只是在调度时会因为配额被拦在 PreFilter，然后要么等，要么通过抢占把别人借走的额度收回来。
 
-## 二、三本账
+## 二、三份用量记录
 
 读这个插件，第一件事是分清楚「用量」到底记在哪里。源码里有三处，彼此独立。
 
-{{< figure src="/images/posts/sched-plugins/28-ledgers.svg" link="/images/posts/sched-plugins/28-ledgers.svg" caption="插件内存中的 elasticQuotaInfos 是唯一参与调度判定的账本；CycleState 里的快照只活一个调度周期；status.used 由另一个进程写入，调度器从不读取（点击查看大图）" >}}
+{{< figure src="/images/posts/sched-plugins/28-ledgers.svg" link="/images/posts/sched-plugins/28-ledgers.svg" caption="插件内存中的 elasticQuotaInfos 是唯一参与调度判定的用量记录；CycleState 里的快照只活一个调度周期；status.used 由另一个进程写入，调度器从不读取（点击查看大图）" >}}
 
-### 2.1 插件内存账本：`ElasticQuotaInfos`
+### 2.1 插件内存里的用量记录：`ElasticQuotaInfos`
 
-插件读的账本挂在结构体上，先看它的形状。
+插件读的这份用量记录挂在结构体上，先看它的形状。
 
 ```go
 // pkg/capacityscheduling/capacity_scheduling.go
@@ -153,7 +153,7 @@ func (e *ElasticQuotaInfo) addPodIfNotPresent(pod *v1.Pod) error {
 }
 ```
 
-需要幂等，是因为同一个 Pod 会从两条路径进入账本：调度周期里的 `Reserve`，以及绑定成功后 Pod informer 发来的事件。两条路径的先后顺序不确定，有了 `pods` 集合，谁先到都只记一次。
+需要幂等，是因为同一个 Pod 会从两条路径写进用量记录：调度周期里的 `Reserve`，以及绑定成功后 Pod informer 发来的事件。两条路径的先后顺序不确定，有了 `pods` 集合，谁先到都只记一次。
 
 `New` 里注册了两组事件处理函数。`ElasticQuota` 的 informer 来自 controller-runtime 的缓存（`util.NewClientWithCachedReader`），Pod 的 informer 直接复用调度器的 `SharedInformerFactory`，并且只接收已绑定节点的 Pod：
 
@@ -178,7 +178,7 @@ func (e *ElasticQuotaInfo) addPodIfNotPresent(pod *v1.Pod) error {
 	)
 ```
 
-`FilteringResourceEventHandler` 有一个容易忽略的行为：当一次 Update 让对象从「不满足过滤条件」变成「满足」时，它会把这次 Update 转成 Add。Pod 绑定就是这种情况，`spec.nodeName` 从空变成非空，所以绑定后进入账本的是 `addPod`，不是 `updatePod`。
+`FilteringResourceEventHandler` 有一个容易忽略的行为：当一次 Update 让对象从「不满足过滤条件」变成「满足」时，它会把这次 Update 转成 Add。Pod 绑定就是这种情况，`spec.nodeName` 从空变成非空，所以绑定后写进用量记录的是 `addPod`，不是 `updatePod`。
 
 `addPod` 还有一段懒加载：
 
@@ -214,7 +214,7 @@ func (c *CapacityScheduling) addPod(obj interface{}) {
 }
 ```
 
-两个 informer 启动时谁先同步完是不确定的。如果 Pod 的 Add 先到，账本里还没有这个 Namespace 的条目，就主动去 `ElasticQuota` 缓存里查一次，查到就建条目。对应地，`addElasticQuota` 发现条目已存在时直接返回，不覆盖：
+两个 informer 启动时谁先同步完是不确定的。如果 Pod 的 Add 先到，用量记录里还没有这个 Namespace 的条目，就主动去 `ElasticQuota` 缓存里查一次，查到就建条目。对应地，`addElasticQuota` 发现条目已存在时直接返回，不覆盖：
 
 ```go
 // pkg/capacityscheduling/capacity_scheduling.go
@@ -245,7 +245,7 @@ func (c *CapacityScheduling) updateElasticQuota(oldObj, newObj interface{}) {
 
 `updateElasticQuota` 只换 `Min`、`Max`，把 `pods` 和 `Used` 原样搬到新对象上。所以调整配额不会丢失已有用量。删除则是整条 `delete`，没有任何残留。
 
-Pod 离开账本有两条路：`deletePod`，以及 `updatePod` 里新状态既不是 `Running` 也不是 `Pending` 的情况。实际上第二条很少走到。调度器的 Pod informer 建立时带了字段选择器：
+Pod 离开用量记录有两条路：`deletePod`，以及 `updatePod` 里新状态既不是 `Running` 也不是 `Pending` 的情况。实际上第二条很少走到。调度器的 Pod informer 建立时带了字段选择器：
 
 ```go
 // k8s.io/kubernetes@v1.36.4/pkg/scheduler/scheduler.go
@@ -259,7 +259,7 @@ Pod 进入 `Succeeded` 或 `Failed` 时就不再匹配这个选择器，informer
 
 ### 2.2 CycleState 里的快照
 
-PreFilter 一开始就把整本账深拷贝一份写进 CycleState：
+PreFilter 一开始就把全部用量记录深拷贝一份写进 CycleState：
 
 ```go
 // pkg/capacityscheduling/capacity_scheduling.go
@@ -303,7 +303,7 @@ func (s *ElasticQuotaSnapshotState) Clone() fwk.StateData {
 
 不同节点的模拟是并行的，快照必须深拷贝，否则节点之间会相互污染。
 
-为什么不直接在 PreFilter 里读插件的账本，而要拍一份快照？因为抢占模拟需要一份「可以随便改的账」。只读检查用快照还是用原账本差别不大，但 `AddPod`/`RemovePod` 必须改一份不影响真实记账的副本。
+为什么不直接在 PreFilter 里读插件的用量记录，而要拍一份快照？因为抢占模拟需要一份可以随便改的用量副本。只读检查用快照还是用原来的用量记录差别不大，但 `AddPod`/`RemovePod` 必须改一份不影响真实用量的副本。
 
 快照的代价是每个调度周期都复制所有 `ElasticQuotaInfo`，包括每个 `pods` 集合。配额 Namespace 里的 Pod 越多，每次 PreFilter 的复制量越大。源码在 PreFilter 开头留了一个 TODO，提到可以只复制有变化的部分，目前还没有实现。
 
@@ -329,7 +329,7 @@ func (r *ElasticQuotaReconciler) computeElasticQuotaUsed(ctx context.Context, na
 }
 ```
 
-它只统计 `Running` 的 Pod。插件账本统计的是「已经绑定节点、尚未终止」的 Pod，还包括 `Reserve` 之后、绑定之前的 Pod。
+它只统计 `Running` 的 Pod。插件维护的用量记录统计的是「已经绑定节点、尚未终止」的 Pod，还包括 `Reserve` 之后、绑定之前的 Pod。
 
 所以一个 Pod 从被调度到容器真正跑起来的这段时间里（拉镜像可能要几分钟），`kubectl get eq` 看到的用量比调度器判定时用的要少。
 
@@ -347,7 +347,7 @@ controller 计算请求量的函数还有一个实现问题：
 
 `k8s.io/apiserver/pkg/quota/v1` 的 `Add` 不修改入参，而是返回一个新的 `ResourceList`。这里丢掉了返回值，所以使用 RuntimeClass overhead 的 Pod，overhead 不会出现在 `status.used` 里。
 
-插件自己的 `computePodResourceRequest` 用的是 `result.Add(pod.Spec.Overhead)`，会把 overhead 计入。用了 Kata 之类带 overhead 的 RuntimeClass 时，两本账会出现稳定的差值。
+插件自己的 `computePodResourceRequest` 用的是 `result.Add(pod.Spec.Overhead)`，会把 overhead 计入。用了 Kata 之类带 overhead 的 RuntimeClass 时，两处统计会出现稳定的差值。
 
 ## 三、比较函数：每个维度都要比
 
@@ -426,7 +426,7 @@ func newElasticQuotaInfo(namespace string, min, max, used v1.ResourceList) *Elas
 
 ## 四、PreFilter：两道检查
 
-前面几节把三本账分清了，这一节看它们怎么用在调度入口。
+前面几节把三份用量记录分清了，这一节看它们怎么用在调度入口。
 
 ```go
 // pkg/capacityscheduling/capacity_scheduling.go
@@ -493,11 +493,11 @@ func (c *CapacityScheduling) PreFilter(ctx context.Context, state fwk.CycleState
 - `nominatedPodsReqInEQWithPodReq`：本 Pod 请求 + 同 Namespace 中优先级不低于本 Pod 的 nominated Pod；
 - `nominatedPodsReqWithPodReq`：上面那部分 + 其他 Namespace 中、所属 quota 尚未超过 `min` 的 nominated Pod。
 
-nominated Pod 还没有经过 `Reserve`，账本里没有它们。如果不把它们算进来，就会出现这样的情况：B 抢占了 A 的 Pod 准备回收自己的 `min`，A 的 Pod 还在优雅退出，此时 C 的 Pod 进来，看到账面上还有余量，把这份额度又占了。
+nominated Pod 还没有经过 `Reserve`，用量记录里没有它们。如果不把它们算进来，就会出现这样的情况：B 抢占了 A 的 Pod 准备回收自己的 `min`，A 的 Pod 还在优雅退出，此时 C 的 Pod 进来，看到配额还有余量，把这份额度又占了。
 
 第二种求和只计入「所属 quota 未超 `min`」的外部 nominated Pod，原因是：只有这些 Pod 有权利继续拿资源，它们正在回收自己的保底额度；已经超过 `min` 的那些，自己也只是借用者，不需要为它们预留。
 
-这段循环查的是 `c.elasticQuotaInfos`，即插件的实时账本，没有使用刚拍的快照，也没有加读锁。两者在绝大多数时候是一致的，只是一个小小的不严谨之处。
+这段循环查的是 `c.elasticQuotaInfos`，即插件的实时用量记录，没有使用刚拍的快照，也没有加读锁。两者在绝大多数时候是一致的，只是一个小小的不严谨之处。
 
 ### 4.2 两道检查
 
@@ -587,9 +587,9 @@ func (e ElasticQuotaInfos) aggregatedUsedOverMinWith(podRequest framework.Resour
 
 {{< figure src="/images/posts/sched-plugins/28-decision.svg" link="/images/posts/sched-plugins/28-decision.svg" caption="左：PreFilter 的两道检查，失败时所有节点都成为抢占候选；右：PostFilter 中按抢占者状态选择候选受害者，再用 Filter 和配额检查逐个赦免（点击查看大图）" >}}
 
-## 五、Reserve / Unreserve：调度周期内的记账
+## 五、Reserve / Unreserve：调度周期内的计量
 
-PreFilter 只是在判断，真正把用量写进账本的是 Reserve。
+PreFilter 只是在判断，真正改动这份用量记录的是 Reserve。
 
 ```go
 // pkg/capacityscheduling/capacity_scheduling.go
@@ -620,17 +620,17 @@ func (c *CapacityScheduling) Unreserve(ctx context.Context, state fwk.CycleState
 }
 ```
 
-`Reserve` 改的是插件的实时账本，不是快照。调度器的调度周期是串行的，但绑定周期是异步的：Pod 1 在 `Reserve` 之后进入异步绑定，调度器马上开始调度 Pod 2。
+`Reserve` 改的是插件的实时用量记录，不是快照。调度器的调度周期是串行的，但绑定周期是异步的：Pod 1 在 `Reserve` 之后进入异步绑定，调度器马上开始调度 Pod 2。
 
-如果不在 `Reserve` 时记账，Pod 2 的 PreFilter 拍快照时看不到 Pod 1，两者会共用同一份配额。这和调度器缓存的 assume 机制同理：在 API 层面确认之前，先在本地「假定」它已经成功。
+如果不在 `Reserve` 时记录用量，Pod 2 的 PreFilter 拍快照时看不到 Pod 1，两者会共用同一份配额。这和调度器缓存的 assume 机制同理：在 API 层面确认之前，先在本地「假定」它已经成功。
 
-绑定失败、Permit 拒绝或超时时，框架调用 `Unreserve`，账本回滚。之后如果绑定成功，informer 的 Add 事件再到，`pods` 集合里已有这个 key，不会重复记账。
+绑定失败、Permit 拒绝或超时时，框架调用 `Unreserve`，用量记录回滚。之后如果绑定成功，informer 的 Add 事件再到，`pods` 集合里已有这个 key，不会重复计量。
 
 ## 六、PostFilter：借用 Evaluator，换掉受害者选择
 
 ### 6.1 Evaluator 与 `preemption.Interface`
 
-in-tree 的抢占流程分两层。`preemption.Evaluator` 负责骨架：检查抢占资格、找候选节点、并行模拟、调用 extender、选最优节点、执行驱逐。随抢占策略变化的部分，抽成了一个接口：
+in-tree 的抢占流程分两层。`preemption.Evaluator` 承担了主要工作：检查抢占资格、找候选节点、并行模拟、调用 extender、选最优节点、执行驱逐。随抢占策略变化的部分，抽成了一个接口：
 
 ```go
 // k8s.io/kubernetes@v1.36.4/pkg/scheduler/framework/preemption/preemption.go
@@ -916,7 +916,7 @@ B 的判定：`2 + 2 = 4`，不大于 `min` 4，处于「`min` 被占用」状�
 
 此时 A 的 Pending Pod 有两个：原来的 a4，以及 Deployment 为补 a3 新建的 a3'。它们的检查二都是 `8 + 2 > 8`；PostFilter 中 A 的判定是 `4 + 2 > 4`，只能抢同 Namespace，没有受害者，继续等待。
 
-这个算例还能说明 PreFilter 为什么要计入 nominated Pod。b2 被提名到 node2 之后、绑定之前，假设 a3 已经退出，A 回到 4，B 的账面仍是 2（只有 b1）。
+这个算例还能说明 PreFilter 为什么要计入 nominated Pod。b2 被提名到 node2 之后、绑定之前，假设 a3 已经退出，A 回到 4，B 记录的用量仍是 2（只有 b1）。
 
 此时 a4 进入调度：检查一 `4 + 2 = 6 ≤ 6` 通过；检查二里，b2 属于 B，B 的 `Used` 2 没有超过 `min`，所以 b2 的 2 CPU 计入 `nominatedPodsReqWithPodReq`，结果是 `ΣUsed 6 + b2 的 2 + a4 的 2 = 10 > 8`，a4 被拒。
 
@@ -942,7 +942,7 @@ func (c *CapacityScheduling) RemovePod(ctx context.Context, cycleState fwk.Cycle
 }
 ```
 
-改的是 CycleState 里快照的副本，不碰实时账本。另外，`RunFilterPluginsWithNominatedPods` 在评估时会把同节点上优先级不低于抢占者的 nominated Pod 临时加入，这也会触发 `AddPod`，于是这些 nominated Pod 的用量在快照里也会被计入。
+改的是 CycleState 里快照的副本，不碰实时用量记录。另外，`RunFilterPluginsWithNominatedPods` 在评估时会把同节点上优先级不低于抢占者的 nominated Pod 临时加入，这也会触发 `AddPod`，于是这些 nominated Pod 的用量在快照里也会被计入。
 
 ## 七、EventsToRegister：被拒之后什么时候重试
 
@@ -977,7 +977,7 @@ var defaultQueueingHintFn = func(_ klog.Logger, _ *v1.Pod, _, _ interface{}) (fw
 
 **Pod/Delete。** 释放配额的事件。它匹配框架内部的 `AssignedPodDelete`（`fwk.Pod` 会同时匹配 `assignedPod` 和 `unschedulablePod` 两种内部资源）。由于调度器的 Pod informer 用字段选择器排除了终态 Pod，Pod 跑完进入 `Succeeded`/`Failed` 也表现为一次删除，所以 Job 完成同样会唤醒等待配额的 Pod。
 
-代价是集群里任何 Pod 删除，包括与配额毫无关系的 Namespace，都会把所有被 `CapacityScheduling` 拒绝的 Pod 重新入队。在 Pod 变动频繁的大集群里，这些 Pod 会被反复拿出来跑一遍 PreFilter（每次都要复制整本账）再被拒绝。
+代价是集群里任何 Pod 删除，包括与配额毫无关系的 Namespace，都会把所有被 `CapacityScheduling` 拒绝的 Pod 重新入队。在 Pod 变动频繁的大集群里，这些 Pod 会被反复拿出来跑一遍 PreFilter（每次都要复制全部用量记录）再被拒绝。
 
 一个按 Namespace 是否有 EQ、或按释放量过滤的 hint 可以省下大部分无效重试，目前没有实现。
 
@@ -1002,9 +1002,9 @@ var defaultQueueingHintFn = func(_ klog.Logger, _ *v1.Pod, _, _ interface{}) (fw
 			dynInformer := dynInformerFactory.ForResource(*gvr).Informer()
 ```
 
-这意味着调度器进程里实际有两个 `ElasticQuota` informer：插件自己通过 controller-runtime 建的那个（用于维护账本），和框架为事件建的 dynamic informer（只用于入队）。
+这意味着调度器进程里实际有两个 `ElasticQuota` informer：插件自己通过 controller-runtime 建的那个（用于维护用量记录），和框架为事件建的 dynamic informer（只用于入队）。
 
-两者独立同步，理论上存在「入队事件先到、插件账本后更新」的窗口：Pod 被唤醒、拿到的仍是旧的 `min`/`max`，再次被拒。由于后续的账本更新不再产生新的入队事件，这个 Pod 只能等下一次 Pod 删除，或者 5 分钟的 unschedulable 超时（`DefaultPodMaxInUnschedulablePodsDuration`）把它刷回队列。
+两者独立同步，理论上存在「入队事件先到、插件的用量记录后更新」的窗口：Pod 被唤醒、拿到的仍是旧的 `min`/`max`，再次被拒。由于后续的用量记录更新不再产生新的入队事件，这个 Pod 只能等下一次 Pod 删除，或者 5 分钟的 unschedulable 超时（`DefaultPodMaxInUnschedulablePodsDuration`）把它刷回队列。
 
 没有注册 Pod 的 Add/Update 看起来会漏掉一种情况：PreFilter 的拒绝可能只是因为计入了别人的 nominated Pod，后来那个 Pod 的提名被清除或换了节点，这在 API 上是一次 Pod 更新。
 
@@ -1028,9 +1028,9 @@ var defaultQueueingHintFn = func(_ klog.Logger, _ *v1.Pod, _, _ interface{}) (fw
 
 **和 `DefaultPreemption` 同时启用。** PostFilter 插件按顺序执行，第一个返回 `Success` 的生效。如果 `DefaultPreemption` 排在前面，它会忽略配额，直接按优先级驱逐，被驱逐的可能正是在 `min` 以内、本该受保护的 Pod。这也是官方配置用 `disabled: "*"` 把默认 PostFilter 全部关掉的原因。
 
-**多个 Profile 各有一本账。** 调度器为每个 Profile 调用一次 `NewFramework`，插件工厂也会各调用一次，所以两个 Profile 都启用 `CapacityScheduling` 时，会有两个插件实例、两份 `elasticQuotaInfos`。
+**多个 Profile 各有一份用量记录。** 调度器为每个 Profile 调用一次 `NewFramework`，插件工厂也会各调用一次，所以两个 Profile 都启用 `CapacityScheduling` 时，会有两个插件实例、两份 `elasticQuotaInfos`。
 
-informer 驱动的那部分最终一致，`Reserve` 记的那部分各记各的，同一瞬间两个 Profile 可能都看到同一份余量。应该只在一个 Profile 里启用它，或保证配额 Namespace 的 Pod 都使用同一个 `schedulerName`。同理，多副本调度器靠 leader election 保证只有一个实例在调度，账本才不会分叉。
+informer 驱动的那部分最终一致，`Reserve` 记的那部分各记各的，同一瞬间两个 Profile 可能都看到同一份余量。应该只在一个 Profile 里启用它，或保证配额 Namespace 的 Pod 都使用同一个 `schedulerName`。同理，多副本调度器靠 leader election 保证只有一个实例在调度，用量记录才不会分叉。
 
 **`computePodResourceRequest` 不认识 sidecar。** 插件把所有 init container 当作串行执行、取最大值。原生 sidecar（`restartPolicy: Always` 的 init container）在 Pod 运行期间一直存在，in-tree 的资源计算会把它们累加到常驻请求里，这里没有区分。
 
@@ -1040,15 +1040,15 @@ informer 驱动的那部分最终一致，`Reserve` 记的那部分各记各的�
 
 ### 9.1 「借用」在调度器里实现的代价
 
-把配额放进调度器，换来的是精确：记账发生在 `Reserve`，资源真正被占用的时刻；Pending 的 Pod 不消耗额度。代价是所有逻辑都被 kube-scheduler 的扩展点结构约束住了：
+把配额放进调度器，换来的是精确：计量发生在 `Reserve`，资源真正被占用的时刻；Pending 的 Pod 不消耗额度。代价是所有逻辑都被 kube-scheduler 的扩展点结构约束住了：
 
 - 一次只调度一个 Pod，配额判断无法感知「这一批 Pod 能不能一起进来」，与 Coscheduling 组合时，gang 的一部分可能把配额占住，剩下的部分却进不来；
 - 抢占只能在单节点内完成，回收效率受碎片影响；
-- 账本是进程内存，调度器重启时依赖 informer 重放来重建，重放期间（以及 `addElasticQuota` 先到的情况下）用量是逐步恢复的。
+- 用量记录存在进程内存里，调度器重启时依赖 informer 重放来重建，重放期间（以及 `addElasticQuota` 先到的情况下）用量是逐步恢复的。
 
 社区后来的 Kueue 走的是另一条路：在准入层面以 Job 为单位排队，用 `ClusterQueue` 的 nominal quota、cohort 内借用与 borrowing/lending limit 表达类似的语义，配额满足后才把 Job 放给调度器。
 
-它不做精确到 Pod 绑定时刻的记账，但天然以作业为粒度，也不受单节点抢占的限制。两者解决的问题高度重叠，选择时主要看工作负载是「一堆独立的 Pod」还是「一个个作业」。
+它不做精确到 Pod 绑定时刻的计量，但天然以作业为粒度，也不受单节点抢占的限制。两者解决的问题高度重叠，选择时主要看工作负载是「一堆独立的 Pod」还是「一个个作业」。
 
 ### 9.2 与 in-tree 抢占接口的演进
 
@@ -1080,7 +1080,7 @@ scheduler-plugins 升级到下一个 Kubernetes 版本时，`preemptor` 需要�
 
 ## 小结
 
-- `CapacityScheduling` 在调度器内存里维护每个 Namespace 的 `Min`/`Max`/`Used`，`pods` 集合保证 informer 与 `Reserve` 两条路径的记账幂等；`status.used` 由另一个进程写，调度器从不读取。
+- `CapacityScheduling` 在调度器内存里维护每个 Namespace 的 `Min`/`Max`/`Used`，`pods` 集合保证 informer 与 `Reserve` 两条路径的计量幂等；`status.used` 由另一个进程写，调度器从不读取。
 - PreFilter 两道检查：本 quota 不超过 `max`，所有 quota 的用量之和不超过 `min` 之和；后者意味着借用只能借别人闲置的 `min`。两者都返回 `Unschedulable`，失败后所有节点进入抢占。
 - PostFilter 复用 v1.36.4 的 `preemption.Evaluator`，自己实现 `preemption.Interface`：抢占者在 `min` 以内时回收借用者的 Pod 且不看优先级，已经在借时只能抢同 Namespace 的低优先级 Pod；赦免时同时检查节点与配额。
 - `min`/`max` 只写部分维度时，未写的 cpu/memory 被当作 0，这是最常见的误配置。

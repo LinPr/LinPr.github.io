@@ -24,7 +24,7 @@ description: "NodeResourcesBalancedAllocation 让各种资源在节点上被均�
 {Name: names.ImageLocality, Weight: ptr.To[int32](1)},
 ```
 
-它和 [NodeResourcesFit](/posts/sched-plugin-08-node-resources-fit/) 在同一个 `noderesources` 包里，共用打分骨架 `resourceAllocationScorer`，建议先读那一篇的第六节。
+它和 [NodeResourcesFit](/posts/sched-plugin-08-node-resources-fit/) 在同一个 `noderesources` 包里，共用打分实现 `resourceAllocationScorer`，建议先读那一篇的第六节。
 
 ## 一、它要解决什么问题
 
@@ -158,7 +158,7 @@ CycleState 里存的是 `balancedAllocationPreScoreState`，key 为 `"PreScoreNo
 
 ## 四、Score：均衡度的改善量
 
-跳过的 Pod 不在这个周期里打分。留下的 Pod，Score 的逻辑很短：取 PreScore 存下的请求量，交给和 `NodeResourcesFit` 共享的打分骨架。
+跳过的 Pod 不在这个周期里打分。留下的 Pod，Score 的逻辑很短：取 PreScore 存下的请求量，交给和 `NodeResourcesFit` 共享的打分实现。
 
 ```go
 // pkg/scheduler/framework/plugins/noderesources/balanced_allocation.go

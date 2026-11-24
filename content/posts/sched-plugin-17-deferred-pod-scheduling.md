@@ -321,7 +321,7 @@ func applyDeferredPodScheduling(config *v1.Plugins) {
 
 注释的后半句说明了另一侧的边界：它必须排在 `NodeName` 之后。对其它节点，失败应该记在 `NodeName` 名下，而不是 `DeferredPodScheduling`（它的 Filter 也会对其它节点返回 `pod assigned to different node`），这样无关节点的事件不会经过它的 hint。默认列表里 `NodeName` 排在第 3 位，插入位置在 `NodeResourcesFit`（第 8 位）前面，两个条件同时满足。
 
-{{< figure src="/images/posts/sched-plugins/17-deferred-flow.svg" caption="一个 Deferred resize 在调度器里的完整路径，右侧是调度器缓存中的 cpu 账本，以及插件顺序的理由（点击查看大图）" link="/images/posts/sched-plugins/17-deferred-flow.svg" >}}
+{{< figure src="/images/posts/sched-plugins/17-deferred-flow.svg" caption="一个 Deferred resize 在调度器里的完整路径，右侧是调度器缓存中的 cpu 用量记录，以及插件顺序的理由（点击查看大图）" link="/images/posts/sched-plugins/17-deferred-flow.svg" >}}
 
 ### 5.4 Permit：放得下反而拒绝
 
@@ -344,7 +344,7 @@ Filter 全部通过，意味着节点现在放得下扩容后的 Pod。这个 Po
 
 Permit 返回 `UnschedulableAndUnresolvable`，让 Pod 以「被 DeferredPodScheduling 拒绝」的身份回到 unschedulable 队列，原因字符串说明它在等什么。集成测试把这称为 parking strategy：Pod 停在队列里，`nominatedNodeName` 保持为空，`PodScheduled` 条件保持 True。等 kubelet 完成 resize、清掉 `Deferred` 条件，事件处理器的 `oldDeferred && !newDeferred` 分支把它从队列里删除。
 
-为什么不在 Filter 通过后直接让 Pod 离开队列？因为「放得下」只是调度器基于自己缓存的判断，kubelet 用自己的分配账本做准入，两者之间有时间差，实际执行也可能再次推迟。Pod 留在队列里，同节点再出现资源竞争（其它 Pod 扩容抢走余量）时，`NodeResourcesFit` 的扩容 hint 会把它重新拉回来评估。
+为什么不在 Filter 通过后直接让 Pod 离开队列？因为「放得下」只是调度器基于自己缓存的判断，kubelet 用自己的用量记录做准入，两者之间有时间差，实际执行也可能再次推迟。Pod 留在队列里，同节点再出现资源竞争（其它 Pod 扩容抢走余量）时，`NodeResourcesFit` 的扩容 hint 会把它重新拉回来评估。
 
 ### 5.5 一个值得留意的实现细节
 
@@ -438,7 +438,7 @@ func (pl *DeferredPodScheduling) EventsToRegister(_ context.Context) ([]fwk.Clus
 
 **会关掉整个 Profile 的 opportunistic batching。** `DeferredPodScheduling` 实现了 PreFilter/Filter，却没有实现 `SignPlugin`。框架初始化时发现这种插件，会对整个 Profile 关闭签名（日志 `Disabling signatures for profile because plugins do not support it. plugins=["DeferredPodScheduling"]`）。在默认配置下 `PodTopologySpread` 的系统默认约束已经让所有 Pod 拒签（见[第 13 篇](/posts/sched-plugin-13-pod-topology-spread/)），影响不明显；但对专门调过配置以启用批量调度的集群，开启这个 gate 会让批量调度整体失效。
 
-**驱逐是异步完成的。** 受害者先进入 Terminating，调度器缓存要等它的删除事件到达才把它的资源从节点上减掉；kubelet 重试 pending resize 有自己的触发时机，用的是自己的分配账本。两边存在时间差，调度器判断「放得下」时 kubelet 未必已经执行，这也是 Pod 被设计成留在队列里等待、而不是立即出队的原因之一。
+**驱逐是异步完成的。** 受害者先进入 Terminating，调度器缓存要等它的删除事件到达才把它的资源从节点上减掉；kubelet 重试 pending resize 有自己的触发时机，用的是自己的用量记录。两边存在时间差，调度器判断「放得下」时 kubelet 未必已经执行，这也是 Pod 被设计成留在队列里等待、而不是立即出队的原因之一。
 
 **只覆盖 Deferred，不覆盖 Infeasible。** 节点总容量不够时 kubelet 标记 `Infeasible`，调度器不介入。原地扩容不会把 Pod 迁到更大的节点上，这需要上层（比如 VPA 的重建模式）处理。
 

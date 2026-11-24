@@ -481,7 +481,7 @@ Kubernetes 原生的工具是 [SchedulingGates](/posts/sched-plugin-01-schedulin
 
 至于每次比较都读 AppGroup，可以在 Pod 入队时把 index 算好缓存下来，但 QueueSort 插件拿不到入队事件，这需要配合 PreEnqueue 插件或修改框架。
 
-另外，Kubernetes master 已经把 `QueueSortPlugin.Less` 的参数改成 `QueuedEntityInfo`（可能是 Pod，也可能是 PodGroup），TopologicalSort 和 QOSSort 一样，在 scheduler-plugins 升级依赖时需要按实体类型分流。
+另外，Kubernetes master 已经把 `QueueSortPlugin.Less` 的参数改成 `QueuedEntityInfo`（可能是 Pod，也可能是 PodGroup），TopologicalSort 和 QOSSort 一样，在 scheduler-plugins 升级依赖时需要按 entity 类型分流。
 
 ## 七、小结
 

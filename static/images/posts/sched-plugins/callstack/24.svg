@@ -32,12 +32,12 @@
 <line x1="28.0" y1="286.0" x2="1240.0" y2="286.0" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="5 4"/>
 <rect x="12" y="289.0" width="5" height="20.5" rx="2.5" fill="#7c3aed" opacity="0.85"/>
 <text x="40.0" y="303.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">ScheduleOne</text>
-<text x="540.0" y="303.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">串行循环，一次只处理一个实体：</tspan><tspan>实体可能是 Pod，也可能是整个 PodGroup（走 scheduleOnePodGroup）</tspan></text>
+<text x="540.0" y="303.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">串行循环，一次只处理一个 entity：</tspan><tspan>entity 可能是 Pod，也可能是整个 PodGroup（走 scheduleOnePodGroup）</tspan></text>
 <line x1="48.0" y1="299.0" x2="48.0" y2="325.5" stroke="#94a3b8" stroke-width="1.1"/>
 <line x1="48.0" y1="325.5" x2="54.0" y2="325.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="315.5" width="5" height="20.5" rx="2.5" fill="#7c3aed" opacity="0.85"/>
 <text x="60.0" y="329.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">NextEntity = PriorityQueue.Pop</text>
-<text x="540.0" y="329.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">阻塞直到 activeQ 有实体：</tspan><tspan>取堆顶，即 QueueSort 认为最该先调度的</tspan></text>
+<text x="540.0" y="329.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">阻塞直到 activeQ 有 entity：</tspan><tspan>取堆顶，即 QueueSort 认为最该先调度的</tspan></text>
 <rect x="26" y="339.0" width="1214" height="26.5" fill="#f8fafc"/>
 <rect x="72.0" y="341.0" width="1168.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
 <line x1="68.0" y1="325.5" x2="68.0" y2="352.0" stroke="#94a3b8" stroke-width="1.1"/>
@@ -217,7 +217,7 @@
 <line x1="148.0" y1="1120.5" x2="154.0" y2="1120.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1110.5" width="5" height="20.5" rx="2.5" fill="#2563eb" opacity="0.85"/>
 <text x="160.0" y="1124.8" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">RunReservePluginsReserve</text>
-<text x="540.0" y="1124.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">有状态插件在这里记账：</tspan><tspan>任一失败，按逆序调用 Unreserve 退账</tspan></text>
+<text x="540.0" y="1124.7" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">有状态插件在这里记录状态：</tspan><tspan>任一失败，按逆序调用 Unreserve 撤销</tspan></text>
 <rect x="26" y="1134.0" width="1214" height="26.5" fill="#f8fafc"/>
 <rect x="172.0" y="1136.0" width="1068.0" height="22.5" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
 <line x1="168.0" y1="1120.5" x2="168.0" y2="1147.0" stroke="#94a3b8" stroke-width="1.1"/>
@@ -319,7 +319,7 @@
 <line x1="48.0" y1="1571.0" x2="54.0" y2="1571.0" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1561.0" width="5" height="20.5" rx="2.5" fill="#0d9488" opacity="0.85"/>
 <text x="60.0" y="1575.3" font-size="12.4" fill="#1e293b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">scheduleOnePodGroup</text>
-<text x="540.0" y="1575.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">PodGroup 作为一个实体出队：</tspan><tspan>整组在一个周期里逐个试放，只在快照里 assume，失败统一撤销</tspan></text>
+<text x="540.0" y="1575.2" font-size="12.2" fill="#475569"><tspan font-weight="700" fill="#1e3a8a">PodGroup 作为一个 entity 出队：</tspan><tspan>整组在一个周期里逐个试放，只在快照里 assume，失败统一撤销</tspan></text>
 <line x1="68.0" y1="1571.0" x2="68.0" y2="1597.5" stroke="#94a3b8" stroke-width="1.1"/>
 <line x1="68.0" y1="1597.5" x2="74.0" y2="1597.5" stroke="#94a3b8" stroke-width="1.1"/>
 <rect x="12" y="1587.5" width="5" height="20.5" rx="2.5" fill="#0d9488" opacity="0.85"/>

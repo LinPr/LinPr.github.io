@@ -56,7 +56,7 @@ var _ fwk.PlacementScorePlugin = &Fit{}
 | `InPlacePodVerticalScalingSchedulerPreemption` | Alpha，默认关 | resize 被推迟的 Pod 重新进入调度器，在原节点上抢占 |
 | `TopologyAwareWorkloadScheduling` | Alpha，默认关 | 启用 `PlacementScore`，为 PodGroup 的放置方案打分 |
 
-同一个包里还有 `NodeResourcesBalancedAllocation`，两者共用一个打分骨架 `resourceAllocationScorer`。BalancedAllocation 只打分，按故事顺序放在抢占之后的 [第 19 篇](/posts/sched-plugin-19-balanced-allocation/)。
+同一个包里还有 `NodeResourcesBalancedAllocation`，两者共用一个打分实现 `resourceAllocationScorer`。BalancedAllocation 只打分，按故事顺序放在抢占之后的 [第 19 篇](/posts/sched-plugin-19-balanced-allocation/)。
 
 ## 二、Pod 的请求量怎么算
 
@@ -298,11 +298,11 @@ func (pi *PodInfo) CalculateResource() fwk.PodResource {
 - **`UseStatusResources: true`。** 已经在节点上运行的 Pod 可能正在原地扩缩容：`spec` 里写的是期望值，`status.containerStatuses[].allocatedResources` 是 kubelet 已经接受的值，`status.containerStatuses[].resources` 是实际生效的值。
 - **同时算出一个「非零」版本。** 这个版本只给打分用，见第六节。
 
-第一条决定了节点上的 Pod 按什么记账：`AggregateContainerRequests` 在这种模式下取三者的最大值（resize 被判定为 Infeasible 时不看 spec）。调度器按最大值记账，宁可高估也不低估。
+第一条决定了节点上的 Pod 按什么统计：`AggregateContainerRequests` 在这种模式下取三者的最大值（resize 被判定为 Infeasible 时不看 spec）。调度器按最大值计数，宁可高估也不低估。
 
 结果被缓存在 `PodInfo.cachedResource` 里，Pod 更新时清空。
 
-请求量的口径到这里就定下来了：待调度 Pod 算一次，节点上的 Pod 各自记账并缓存。接下来看插件本身怎么组织这些计算。
+请求量的口径到这里就定下来了：待调度 Pod 算一次，节点上的 Pod 各自记录用量并缓存。接下来看插件本身怎么组织这些计算。
 
 ## 三、结构体、工厂与参数
 
@@ -1093,14 +1093,14 @@ func extractPodScaleDown(newPod, oldPod *v1.Pod) fwk.ActionType {
 
 有两类 `UpdatePodScaleDown`：
 
-- `AssignedPod` 缩容：别的已调度 Pod 变小了，可能腾出资源。hint 是 `haveEnoughRelevantResourcesDecreased`，它对两边都用 `UseStatusResources` 口径算请求量（与 `NodeInfo` 记账一致），只在待调度 Pod 请求的资源里有某一项确实变小时才 `Queue`。
+- `AssignedPod` 缩容：别的已调度 Pod 变小了，可能腾出资源。hint 是 `haveEnoughRelevantResourcesDecreased`，它对两边都用 `UseStatusResources` 口径算请求量（与 `NodeInfo` 的统计口径一致），只在待调度 Pod 请求的资源里有某一项确实变小时才 `Queue`。
 - `TargetPod` 缩容：被拒绝的 Pod **自己**变小了，直接 `Queue`。
 
 注意 `haveEnoughRelevantResourcesDecreased` 用 `max(spec, allocated, actuated)` 计算缩容前后的请求量。
 
 把 spec 从 2 核改到 1 核，在 kubelet 真正完成缩容之前，`allocated` 和 `actuated` 还是 2 核，最大值不变，hint 返回 `QueueSkip`。等 kubelet 更新了 status，再来一次 Pod 更新事件，这时最大值才下降，Pod 才被唤醒。
 
-这和 `NodeInfo` 的记账时机是一致的，避免在资源真正释放之前就把等待的 Pod 放进来，结果又失败一次。
+这和 `NodeInfo` 统计请求量的时机是一致的，避免在资源真正释放之前就把等待的 Pod 放进来，结果又失败一次。
 
 ### 7.4 DeviceClass 事件
 
@@ -1202,7 +1202,7 @@ Filter 不受影响（PreFilter 显式传入了 `f.enablePodLevelResources`）�
 
 合并的好处是三种互斥的策略不能再被同时启用，也让 Filter 和 Score 共享同一套请求量计算。
 
-`resourceAllocationScorer` 就是合并留下的骨架：它把「从 Pod 和节点取出三个向量」和「怎么把向量变成分数」分开，前者由 `NodeResourcesFit` 和 `NodeResourcesBalancedAllocation` 共享，后者是一个 `func(requested, allocated, allocatable []int64) int64`。
+`resourceAllocationScorer` 就是合并留下的结构：它把「从 Pod 和节点取出三个向量」和「怎么把向量变成分数」分开，前者由 `NodeResourcesFit` 和 `NodeResourcesBalancedAllocation` 共享，后者是一个 `func(requested, allocated, allocatable []int64) int64`。
 
 ### 10.2 requests 不是用量
 
@@ -1221,7 +1221,7 @@ Filter 不受影响（PreFilter 显式传入了 `f.enablePodLevelResources`）�
 
 ## 十一、小结
 
-- Pod 的请求量 = max(稳态：应用容器 + sidecar，init 阶段：每个 init 容器 + 它之前的 sidecar)，逐维度取最大；Pod 级 resources 覆盖 CPU/内存/hugepages；最后加 overhead。节点上已有 Pod 按 spec/allocated/actuated 的最大值记账。
+- Pod 的请求量 = max(稳态：应用容器 + sidecar，init 阶段：每个 init 容器 + 它之前的 sidecar)，逐维度取最大；Pod 级 resources 覆盖 CPU/内存/hugepages；最后加 overhead。节点上已有 Pod 按 spec/allocated/actuated 的最大值统计。
 - PreFilter 只计算不跳过；Filter 依次检查 Pod 数、CPU/内存/临时存储、标量资源，收集全部不足项；请求超过节点 allocatable 才是 `UnschedulableAndUnresolvable`，否则可以抢占。
 - `ignoredResources` 只作用于扩展资源；由 DRA 提供的扩展资源交给 `DynamicResources`。
 - 打分用非零请求（缺失按 100m/200MiB），三种策略：`LeastAllocated` 打散，`MostAllocated` 装箱，`RequestedToCapacityRatio` 自定义曲线（四舍五入，0 分资源不计入平均）。

@@ -6,7 +6,7 @@ tags: ["kubernetes", "scheduler", "SchedulingGates", "PreEnqueue", "调度队列
 categories: ["Kubernetes"]
 series: ["scheduler-plugins"]
 author: "LinPr"
-description: "SchedulingGates 是默认 Profile 里第一个插件，只实现 PreEnqueue：spec.schedulingGates 非空的 Pod 连 activeQ 都进不去。本文从插件的 20 行代码出发，拆开调度队列里 PreEnqueue 的调用位置、gated 实体在 unschedulableEntities 里如何被跳过、gate 删光后 Pod 怎么回到队列，以及 API Server 对 schedulingGates 只减不增的校验规则。"
+description: "SchedulingGates 是默认 Profile 里第一个插件，只实现 PreEnqueue：spec.schedulingGates 非空的 Pod 连 activeQ 都进不去。本文从插件的 20 行代码出发，拆开调度队列里 PreEnqueue 的调用位置、gated entity 在 unschedulableEntities 里如何被跳过、gate 删光后 Pod 怎么回到队列，以及 API Server 对 schedulingGates 只减不增的校验规则。"
 ---
 
 > 先看位置：下图是[开篇](/posts/sched-plugin-00-journey/)里的调度器调用栈，红框标出了 `SchedulingGates` 实现的扩展点（PreEnqueue）。读的时候可以对照这张图，看清本篇讲的每个函数在一次调度里什么时候被调用。
@@ -102,9 +102,9 @@ func (pl *SchedulingGates) isSchedulableAfterUpdateTargetPodSchedulingGatesElimi
 
 ## 三、PreEnqueue 在队列里的位置
 
-{{< figure src="/images/posts/sched-plugins/01-queue-preenqueue.svg" link="/images/posts/sched-plugins/01-queue-preenqueue.svg" caption="PreEnqueue 是进入 activeQ（以及开启 SchedulerPopFromBackoffQ 时进入 backoffQ）之前的闸门，被拒绝的实体以 gated 状态留在 unschedulableEntities（点击查看大图）" >}}
+{{< figure src="/images/posts/sched-plugins/01-queue-preenqueue.svg" link="/images/posts/sched-plugins/01-queue-preenqueue.svg" caption="PreEnqueue 是进入 activeQ（以及开启 SchedulerPopFromBackoffQ 时进入 backoffQ）之前的 gate，被拒绝的 entity 以 gated 状态留在 unschedulableEntities（点击查看大图）" >}}
 
-队列这一侧要回答两个问题：闸门架在哪些路径上，被拦下的实体又停在哪里。
+队列这一侧要回答两个问题：gate 架在哪些路径上，被拦下的 entity 又停在哪里。
 
 ### 3.1 三个子队列
 
@@ -123,7 +123,7 @@ func (pl *SchedulingGates) isSchedulableAfterUpdateTargetPodSchedulingGatesElimi
 //     are currently determined to be unschedulable.
 ```
 
-注意注释的措辞：「two sub queues and an additional data structure」。`activeQ` 和 `backoffQ` 是堆，`unschedulableEntities` 只是一个 map，里面的实体没有顺序，因为它们本来就不会被 Pop，只会被事件「捞」出来：
+注意注释的措辞：「two sub queues and an additional data structure」。`activeQ` 和 `backoffQ` 是堆，`unschedulableEntities` 只是一个 map，里面的 entity 没有顺序，因为它们本来就不会被 Pop，只会被事件「捞」出来：
 
 ```go
 // pkg/scheduler/backend/queue/unschedulable_entities.go
@@ -139,13 +139,13 @@ type unschedulableEntities struct {
 }
 ```
 
-**被 PreEnqueue 拦下的实体和调度失败的实体住在同一个 map 里，只是指标分开统计**：前者计入 `scheduler_pending_pods{queue="gated"}`，后者计入 `queue="unschedulable"`。排查「Pod 为什么没被调度」时，先看这两个指标就能分清是没排上队还是排上了但调度失败。
+**被 PreEnqueue 拦下的 entity 和调度失败的 entity 住在同一个 map 里，只是指标分开统计**：前者计入 `scheduler_pending_pods{queue="gated"}`，后者计入 `queue="unschedulable"`。排查「Pod 为什么没被调度」时，先看这两个指标就能分清是没排上队还是排上了但调度失败。
 
-三个子队列的分工清楚了，下一个问题是实体从哪条路径被放进 `activeQ`。
+三个子队列的分工清楚了，下一个问题是 entity 从哪条路径被放进 `activeQ`。
 
-### 3.2 两个入口都会过闸门
+### 3.2 两个入口都会经过 gate
 
-既然 gated 实体停在 `unschedulableEntities`，闸门就必须架在实体进入 `activeQ` 的唯一入口上。这个入口是 `moveToActiveQ`，它先跑 PreEnqueue：
+既然 gated entity 停在 `unschedulableEntities`，gate 就必须架在 entity 进入 `activeQ` 的唯一入口上。这个入口是 `moveToActiveQ`，它先跑 PreEnqueue：
 
 ```go
 // pkg/scheduler/backend/queue/scheduling_queue.go
@@ -176,9 +176,9 @@ func (p *PriorityQueue) moveToActiveQ(logger klog.Logger, entity framework.Queue
 }
 ```
 
-`SchedulerPopFromBackoffQ`（1.33 Beta，默认开启）打开后，`activeQ` 空闲时调度器会直接从 `backoffQ` 里 Pop，这样 `backoffQ` 里的实体也可能被直接调度。
+`SchedulerPopFromBackoffQ`（1.33 Beta，默认开启）打开后，`activeQ` 空闲时调度器会直接从 `backoffQ` 里 Pop，这样 `backoffQ` 里的 entity 也可能被直接调度。
 
-闸门因此必须前移：`moveToBackoffQ` 在入队时就跑 PreEnqueue，被拒绝的同样放回 `unschedulableEntities`；之后从 `backoffQ` 移到 `activeQ` 时（`movesFromBackoffQ=true`）就不再重复跑。
+gate 因此必须前移：`moveToBackoffQ` 在入队时就跑 PreEnqueue，被拒绝的同样放回 `unschedulableEntities`；之后从 `backoffQ` 移到 `activeQ` 时（`movesFromBackoffQ=true`）就不再重复跑。
 
 ```go
 // pkg/scheduler/backend/queue/scheduling_queue.go
@@ -202,9 +202,9 @@ func (p *PriorityQueue) moveToBackoffQ(logger klog.Logger, entity framework.Queu
 }
 ```
 
-**无论实体从哪个方向往「可以被 Pop 的地方」走，都要先过 PreEnqueue。** 这也解释了 PreEnqueue 插件的一个约束：它会在队列锁内被频繁调用，必须是 O(1) 的纯检查，不能发 API 请求。`SchedulingGates` 只看一个切片长度，符合这个要求。
+**无论 entity 从哪个方向往「可以被 Pop 的地方」走，都要先过 PreEnqueue。** 这也解释了 PreEnqueue 插件的一个约束：它会在队列锁内被频繁调用，必须是 O(1) 的纯检查，不能发 API 请求。`SchedulingGates` 只看一个切片长度，符合这个要求。
 
-### 3.3 闸门内部：gating 插件先跑，其余顺序不固定
+### 3.3 gate 内部：gating 插件先跑，其余顺序不固定
 
 两个入口调的是同一套检查，而这套检查面对的是一个插件集合。什么时候问哪个插件，决定了上一次的拦截结果能不能被复用。
 
@@ -253,7 +253,7 @@ func (p *PriorityQueue) runPreEnqueuePluginsForPod(ctx context.Context, pInfo *f
 
 默认 Profile 里其实有三个插件实现了 PreEnqueue：`SchedulingGates`、`DynamicResources`（Pod 引用的 ResourceClaim 还不存在时拦住）、`DefaultPreemption`（开启 `SchedulerAsyncPreemption` 后，Pod 的异步抢占还在进行时拦住）。`GenericWorkload` 开启后还会加上 `GangScheduling`。
 
-它们共用这套机制，只是拦截条件不同。闸门架在哪、谁先跑，到这里都清楚了。剩下的是被拦住的实体怎么被放回来。
+它们共用这套机制，只是拦截条件不同。gate 架在哪、谁先跑，到这里都清楚了。剩下的是被拦住的 entity 怎么被放回来。
 
 ## 四、gated 的 Pod 怎么回来
 
@@ -282,7 +282,7 @@ func (p *PriorityQueue) moveEntitiesToActiveOrBackoffQueue(logger klog.Logger, e
 }
 ```
 
-**gated 实体只对 `GatingPluginEvents` 里的事件和通配事件有反应**：节点变化、别的 Pod 删除，一律跳过，连 hint 函数都不调。
+**gated entity 只对 `GatingPluginEvents` 里的事件和通配事件有反应**：节点变化、别的 Pod 删除，一律跳过，连 hint 函数都不调。
 
 ### 4.2 「全部删光」才产生事件
 
@@ -327,7 +327,7 @@ func extractPodSchedulingGateEliminatedChange(newPod *v1.Pod, oldPod *v1.Pod) fw
 
 ### 4.3 兜底刷新不会把它放出来
 
-上面的路径依赖事件和 hint 都正确。万一插件把 hint 写错、事件没产生，队列还有一层定时兜底：每 30 秒执行一次 `flushUnschedulableEntitiesLeftover`，把在 `unschedulableEntities` 里待超过 5 分钟的实体以通配事件 `UnschedulableTimeout` 重新评估。
+上面的路径依赖事件和 hint 都正确。万一插件把 hint 写错、事件没产生，队列还有一层定时兜底：每 30 秒执行一次 `flushUnschedulableEntitiesLeftover`，把在 `unschedulableEntities` 里待超过 5 分钟的 entity 以通配事件 `UnschedulableTimeout` 重新评估。
 
 通配事件不会被 4.1 的短路跳过，所以 gated 的 Pod 大约每 5 分钟会被拿出来重跑一次 PreEnqueue，`moveToActiveQ` 发现它仍然 gated，原样放回。这个兜底是为了防止插件的 QueueingHint 写错导致 Pod 卡死；对 `SchedulingGates` 来说，**它没有实际作用，只是一次很便宜的空转**。
 
@@ -339,7 +339,7 @@ func extractPodSchedulingGateEliminatedChange(newPod *v1.Pod, oldPod *v1.Pod) fw
 
 ## 五、API Server 一侧：只能删，不能加
 
-前面几节都在调度器内部：闸门在哪、事件怎么来。`schedulingGates` 的语义能成立，还靠 API Server 一侧的校验，而不是调度器。
+前面几节都在调度器内部：gate 在哪、事件怎么来。`schedulingGates` 的语义能成立，还靠 API Server 一侧的校验，而不是调度器。
 
 ### 5.1 只能在创建时设置
 
@@ -447,7 +447,7 @@ kubectl 的打印逻辑看到 `PodScheduled` 条件的 reason 是 `SchedulingGat
 
 **Pod 指定了不存在的 `schedulerName`。** `addPod` 先用 `responsibleForPod` 判断这个 Pod 是不是自己的，不是就不入队，PreEnqueue 也就不会跑。这种 Pod 不会出现在 `pending_pods` 任何一个 queue 标签下。
 
-**PodGroup 成员被 gate。** `runPreEnqueuePlugins` 对 PodGroup 实体逐个检查成员 Pod，遇到第一个被 gate 的就把整个组标记为 gated：
+**PodGroup 成员被 gate。** `runPreEnqueuePlugins` 对 PodGroup entity 逐个检查成员 Pod，遇到第一个被 gate 的就把整个组标记为 gated：
 
 ```go
 // pkg/scheduler/backend/queue/scheduling_queue.go

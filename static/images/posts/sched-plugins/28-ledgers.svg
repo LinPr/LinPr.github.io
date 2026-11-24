@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" width="960" height="600" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
 <rect width="960" height="600" fill="#ffffff"/>
 <defs><marker id="a" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 z" fill="#94a3b8"/></marker></defs>
-<text x="480.0" y="34.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">CapacityScheduling 的三本账</text>
-<text x="480.0" y="58.0" font-size="13" fill="#64748b" text-anchor="middle">插件内存账本决定调度；CycleState 快照服务于一次调度周期；status.used 只给人看</text>
+<text x="480.0" y="34.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">CapacityScheduling 的三份用量记录</text>
+<text x="480.0" y="58.0" font-size="13" fill="#64748b" text-anchor="middle">插件内存里的用量记录决定调度；CycleState 快照服务于一次调度周期；status.used 只给人看</text>
 <rect x="30.0" y="90.0" width="290.0" height="104.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
 <text x="42.0" y="120.0" font-size="15" fill="#2563eb" text-anchor="start" font-weight="700">Pod informer</text>
 <text x="42.0" y="139.1" font-size="12.5" fill="#334155" text-anchor="start">只接收 spec.nodeName 非空的 Pod</text>
@@ -21,7 +21,7 @@
 <text x="370.0" y="200.8" font-size="15" fill="#059669" text-anchor="start" font-weight="700">c.elasticQuotaInfos</text>
 <text x="370.0" y="219.9" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">map[namespace]*ElasticQuotaInfo</text>
 <text x="370.0" y="238.0" font-size="12.5" fill="#334155" text-anchor="start">pods：sets.Set[ns/name]</text>
-<text x="370.0" y="256.1" font-size="12.5" fill="#64748b" text-anchor="start">同一 Pod 重复加入不会重复记账</text>
+<text x="370.0" y="256.1" font-size="12.5" fill="#64748b" text-anchor="start">同一 Pod 重复加入不会重复计数</text>
 <text x="370.0" y="274.2" font-size="12.5" fill="#334155" text-anchor="start">Min / Max / Used：*framework.Resource</text>
 <text x="370.0" y="292.4" font-size="12.5" fill="#64748b" text-anchor="start">由 sync.RWMutex 保护</text>
 <text x="370.0" y="310.5" font-size="12.5" fill="#334155" text-anchor="start">插件进程内的唯一权威用量</text>
@@ -30,7 +30,7 @@
 <line x1="320.0" y1="372.0" x2="356.0" y2="300.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#a)"/>
 <rect x="660.0" y="90.0" width="270.0" height="150.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2"/>
 <text x="672.0" y="133.9" font-size="15" fill="#0d9488" text-anchor="start" font-weight="700">ElasticQuotaSnapshot</text>
-<text x="672.0" y="153.0" font-size="12.5" fill="#334155" text-anchor="start">PreFilter 开头 clone() 整本账</text>
+<text x="672.0" y="153.0" font-size="12.5" fill="#334155" text-anchor="start">PreFilter 开头 clone() 全部用量记录</text>
 <text x="672.0" y="171.1" font-size="12.5" fill="#334155" text-anchor="start">DryRunPreemption 每个节点再</text>
 <text x="672.0" y="189.2" font-size="12.5" fill="#334155" text-anchor="start">state.Clone() 深拷贝一份</text>
 <text x="672.0" y="207.4" font-size="12.5" fill="#334155" text-anchor="start">AddPod / RemovePod 只改副本</text>
@@ -57,5 +57,5 @@
 <text x="712.0" y="528.1" font-size="12.5" fill="#334155" text-anchor="start">newElasticQuotaInfo 传入</text>
 <text x="712.0" y="546.2" font-size="12.5" fill="#334155" text-anchor="start" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">used = nil</text>
 <path d="M 480 350 L 480 420 L 800 420 L 800 482" fill="none" stroke="#dc2626" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#a)"/>
-<text x="640.0" y="412.0" font-size="12.5" fill="#dc2626" text-anchor="middle">两本账没有任何同步</text>
+<text x="640.0" y="412.0" font-size="12.5" fill="#dc2626" text-anchor="middle">两处记录没有任何同步</text>
 </svg>
