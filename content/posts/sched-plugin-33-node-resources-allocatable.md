@@ -21,11 +21,17 @@ description: "NodeResourcesAllocatable 只根据节点 allocatable 的加权和�
 
 设计文档 `kep/48-node-resources-allocatable-scoring` 描述了一个异构集群的场景：集群里有 10 单位和 200 单位两种节点，依次来了请求为 5、5、100、100 的四个 Pod。
 
-用 in-tree 的 `LeastAllocated` 打分：两个节点都空，第一个 5 可能落在任一节点；第二个 5 会去「已分配比例更低」的节点，大概率是大节点。最终可能是 `5/10` 和 `105/200`，第二个 100 放不下了。所有基于「已分配比例」的打分都有这个问题：一个小 Pod 放在大节点上，比例变化很小，看起来很划算。
+用 in-tree 的 `LeastAllocated` 打分：两个节点都空，第一个 5 可能落在任一节点；第二个 5 会去「已分配比例更低」的节点，大概率是大节点。最终可能是 `5/10` 和 `105/200`，第二个 100 放不下了。
+
+所有基于「已分配比例」的打分都有这个问题：一个小 Pod 放在大节点上，比例变化很小，看起来很划算。
 
 `NodeResourcesAllocatable` 换了一个维度：只看节点本身有多大。`mode: Least` 时小节点得分高，5 和 5 先填满小节点，两个 100 都能落到大节点。KEP 里的第二个场景是 `mode: Most`：少量常驻大节点加上按需伸缩的小节点，优先把 Pod 放到大节点上，小节点空闲时可以被缩容。
 
+两个场景对应同一个开关：`mode`。插件对外的可配置项也只有它和资源权重。
+
 ## 二、参数与默认值
+
+`NodeResourcesAllocatableArgs` 只有两个字段，一个决定看哪些资源，一个决定偏好哪一头：
 
 ```go
 // apis/config/types.go
@@ -44,13 +50,21 @@ type NodeResourcesAllocatableArgs struct {
 }
 ```
 
-默认值在 v1 的 `SetDefaults_NodeResourcesAllocatableArgs`：`resources` 为空时用 `cpu: 1<<20, memory: 1`，`mode` 为空时用 `Least`。校验在 `ValidateNodeResourcesAllocatableArgs`：每个资源的权重必须大于 0（没有上限），`mode` 只能是 `Least` 或 `Most`。`allocatable.go` 里还有一个同名的 `validateResources` 函数，是没有被调用的遗留代码，实际生效的是 `apis/config/validation` 中的版本。
+默认值在 v1 的 `SetDefaults_NodeResourcesAllocatableArgs`：`resources` 为空时用 `cpu: 1<<20, memory: 1`，`mode` 为空时用 `Least`。校验在 `ValidateNodeResourcesAllocatableArgs`：每个资源的权重必须大于 0（没有上限），`mode` 只能是 `Least` 或 `Most`。
 
-默认权重的含义写在 `resource_allocation.go` 的注释里：CPU 以毫核计、内存以字节计，`1<<20` 让 1 毫核与 1 MiB 内存等价。换句话说，1 核约等于 1000 MiB，即约 1GiB 内存。这是一个大致符合通用机型 CPU/内存配比（1:4 左右）量级的折算，但不意味着两者的贡献相等，下面的算例会看到内存往往占主导。
+`allocatable.go` 里还有一个同名的 `validateResources` 函数，是没有被调用的遗留代码，实际生效的是 `apis/config/validation` 中的版本。
+
+默认权重的含义写在 `resource_allocation.go` 的注释里：CPU 以毫核计、内存以字节计，`1<<20` 让 1 毫核与 1 MiB 内存等价。换句话说，1 核约等于 1000 MiB，即约 1GiB 内存。
+
+这是一个大致符合通用机型 CPU/内存配比（1:4 左右）量级的折算，但不意味着两者的贡献相等，下面的算例会看到内存往往占主导。
 
 ## 三、源码
 
+整条链路只有三块：工厂把参数变成闭包，`score` 算出原始分，`NormalizeScore` 把它压到 0~100。
+
 ### 3.1 工厂
+
+工厂要做的事只有一件：把 Profile 里的 args 和默认值合并，装进 `resourceAllocationScorer`。
 
 ```go
 // pkg/noderesources/allocatable.go
@@ -93,9 +107,13 @@ func NewAllocatable(ctx context.Context, allocArgs runtime.Object, h fwk.Handle)
 }
 ```
 
-插件没有 CycleState、没有 PreScore，所有计算都在 Score 里按节点完成。`resourceAllocationScorer` 这个结构来自 Kubernetes 1.19 的 in-tree `noderesources` 包（文件头注释写明是拷贝过来的），当年 in-tree 的 `NodeResourcesLeastAllocated`、`NodeResourcesMostAllocated` 还是独立插件，后来才合并进 `NodeResourcesFit` 的 `scoringStrategy`。
+插件没有 CycleState、没有 PreScore，所有计算都在 Score 里按节点完成。
+
+`resourceAllocationScorer` 这个结构来自 Kubernetes 1.19 的 in-tree `noderesources` 包（文件头注释写明是拷贝过来的），当年 in-tree 的 `NodeResourcesLeastAllocated`、`NodeResourcesMostAllocated` 还是独立插件，后来才合并进 `NodeResourcesFit` 的 `scoringStrategy`。
 
 ### 3.2 打分
+
+打分分两层：外层的 `score` 负责取数，真正加权的是构造时传进来的闭包。
 
 ```go
 // pkg/noderesources/resource_allocation.go
@@ -152,11 +170,15 @@ func score(logger klog.Logger, capacity int64, mode config.ModeType) int64 {
 }
 ```
 
-所以原始分是 `±Σ(allocatable_i × w_i) / Σw_i`，`Least` 为负、`Most` 为正。它与节点上已经运行了什么、与本 Pod 请求多少都无关，`requested` 的计算是从 in-tree 结构继承来的、在这里没有用处的开销。测试用例 `resources requested with more than the node` 也印证了这一点：Pod 请求超过节点容量，分数照样按规格给。插件不管能不能放下，那是 Filter 阶段 `NodeResourcesFit` 的事。
+所以原始分是 `±Σ(allocatable_i × w_i) / Σw_i`，`Least` 为负、`Most` 为正。**它只跟节点自己的 allocatable 有关，与节点上已经运行了什么、与本 Pod 请求多少都无关**，`requested` 的计算是从 in-tree 结构继承来的、在这里没有用处的开销。
+
+测试用例 `resources requested with more than the node` 也印证了这一点：Pod 请求超过节点容量，分数照样按规格给。插件不管能不能放下，那是 Filter 阶段 `NodeResourcesFit` 的事。
 
 权重表里出现的资源，如果节点没有（例如在没有 GPU 的节点上配置了 `nvidia.com/gpu`），allocatable 取 0，不会报错。
 
 ### 3.3 NormalizeScore
+
+原始分的量纲是字节当量，必须先映射到框架约定的 0~100，框架才会拿去和其他插件加权：
 
 ```go
 // pkg/noderesources/allocatable.go
@@ -216,7 +238,11 @@ func (alloc *Allocatable) NormalizeScore(ctx context.Context, state fwk.CycleSta
 
 memheavy 只有 8 核，却排在 16 核的 medium 后面（Least 模式下 61 < 80），因为它的 128Gi 内存折合成了 13 万多的当量。如果集群里 CPU 才是稀缺资源，应该调大 CPU 权重。README 和 `manifests/noderesources/scheduler-config.yaml` 示例用的是 `cpu: 1000000`，与默认值同量级。
 
+到这里，插件自身的行为已经完整：它只看节点规格。但 scheduler-plugins 的调度器默认还带着 in-tree 的 `NodeResourcesFit`，两者会一起参与打分，真正的区别要在组合里才看得出来。
+
 ## 五、与 NodeResourcesFit 打分策略的区别
+
+差别集中在三处：打分语义、组合时的方向、以及归一化带来的副作用。
 
 ### 5.1 语义不同
 
@@ -252,28 +278,36 @@ func leastRequestedScore(requested, capacity int64) int64 {
 
 scheduler-plugins 的调度器二进制默认 Profile 依然包含全部 in-tree 插件，`NodeResourcesFit` 以权重 1 参与打分，策略默认 `LeastAllocated`。图中最右一列是一个 1 CPU / 2Gi 的 Pod 在四个空节点上的 Fit 得分：small 81、medium 94、memheavy 92、large 98，Fit 偏好大节点；`Least` 模式的 Allocatable 偏好小节点，两者方向相反。
 
-好在两者的区分度不一样。Fit 在空节点之间的差异只有十几分（81 到 98），Allocatable 经过 min-max 后总是拉满 0 到 100。权重都为 1 时 small 得 `81 + 100 = 181`，large 得 `98 + 0 = 98`，Allocatable 胜出。但随着小节点被填满，Fit 给小节点的分数快速下降，两者的合力会在某个负载点上翻转，Pod 开始流向大节点。这正是 KEP 想要的效果：先填小的，填满了再用大的。
+好在两者的区分度不一样。Fit 在空节点之间的差异只有十几分（81 到 98），Allocatable 经过 min-max 后总是拉满 0 到 100。权重都为 1 时 small 得 `81 + 100 = 181`，large 得 `98 + 0 = 98`，Allocatable 胜出。
+
+但随着小节点被填满，Fit 给小节点的分数快速下降，两者的合力会在某个负载点上翻转，Pod 开始流向大节点。这正是 KEP 想要的效果：先填小的，填满了再用大的。
 
 若希望 Allocatable 的语义更占主导，可以给它更高的 `weight`，或者把 Fit 的打分策略改成 `MostAllocated`。后者在同规格节点之间也做装箱，两者的方向就一致了。
 
 ### 5.3 min-max 归一化的副作用
 
-min-max 依赖本轮的候选集合。同一个 medium 节点，候选集合里有 large 时得 80，large 被 Filter 过滤掉后，medium 变成最大，`Least` 模式下得 0。分数不是节点的固有属性，跨 Pod 比较分数没有意义。另外 `percentageOfNodesToScore` 小于 100% 时，候选节点只是全部可行节点的一个子集，极值随采样变化，对大集群的打分会有一些抖动。
+min-max 依赖本轮的候选集合。同一个 medium 节点，候选集合里有 large 时得 80，large 被 Filter 过滤掉后，medium 变成最大，`Least` 模式下得 0。**分数不是节点的固有属性，跨 Pod 比较分数没有意义。**
+
+另外 `percentageOfNodesToScore` 小于 100% 时，候选节点只是全部可行节点的一个子集，极值随采样变化，对大集群的打分会有一些抖动。
 
 ## 六、边界与坑
 
-- **不看是否放得下**：插件对放不下的节点也照常打分，依赖 Filter 先把它们排除。
-- **权重无上限，可能溢出**：`allocatable × weight` 是 int64 乘法。内存按字节计，1TiB 约 1.1e12，再乘一个 1e7 的权重就超过了 int64 上限（约 9.2e18），分数会回绕成负数。CPU 权重设到百万量级没问题，内存权重保持 1 即可。
-- **扩展资源按原始数量参与**：GPU 数量是个位数，不配大权重几乎不起作用；配了大权重又可能压过 CPU/内存。混用时最好单独算一下各项贡献。
-- **`requested` 的计算被浪费**：每个节点每次打分都会遍历 Pod 的容器算请求量，结果不用。开销不大，但如果在超大集群上做性能剖析时看到它，不必奇怪。
+打分逻辑本身没有分支，容易踩的都在量纲和边界上。
+
+- 不看是否放得下：插件对放不下的节点也照常打分，依赖 Filter 先把它们排除。
+- 权重无上限，可能溢出：`allocatable × weight` 是 int64 乘法。内存按字节计，1TiB 约 1.1e12，再乘一个 1e7 的权重就超过了 int64 上限（约 9.2e18），**分数会回绕成负数**。CPU 权重设到百万量级没问题，内存权重保持 1 即可。
+- 扩展资源按原始数量参与：GPU 数量是个位数，不配大权重几乎不起作用；配了大权重又可能压过 CPU/内存。混用时最好单独算一下各项贡献。
+- `requested` 的计算被浪费：每个节点每次打分都会遍历 Pod 的容器算请求量，结果不用。开销不大，但如果在超大集群上做性能剖析时看到它，不必奇怪。
 
 ## 七、发散：按规格打分的适用边界
 
-**它是一个静态偏好**。节点规格在节点生命周期内几乎不变，这个插件的分数可以看成给每个节点贴了一个固定的「优先级」，只是由 allocatable 自动算出。同样的效果可以用 [NodeMetadata](/posts/sched-plugin-34-node-metadata/) 读一个人工维护的数字 label 实现，或者用 NodeAffinity 的 `preferredDuringSchedulingIgnoredDuringExecution` 加权，区别在于这里不需要人工维护标签，新机型上线自动生效。
+这一节换到集群整体来看：这种按规格打的分适合什么样的节点拓扑，代价又在哪里。
 
-**和集群自动伸缩的关系**。`Most` 模式适合「常驻大节点 + 弹性小节点」的拓扑，让 Pod 优先挤在大节点上，Cluster Autoscaler 才能找到空闲的小节点缩容。反过来，如果弹性节点是大规格（比如 GPU 机型），`Least` 模式能避免普通 Pod 占用它们，配合 taint 效果更好。无论哪种模式，它都只影响新调度的 Pod，已经运行的 Pod 不会因为打分变化而迁移，需要 descheduler 之类的组件配合。
+它是一个静态偏好。节点规格在节点生命周期内几乎不变，这个插件的分数可以看成给每个节点贴了一个固定的「优先级」，只是由 allocatable 自动算出。同样的效果可以用 [NodeMetadata](/posts/sched-plugin-34-node-metadata/) 读一个人工维护的数字 label 实现，或者用 NodeAffinity 的 `preferredDuringSchedulingIgnoredDuringExecution` 加权，区别在于这里不需要人工维护标签，新机型上线自动生效。
 
-**碎片问题的另一面**。按规格打分减少的是「大 Pod 找不到大节点」这一种碎片，代价是小节点被优先填满，小节点上的资源余量变少，突发扩容时更容易需要新节点。这和 in-tree 的 `MostAllocated` 装箱面临同样的取舍：利用率和弹性余量此消彼长。
+和集群自动伸缩的关系。`Most` 模式适合「常驻大节点 + 弹性小节点」的拓扑，让 Pod 优先挤在大节点上，Cluster Autoscaler 才能找到空闲的小节点缩容。反过来，如果弹性节点是大规格（比如 GPU 机型），`Least` 模式能避免普通 Pod 占用它们，配合 taint 效果更好。无论哪种模式，它都只影响新调度的 Pod，**已经运行的 Pod 不会因为打分变化而迁移**，需要 descheduler 之类的组件配合。
+
+碎片问题的另一面。按规格打分减少的是「大 Pod 找不到大节点」这一种碎片，代价是小节点被优先填满，小节点上的资源余量变少，突发扩容时更容易需要新节点。这和 in-tree 的 `MostAllocated` 装箱面临同样的取舍：利用率和弹性余量此消彼长。
 
 ## 小结
 

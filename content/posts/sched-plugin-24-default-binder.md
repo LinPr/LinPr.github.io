@@ -79,7 +79,7 @@ func BindPod(ctx context.Context, cs kubernetes.Interface, binding *v1.Binding) 
 }
 ```
 
-`Pods(ns).Bind` 发出的是 `POST /api/v1/namespaces/{ns}/pods/{name}/binding`。`retry.DefaultBackoff` 是 `Steps: 4, Duration: 10ms, Factor: 5.0, Jitter: 0.1`，即最多 4 次尝试，间隔约 10ms、50ms、250ms。只有 500、503 和连接被拒三类错误会重试。
+`Pods(ns).Bind` 发出的是 `POST /api/v1/namespaces/{ns}/pods/{name}/binding`。`retry.DefaultBackoff` 是 `Steps: 4, Duration: 10ms, Factor: 5.0, Jitter: 0.1`，即最多 4 次尝试，间隔约 10ms、50ms、250ms。**只有 500、503 和连接被拒三类错误会重试。**
 
 注意 `Conflict` 不在重试列表里。绑定的冲突几乎都是确定性的（Pod 已经被绑定、UID 已经变了），重试没有意义。异步路径里的 `PodBindingCall.Execute` 调用的也是同一个 `util.BindPod`，所以两条路径的重试语义一致。
 
@@ -131,10 +131,10 @@ func BindPod(ctx context.Context, cs kubernetes.Interface, binding *v1.Binding) 
 
 这一段决定了绑定的语义：
 
-- **UID 前置条件**：如果 Pod 在调度期间被删除并以同名重建，UID 不同，绑定失败。调度器不会把为旧 Pod 做的决定套到新 Pod 上。
-- **四个拒绝条件**：Pod 正在删除、已经有 `nodeName`、还有 `schedulingGates`（[第 1 篇](/posts/sched-plugin-01-scheduling-gates/)的 gate 在这里有最后一道防线）。失败都被 `assignPod` 转成 `Conflict`。
-- **`spec.nodeName` 只能写一次**。这就是多个调度器同时调度同一个 Pod 时的仲裁点：谁的 binding 先到，谁赢，后到的拿到 `already assigned` 冲突。
-- **顺带写入的字段**：`PodScheduled=True` condition；`ClearingNominatedNodeNameAfterBinding`（1.35 起 Beta，默认开）开启时清空 `nominatedNodeName`；`PodTopologyLabelsAdmission`（1.35 起 Beta，默认开）开启时把 Binding 上的 labels 拷到 Pod 上（由准入插件把节点的拓扑标签写进 Binding）。
+- UID 前置条件：如果 Pod 在调度期间被删除并以同名重建，UID 不同，绑定失败。调度器不会把为旧 Pod 做的决定套到新 Pod 上。
+- 四个拒绝条件：Pod 正在删除、已经有 `nodeName`、还有 `schedulingGates`（[第 1 篇](/posts/sched-plugin-01-scheduling-gates/)的 gate 在这里有最后一道防线）。失败都被 `assignPod` 转成 `Conflict`。
+- **`spec.nodeName` 只能写一次，这就是多个调度器同时调度同一个 Pod 时的仲裁点**：谁的 binding 先到，谁赢，后到的拿到 `already assigned` 冲突。
+- 顺带写入的字段：`PodScheduled=True` condition；`ClearingNominatedNodeNameAfterBinding`（1.35 起 Beta，默认开）开启时清空 `nominatedNodeName`；`PodTopologyLabelsAdmission`（1.35 起 Beta，默认开）开启时把 Binding 上的 labels 拷到 Pod 上（由准入插件把节点的拓扑标签写进 Binding）。
 
 `spec.nodeName` 一旦写入，后续就是 kubelet 的事了：kubelet 的 informer 只 watch `spec.nodeName` 等于自己的 Pod，从这一刻起它才看到这个 Pod。
 
@@ -179,11 +179,13 @@ func BindPod(ctx context.Context, cs kubernetes.Interface, binding *v1.Binding) 
 
 `prepareAssumedPod` 深拷贝 Pod，把 `spec.nodeName` 设为选中的节点；`cache.AssumePod` 把这个副本加进 cache，节点的 NodeInfo 立刻计入它的资源。下一个 Pod 的调度周期开头 `UpdateSnapshot` 时，就能看到这个节点少了这些资源。
 
-于是调度主循环不必等 API 往返。一次 binding 请求通常在几毫秒到几十毫秒，如果串行等待，调度吞吐会被 API 延迟直接卡住；有了 assume，主循环处理完 Permit 就去取下一个 Pod，绑定在后台 goroutine 里并行进行。
+**于是调度主循环不必等 API 往返。** 一次 binding 请求通常在几毫秒到几十毫秒，如果串行等待，调度吞吐会被 API 延迟直接卡住；有了 assume，主循环处理完 Permit 就去取下一个 Pod，绑定在后台 goroutine 里并行进行。
 
 assume 也有顺序要求：先 `AssumePod`，再跑 Reserve 插件。Reserve 失败时，`UnreserveAndForgetFromCache` 对所有 Reserve 插件调用 Unreserve（包括没有执行到的那些，所以 Unreserve 必须幂等），再 `ForgetPod`。
 
 ### 3.2 绑定 goroutine 里的各步
+
+assume 之后，绑定 goroutine 按固定顺序走完剩下几步。
 
 ```go
 // pkg/scheduler/schedule_one.go
@@ -228,12 +230,12 @@ assume 也有顺序要求：先 `AssumePod`，再跑 Reserve 插件。Reserve �
 
 按顺序：
 
-1. **PreBindPreFlight**（在上面省略的开头部分）：问每个 PreBind 插件「你这次要不要干活」。只要有插件要干活，或者 Pod 会在 Permit 等待，就先把 `nominatedNodeName` 设为目标节点。`NominatedNodeNameForExpectation`（1.35 起 Beta，默认开）引入这一步，是为了让 Cluster Autoscaler 这类外部组件在漫长的 PreBind（比如等卷挂载、等 DRA 设备就绪）期间知道「这个 Pod 马上就要落到这个节点了」，不要误判为 Pending 而去扩容。
-2. **WaitOnPermit**：如果 Permit 插件返回了 `Wait`（典型是 Gang 调度），在这里阻塞，直到被 Allow、Reject 或超时。这是最后一个可能产生 `Unschedulable` 的地方。
-3. **Queue.Done**：通知队列这个 Pod 的「in-flight」阶段结束，释放这期间为它记录的集群事件。注释写得很清楚：从这里往后，失败只会进 backoffQ，不会被视为 unschedulable。
-4. **PreBind**：`VolumeBinding` 和 `DynamicResources` 在这里写 API。Pod 被登记进 PodInPreBind 表，这样[抢占](/posts/sched-plugin-18-default-preemption/)选中它当受害者时，可以直接取消它的 context，不必等它绑定后再删。
-5. **MarkPrebound**：PreBind 结束后标记「已过 PreBind」。如果抢占在这之前取消了它，这里返回取消原因；标记之后，抢占就只能走 API 删除了。这是一个小的状态机，保证「内存中取消」和「绑定继续」不会同时发生。
-6. **bind**：extender 优先，然后是 Bind 插件。
+1. PreBindPreFlight（在上面省略的开头部分）：问每个 PreBind 插件「你这次要不要干活」。只要有插件要干活，或者 Pod 会在 Permit 等待，就先把 `nominatedNodeName` 设为目标节点。`NominatedNodeNameForExpectation`（1.35 起 Beta，默认开）引入这一步，是为了让 Cluster Autoscaler 这类外部组件在漫长的 PreBind（比如等卷挂载、等 DRA 设备就绪）期间知道「这个 Pod 马上就要落到这个节点了」，不要误判为 Pending 而去扩容。
+2. WaitOnPermit：如果 Permit 插件返回了 `Wait`（典型是 Gang 调度），在这里阻塞，直到被 Allow、Reject 或超时。**这是最后一个可能产生 `Unschedulable` 的地方。**
+3. Queue.Done：通知队列这个 Pod 的「in-flight」阶段结束，释放这期间为它记录的集群事件。注释写得很清楚：从这里往后，失败只会进 backoffQ，不会被视为 unschedulable。
+4. PreBind：`VolumeBinding` 和 `DynamicResources` 在这里写 API。Pod 被登记进 PodInPreBind 表，这样[抢占](/posts/sched-plugin-18-default-preemption/)选中它当受害者时，可以直接取消它的 context，不必等它绑定后再删。
+5. MarkPrebound：PreBind 结束后标记「已过 PreBind」。如果抢占在这之前取消了它，这里返回取消原因；标记之后，抢占就只能走 API 删除了。这是一个小的状态机，保证「内存中取消」和「绑定继续」不会同时发生。
+6. bind：extender 优先，然后是 Bind 插件。
 
 ### 3.3 bind 与 RunBindPlugins
 
@@ -326,13 +328,13 @@ cache 的 `AddPod` 识别出这是一个 assumed Pod：
 	}
 ```
 
-`updatePod` 内部是 `removePod` + `addPod(…, false)`，`removePod` 会把 key 从 `assumedPods` 里删掉，于是状态从 Assumed 变成 Added。之后这个 Pod 的更新和删除都走普通路径。`UpdatePod` 遇到仍处于 assumed 状态的 Pod 会报错：assumed Pod 必须先经过 Add 才能被 Update。
+**`updatePod` 内部是 `removePod` + `addPod(…, false)`，`removePod` 会把 key 从 `assumedPods` 里删掉，于是状态从 Assumed 变成 Added。** 之后这个 Pod 的更新和删除都走普通路径。`UpdatePod` 遇到仍处于 assumed 状态的 Pod 会报错：assumed Pod 必须先经过 Add 才能被 Update。
 
 ### 4.2 没有超时
 
-当前代码里，cache 没有任何过期机制。`cacheImpl` 只有 `assumedPods sets.Set[string]` 和 `podStates map[string]*podState`，`podState` 里只剩一个 `pod` 字段。早期版本的 cache 有 `FinishBinding` 和一个后台清理循环：绑定结束后开始计时，超过 `durationToExpireAssumedPod` 仍未被 informer 确认，就把 assumed Pod 清掉，防止「绑定其实失败了、但调度器没收到事件」时资源被永久占用。现在整套机制已经从代码中移除，assumed 状态只会被 informer 的 AddPod 确认，或被 ForgetPod 撤销。
+**当前代码里，cache 没有任何过期机制。** `cacheImpl` 只有 `assumedPods sets.Set[string]` 和 `podStates map[string]*podState`，`podState` 里只剩一个 `pod` 字段。早期版本的 cache 有 `FinishBinding` 和一个后台清理循环：绑定结束后开始计时，超过 `durationToExpireAssumedPod` 仍未被 informer 确认，就把 assumed Pod 清掉，防止「绑定其实失败了、但调度器没收到事件」时资源被永久占用。现在整套机制已经从代码中移除，assumed 状态只会被 informer 的 AddPod 确认，或被 ForgetPod 撤销。
 
-不需要超时的原因是绑定周期本身已经闭环：`util.BindPod` 要么成功（informer 一定会带来确认事件），要么返回错误（`handleBindingCycleError` 一定会 `ForgetPod`）。唯一的灰色地带是「API Server 已经写入，但响应在路上丢了」，调度器拿到超时错误而 Pod 实际已绑定。这种情况的处理在下一节。
+**不需要超时的原因是绑定周期本身已经闭环**：`util.BindPod` 要么成功（informer 一定会带来确认事件），要么返回错误（`handleBindingCycleError` 一定会 `ForgetPod`）。唯一的灰色地带是「API Server 已经写入，但响应在路上丢了」，调度器拿到超时错误而 Pod 实际已绑定。这种情况的处理在下一节。
 
 ## 五、失败回滚
 
@@ -365,11 +367,11 @@ func (sched *Scheduler) handleBindingCycleError(
 }
 ```
 
-回滚分三步：
+回滚分三步，顺序和 assume 正好相反：
 
-1. **Unreserve + ForgetPod**：所有 Reserve 插件撤销各自的内存登记（`VolumeBinding` 还原 PV/PVC 的 assume、`DynamicResources` 撤 in-flight 表并 patch `reservedFor`），cache 删除 assumed Pod，节点资源回到 assume 之前。
-2. **广播一次「Pod 删除」**：被 assume 的 Pod 曾经占着资源，这期间可能有别的 Pod 因为资源不足被判为不可调度。现在资源释放了，用 `EventAssignedPodDelete` 通知队列，让那些 Pod 的 QueueingHint 有机会把它们捞回来。被拒绝的情况（`IsRejected`，只可能来自 Permit）用 `defer` 并排除自身，原因写在注释里：否则这个事件会被记进自身的 in-flight 事件，让自己也被移到 backoffQ。
-3. **FailureHandler**：传入 `clearNominatedNode`，清空提名。`Error` 状态的 Pod 没有 `UnschedulablePlugins`，按队列规则进 backoffQ 等待重试。
+1. Unreserve + ForgetPod：所有 Reserve 插件撤销各自的内存登记（`VolumeBinding` 还原 PV/PVC 的 assume、`DynamicResources` 撤 in-flight 表并 patch `reservedFor`），cache 删除 assumed Pod，节点资源回到 assume 之前。
+2. 广播一次「Pod 删除」：被 assume 的 Pod 曾经占着资源，这期间可能有别的 Pod 因为资源不足被判为不可调度。**现在资源释放了，用 `EventAssignedPodDelete` 通知队列，让那些 Pod 的 QueueingHint 有机会把它们捞回来。** 被拒绝的情况（`IsRejected`，只可能来自 Permit）用 `defer` 并排除自身，原因写在注释里：否则这个事件会被记进自身的 in-flight 事件，让自己也被移到 backoffQ。
+3. FailureHandler：传入 `clearNominatedNode`，清空提名。`Error` 状态的 Pod 没有 `UnschedulablePlugins`，按队列规则进 backoffQ 等待重试。
 
 ### 5.1 「其实已经绑定成功了」
 
@@ -386,7 +388,7 @@ func (sched *Scheduler) handleBindingCycleError(
 		} else {
 ```
 
-如果 informer 里的 Pod 已经有 `nodeName`，就不再放回队列。此时 cache 里 assumed 的副本已经被 Forget 了，等 informer 的 Update 事件到达时，`AddPod` 走 `!ok` 分支，把它当作一个普通的已分配 Pod 加进来。资源记账在这个短暂窗口里少算了一次，但很快会自我修正。
+**如果 informer 里的 Pod 已经有 `nodeName`，就不再放回队列。** 此时 cache 里 assumed 的副本已经被 Forget 了，等 informer 的 Update 事件到达时，`AddPod` 走 `!ok` 分支，把它当作一个普通的已分配 Pod 加进来。资源记账在这个短暂窗口里少算了一次，但很快会自我修正。
 
 如果事件比 Forget 先到呢？那时 `AddPod` 走 assumed 分支，状态变成 Added；随后 `ForgetPod` 发现它已经不在 `assumedPods` 里，`validateAssumedPod` 报错，`handleBindingCycleError` 记录 `ForgetPod failed` 并跳过广播。cache 的状态仍然是对的。
 
@@ -440,7 +442,7 @@ func (cq *callQueue) merge(oldAPICall, apiCall *queuedAPICall) error {
 
 callQueue 维护三样东西：`apiCalls` 按 UID 存当前有效的调用，`callsQueue` 是等待执行的 UID 的 FIFO，`inFlightEntities` 是正在执行的 UID 集合。不变量是：**同一个对象同一时刻最多一个调用在执行**，后来的调用要么合并进去，要么覆盖，要么被丢弃。
 
-这个设计针对的是一个具体问题：绑定周期开头会 patch `nominatedNodeName`（3.2 节第 1 步），紧接着又要 binding。在同步模式下这是两次串行的 API 请求；在 dispatcher 里，如果 patch 还没来得及发出，binding 到达时直接覆盖它——binding 会在 API Server 端清空 `nominatedNodeName`，先写再清的那次 patch 本来就是多余的。
+这个设计针对的是一个具体问题：绑定周期开头会 patch `nominatedNodeName`（3.2 节第 1 步），紧接着又要 binding。在同步模式下这是两次串行的 API 请求；在 dispatcher 里，如果 patch 还没来得及发出，binding 到达时直接覆盖它。**binding 会在 API Server 端清空 `nominatedNodeName`，先写再清的那次 patch 本来就是多余的。**
 
 relevance 的含义因此是「谁的效果能涵盖谁」。binding 涵盖了 status patch，所以 binding 到达时覆盖排队中的 patch；patch 到达时如果 binding 已在队列或执行中，patch 直接被跳过。
 
@@ -479,7 +481,7 @@ func (c *APICache) WaitOnFinish(ctx context.Context, onFinish <-chan error) erro
 }
 ```
 
-`ErrCallSkipped` 和 `ErrCallOverwritten` 都被当作成功。对 binding 来说，被覆盖只可能是被另一个 binding 覆盖，这在正常流程中不会发生。
+**`ErrCallSkipped` 和 `ErrCallOverwritten` 都被当作成功。** 对 binding 来说，被覆盖只可能是被另一个 binding 覆盖，这在正常流程中不会发生。
 
 一个可以留意的细节：`apidispatcher.New` 接收一个 `parallelization` 参数，包里也有一个 `goroutinesLimiter` 类型，但在本提交里 `New` 并没有使用这个参数，`Run` 对每个调用都直接起 goroutine。并发度实际上受上游约束：同一个 Pod 最多一个调用在执行，而需要 API 调用的 Pod 数取决于调度吞吐。
 
@@ -487,7 +489,7 @@ func (c *APICache) WaitOnFinish(ctx context.Context, onFinish <-chan error) erro
 
 ### 7.1 extender binder
 
-在 `KubeSchedulerConfiguration` 的 `extenders` 里配置 `bindVerb`，extender 就成为 binder。它优先于所有 Bind 插件。这种方式需要一个 HTTP 服务，延迟和可用性都要自己保证，`ignorable: true` 可以让它失败时退回到插件绑定。
+在 `KubeSchedulerConfiguration` 的 `extenders` 里配置 `bindVerb`，extender 就成为 binder。**它优先于所有 Bind 插件。** 这种方式需要一个 HTTP 服务，延迟和可用性都要自己保证，`ignorable: true` 可以让它失败时退回到插件绑定。
 
 ### 7.2 自定义 Bind 插件
 
@@ -501,7 +503,7 @@ func (c *APICache) WaitOnFinish(ctx context.Context, onFinish <-chan error) erro
 		// - part 3: other plugins (excluded by part 1 & 2) in regular extension point.
 ```
 
-只在 `bind.enabled` 里加一个 `MyBinder`，它属于 part 3，排在 MultiPoint 带进来的 `DefaultBinder`（part 2）之后。`DefaultBinder` 从不返回 `Skip`，`MyBinder` 永远轮不到。要让它先执行，需要把 `DefaultBinder` 从 MultiPoint 里拿掉，再在 Bind 扩展点上显式排序：
+只在 `bind.enabled` 里加一个 `MyBinder`，它属于 part 3，排在 MultiPoint 带进来的 `DefaultBinder`（part 2）之后。**`DefaultBinder` 从不返回 `Skip`，所以 `MyBinder` 永远轮不到。** 要让它先执行，需要把 `DefaultBinder` 从 MultiPoint 里拿掉，再在 Bind 扩展点上显式排序：
 
 ```yaml
 apiVersion: kubescheduler.config.k8s.io/v1
@@ -524,15 +526,11 @@ profiles:
 
 ## 八、边界情况与坑
 
-**Bind 失败不会让 Pod 显示为 Unschedulable。** 事件里是 `FailedScheduling`，但 `PodScheduled` condition 的 reason 是 `SchedulerError` 而不是 `Unschedulable`，Pod 走 backoffQ 而不是不可调度池。排障时这是区分「放不下」和「写不进去」的标志。
-
-**多个调度器竞争同一个 Pod。** 两个调度器各自 assume、各自发 binding，API Server 只接受第一个。输掉的那个拿到 `Conflict`，回滚后 Pod 进 backoffQ；随后 informer 带来已绑定的 Pod，`handleSchedulingFailure` 发现 `nodeName` 非空，不再放回队列。正常情况下 `schedulerName` 不同，不会出现这种竞争。
-
-**PodGroup 的绑定也是逐个进行的。** `scheduleOnePodGroup` 在所有成员都通过 Permit 后，为每个成员各起一个 `runBindingCycle` goroutine。组内的绑定没有事务性：可能部分成功、部分失败。Gang 语义由 Permit 阶段保证，绑定阶段只能尽力而为。
-
-**Pod 在绑定期间被删除。** UID 前置条件或「正在删除」检查让 binding 失败，回滚后 `handleSchedulingFailure` 发现 informer 里找不到这个 Pod，直接调用 `Done` 结束，不再重试。
-
-**DefaultBinder 不读 CycleState。** 它不依赖任何插件的状态，所以即使 PreFilter 都被 Skip 了，它也照常工作。
+- **Bind 失败不会让 Pod 显示为 Unschedulable。** 事件里是 `FailedScheduling`，但 `PodScheduled` condition 的 reason 是 `SchedulerError` 而不是 `Unschedulable`，Pod 走 backoffQ 而不是不可调度池。排障时这是区分「放不下」和「写不进去」的标志。
+- 多个调度器竞争同一个 Pod。两个调度器各自 assume、各自发 binding，API Server 只接受第一个。输掉的那个拿到 `Conflict`，回滚后 Pod 进 backoffQ；随后 informer 带来已绑定的 Pod，`handleSchedulingFailure` 发现 `nodeName` 非空，不再放回队列。正常情况下 `schedulerName` 不同，不会出现这种竞争。
+- **PodGroup 的绑定也是逐个进行的。** `scheduleOnePodGroup` 在所有成员都通过 Permit 后，为每个成员各起一个 `runBindingCycle` goroutine。组内的绑定没有事务性：可能部分成功、部分失败。Gang 语义由 Permit 阶段保证，绑定阶段只能尽力而为。
+- Pod 在绑定期间被删除。UID 前置条件或「正在删除」检查让 binding 失败，回滚后 `handleSchedulingFailure` 发现 informer 里找不到这个 Pod，直接调用 `Done` 结束，不再重试。
+- DefaultBinder 不读 CycleState。它不依赖任何插件的状态，所以即使 PreFilter 都被 Skip 了，它也照常工作。
 
 ## 九、发散
 
@@ -572,8 +570,8 @@ profiles:
 
 到这里，一个 Pod 在默认 Profile 里的旅程走完了。回头看[开篇的总地图](/posts/sched-plugin-00-journey/)，可以把 24 篇的要点压缩成三条主线：
 
-- **入队与排序**：`SchedulingGates` 和各插件的 PreEnqueue 决定 Pod 能不能进 activeQ，`PrioritySort` 决定谁先出队，QueueingHint 决定被拒绝的 Pod 什么时候值得重试。
-- **筛选与打分**：PreFilter 预计算并可能缩小节点集合，Filter 返回的状态码决定了抢占的范围（`Unschedulable` 才可抢占），Score 的权重和归一化决定了偏好之间的取舍。`DefaultPreemption` 和 `DynamicResources` 的 PostFilter 是两种不同的「腾地方」方式。
-- **预留与绑定**：Reserve 在内存里占位，Permit 实现等待与成组，PreBind 写依赖资源，Bind 写 `nodeName`。assume 把调度和绑定解耦，Unreserve 和 Forget 负责全部回滚。
+- 入队与排序：`SchedulingGates` 和各插件的 PreEnqueue 决定 Pod 能不能进 activeQ，`PrioritySort` 决定谁先出队，QueueingHint 决定被拒绝的 Pod 什么时候值得重试。
+- 筛选与打分：PreFilter 预计算并可能缩小节点集合，Filter 返回的状态码决定了抢占的范围（`Unschedulable` 才可抢占），Score 的权重和归一化决定了偏好之间的取舍。`DefaultPreemption` 和 `DynamicResources` 的 PostFilter 是两种不同的「腾地方」方式。
+- 预留与绑定：Reserve 在内存里占位，Permit 实现等待与成组，PreBind 写依赖资源，Bind 写 `nodeName`。assume 把调度和绑定解耦，Unreserve 和 Forget 负责全部回滚。
 
 所有这些插件都编译在 kube-scheduler 二进制里，由 `NewInTreeRegistry` 注册。下一部分换一个二进制：[scheduler-plugins](/posts/sched-plugin-25-qos-sort/) 项目通过 `app.WithPlugin` 把 out-of-tree 插件注册进同一套 framework，构建出另一个调度器。第一个要读的是 `QOSSort`，它和 `PrioritySort` 争夺的是同一个位置：一个 Profile 只能有一个 QueueSort 插件。

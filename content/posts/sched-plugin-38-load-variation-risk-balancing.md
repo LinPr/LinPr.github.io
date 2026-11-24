@@ -47,7 +47,11 @@ profiles:
         address: http://prometheus-k8s.monitoring.svc.cluster.local:9090
 ```
 
+配置里出现了两个自定义参数，先看它们在代码里的定义。
+
 ## 二、参数
+
+`LoadVariationRiskBalancingArgs` 在 `TrimaranSpec` 之外只加了两个字段。
 
 ```go
 // apis/config/types.go
@@ -107,7 +111,11 @@ func SetDefaults_LoadVariationRiskBalancingArgs(args *LoadVariationRiskBalancing
 
 ## 三、从指标到 ResourceStats
 
+既然 `eventHandler` 不参与打分，LVRB 的输入就只有两份：节点上的指标快照，以及待调度 Pod 自己的 request。这一节跟着代码把两者合成 `ResourceStats`，也就是后面公式里 μ 和 σ 的来源。
+
 ### 3.1 Score 的主流程
+
+Score 先取指标，再分别给 CPU 和内存打分，最后合并。
 
 ```go
 // pkg/trimaran/loadvariationriskbalancing/loadvariationriskbalancing.go
@@ -186,6 +194,8 @@ func GetEffectiveResource(pod *v1.Pod, fn func(container *v1.Container) v1.Resou
 
 ### 3.2 GetResourceData：从一组 Metric 里挑出均值和标准差
 
+同一个资源在指标里可能同时有均值记录和标准差记录，由 `GetResourceData` 挑出来。
+
 ```go
 // pkg/trimaran/resourcestats.go
 // GetResourceData : get data from measurements for a given resource type
@@ -213,6 +223,8 @@ func GetResourceData(metrics []watcher.Metric, resourceType string) (avg float64
 `AVG` 优先；没有 `AVG` 时，用 `Latest` 或空算子的值当均值；`STD` 单独取。只要出现过该类型的任意一个指标，`isValid` 就为 true。所以，**只有 STD 没有均值时，均值按 0 处理**。
 
 ### 3.3 CreateResourceStats 与 GetMuSigma
+
+这一步把百分比形式的均值和标准差换算成绝对量，再叠加上待调度 Pod 的 request。
 
 ```go
 // pkg/trimaran/resourcestats.go
@@ -257,6 +269,8 @@ func GetMuSigma(rs *ResourceStats) (float64, float64) {
 这里绕了一圈：百分比 × Allocatable 得到绝对量，再除以 Allocatable 变回比例，`ResourceStats` 只在加 request 的时候需要绝对量。但百分比本身的分母是什么，取决于指标源：metrics-server provider 用的是 `Capacity`。所以，在 Capacity 明显大于 Allocatable 的节点上（预留了较多 system/kube reserved），μ 中「已用」的部分和「request」的部分口径不完全一致。
 
 ## 四、computeScore：风险公式
+
+`ResourceStats` 备齐之后，`computeScore` 从中取出 μ 和 σ，合成一个 0~100 的分数。函数不长，但每一步都带截断，合起来决定了模型的形状。
 
 ```go
 // pkg/trimaran/loadvariationriskbalancing/analysis.go
@@ -308,14 +322,16 @@ score = 100 × (1 − risk) = 100 − 50 × (μ + σ')
 
 ### 4.2 margin 和 sensitivity 分别做什么
 
-**margin（m）是 σ 的系数。** KEP 用正态分布解释它：如果节点用量近似服从正态分布，「μ + η·σ ≤ 100%」对应用量超出容量的概率约为 16%（η=1）、2.5%（η=2）、0.15%（η=3）。η 越大越保守。不过代码里并没有计算概率，m 只是一个线性权重，并且 `m·σ'` 超过 1 后会被截断。margin 设得太大时，σ 稍大的节点都会被截在 1，彼此之间就没有区别了。
+公式只有一个可调的空间，就是 σ 前面的两个参数。它们各自的作用并不直观，KEP 对两者都给了统计意义上的解释。
 
-**sensitivity（s）是开方次数。** 因为 σ ∈ [0, 1]，开 s 次方（s > 1）会**放大小的 σ**：σ = 0.05 时，s=1 得 0.05，s=2 得 0.224，s=3 得 0.368。在实际集群中，节点 CPU 标准差多在 0 到 10% 之间，s=1 时它对风险的贡献很小，几乎被均值淹没；s=2 时，标准差的差异才能真正影响排序。这就是 README 推荐 s=2 的原因。
+margin（m）是 σ 的系数。KEP 用正态分布解释它：如果节点用量近似服从正态分布，「μ + η·σ ≤ 100%」对应用量超出容量的概率约为 16%（η=1）、2.5%（η=2）、0.15%（η=3）。η 越大越保守。不过代码里并没有计算概率，m 只是一个线性权重，并且 `m·σ'` 超过 1 后会被截断。margin 设得太大时，σ 稍大的节点都会被截在 1，彼此之间就没有区别了。
+
+sensitivity（s）是开方次数。因为 σ ∈ [0, 1]，开 s 次方（s > 1）会**放大小的 σ**：σ = 0.05 时，s=1 得 0.05，s=2 得 0.224，s=3 得 0.368。在实际集群中，节点 CPU 标准差多在 0 到 10% 之间，s=1 时它对风险的贡献很小，几乎被均值淹没；s=2 时，标准差的差异才能真正影响排序。这就是 README 推荐 s=2 的原因。
 
 两个边界值值得单独说明：
 
-- **s = 0**：defaulting 只替换负数，0 会原样保留。此时 `1/s = +Inf`，`math.Pow(σ, +Inf)` 对 σ < 1 得 0、对 σ = 1 得 1，相当于**关掉了波动项**。单测 `zero sensitivity` 用 μ=0.5、σ=0.36 断言得 75 分，正好是 `100 − 50 × 0.5`。
-- **s < 0**：只有在绕过 defaulting、直接构造内部参数时才会出现（单测里就是这样）。此时 `if sensitivity >= 0` 不成立，不开方，等同于 s=1。
+- s = 0：defaulting 只替换负数，0 会原样保留。此时 `1/s = +Inf`，`math.Pow(σ, +Inf)` 对 σ < 1 得 0、对 σ = 1 得 1，相当于**关掉了波动项**。单测 `zero sensitivity` 用 μ=0.5、σ=0.36 断言得 75 分，正好是 `100 − 50 × 0.5`。
+- s < 0：只有在绕过 defaulting、直接构造内部参数时才会出现（单测里就是这样）。此时 `if sensitivity >= 0` 不成立，不开方，等同于 s=1。
 
 ### 4.3 等分线
 
@@ -332,25 +348,25 @@ score = 100 × (1 − risk) = 100 − 50 × (μ + σ')
 | N1 | 50% / 5% | 40% / 5% |
 | N2 | 40% / 25% | 40% / 10% |
 
-**sensitivity = 1（默认）：**
+sensitivity = 1（默认）：
 
 - N1 CPU：μ = 0.5 + 0.125 = 0.625，σ' = 0.05，risk = 0.3375，得 66.25
 - N1 内存：μ = 0.4 + 0.125 = 0.525，σ' = 0.05，risk = 0.2875，得 71.25
-- N1 = min(66.25, 71.25) = 66.25 → **66**
+- N1 = min(66.25, 71.25) = 66.25 → 66
 - N2 CPU：μ = 0.525，σ' = 0.25，risk = 0.3875，得 61.25
 - N2 内存：μ = 0.525，σ' = 0.10，risk = 0.3125，得 68.75
-- N2 = min(61.25, 68.75) = 61.25 → **61**
+- N2 = min(61.25, 68.75) = 61.25 → 61
 
-**sensitivity = 2：**
+sensitivity = 2：
 
 - N1 CPU：σ' = √0.05 = 0.2236，risk = (0.625 + 0.2236) / 2 = 0.4243，得 57.57
 - N1 内存：risk = (0.525 + 0.2236) / 2 = 0.3743，得 62.57
-- N1 → 57.57 → **58**
+- N1 → 57.57 → 58
 - N2 CPU：σ' = √0.25 = 0.5，risk = 0.5125，得 48.75
 - N2 内存：σ' = √0.1 = 0.3162，risk = 0.4206，得 57.94
-- N2 → 48.75 → **49**（`math.Round` 对 .5 向远离 0 的方向取整）
+- N2 → 48.75 → 49（`math.Round` 对 .5 向远离 0 的方向取整）
 
-如果只看 CPU 均值，N2（40%）比 N1（50%）空，`LeastAllocated` 类的策略会选 N2。LVRB 在两种配置下都选了更稳定的 N1。s=2 时，两者的差距从 5 分拉大到 9 分，风险项在总分中的权重更大。
+如果只看 CPU 均值，N2（40%）比 N1（50%）空，`LeastAllocated` 类的策略会选 N2。**LVRB 在两种配置下都选了更稳定的 N1**。s=2 时，两者的差距从 5 分拉大到 9 分，风险项在总分中的权重更大。
 
 单测 `pkg/trimaran/loadvariationriskbalancing/analysis_test.go` 的 `valid data` 用例可以用来验证公式：Capacity=100、Req=10、UsedAvg=40、UsedStdev=36、m=s=1，μ = 0.5，σ' = 0.36，risk = 0.43，得 57。`loadvariationriskbalancing_test.go` 的 `CPU and Memory metrics` 用例则演示了取 min：CPU 得 67，内存 μ = 0.5 + 0.5 = 1.0、σ = 0.1，得 45，最终得 45。
 
@@ -358,7 +374,9 @@ score = 100 × (1 − risk) = 100 − 50 × (μ + σ')
 
 **只用 metrics-server 时，模型退化成「按实际用量最少优先」。** metrics-server provider 只给 `Latest`，没有 `STD`，σ 恒为 0，公式变成 `score = 100 − 50 × (u + r)`，其中 u 是当前瞬时利用率。margin 和 sensitivity 都不起作用，μ 也是一个瞬时值，没有经过时间平均。要让 LVRB 发挥设计意图，应该接 Prometheus。
 
-**满载但稳定的节点仍有 50 分。** 因为除以 2，μ = 1、σ = 0 的节点 risk 只有 0.5。测试 `hot node`（CPU 均值 100%，Pod 为空）断言的就是 50 分。LVRB 实际的分数区间往往只有 [50, 100] 左右，和其它满幅 [0, 100] 的打分插件放在一起时，等效权重大约只有配置值的一半。KEP 的原始算法是 `S = min(M + r + V, 1)`、`U = (1 − S) × 100`，没有除以 2，满载节点得 0 分。实现改成了两项各自截断后取平均，好处是 μ 和 σ' 各自饱和之前都能区分节点，代价是分值区间被压缩。
+**满载但稳定的节点仍有 50 分。** 因为除以 2，μ = 1、σ = 0 的节点 risk 只有 0.5。测试 `hot node`（CPU 均值 100%，Pod 为空）断言的就是 50 分。
+
+LVRB 实际的分数区间往往只有 [50, 100] 左右，和其它满幅 [0, 100] 的打分插件放在一起时，等效权重大约只有配置值的一半。KEP 的原始算法是 `S = min(M + r + V, 1)`、`U = (1 − S) × 100`，没有除以 2，满载节点得 0 分。实现改成了两项各自截断后取平均，好处是 μ 和 σ' 各自饱和之前都能区分节点，代价是分值区间被压缩。
 
 **没有滞后补偿，批量调度会扎堆。** 如第二节所述，`eventHandler` 只创建、不读取。连续调度一批 Pod 时，在下一次快照刷新之前（最长 30 秒，Prometheus 15 分钟均值下更久），所有 Pod 看到的都是同一份 μ 和 σ，会落到同一个「风险最低」的节点上。区别只在于每个 Pod 自己的 request 都会加到 μ 上，但这只计入了**当前**这个 Pod，之前刚调度的 Pod 不会被计入。
 
@@ -370,7 +388,9 @@ score = 100 × (1 − risk) = 100 − 50 × (μ + σ')
 
 ## 六、发散
 
-**这是均值–方差思路在调度上的应用。** 把节点看成一个资产组合，μ 是期望收益（这里是期望负载），σ 是波动，LVRB 优化的是一个线性的风险度量 `μ + m·σ'`。它没有把风险换算成「超出容量的概率」，而是把正态分布的 68–95–99.7 规则当作选择 margin 的经验依据。下一篇的 `LowRiskOverCommitment` 走得更远：用 Beta 分布拟合 [0, 1] 区间上的利用率，直接计算「超出某个阈值的概率」。Beta 分布天然有界，不会出现正态分布给利用率分配负值或超过 100% 的问题。
+**这是均值–方差思路在调度上的应用。** 把节点看成一个资产组合，μ 是期望收益（这里是期望负载），σ 是波动，LVRB 优化的是一个线性的风险度量 `μ + m·σ'`。
+
+它没有把风险换算成「超出容量的概率」，而是把正态分布的 68–95–99.7 规则当作选择 margin 的经验依据。下一篇的 `LowRiskOverCommitment` 走得更远：用 Beta 分布拟合 [0, 1] 区间上的利用率，直接计算「超出某个阈值的概率」。Beta 分布天然有界，不会出现正态分布给利用率分配负值或超过 100% 的问题。
 
 **和 in-tree 均衡类插件的对照。** `NodeResourcesFit` 的 `LeastAllocated` 按 request 选最空的节点；`NodeResourcesBalancedAllocation` 让同一节点上 CPU 与内存的 request 占比接近（详见[《BalancedAllocation》](/posts/sched-plugin-19-balanced-allocation/)）。LVRB 是 `LeastAllocated` 的「实际用量 + 波动」版本。它对多种资源取 min，是瓶颈思路，和 BalancedAllocation 的「让各资源占比接近」并不相同：LVRB 不在乎 CPU 和内存是否均衡，只在乎最危险的那个资源。
 

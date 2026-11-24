@@ -19,6 +19,8 @@ description: "NodeMetadata 读取节点上的一个 label 或 annotation，按�
 
 ## 一、使用方式
 
+配置层面要回答的是一组固定问题：读哪个 key、从 label 还是 annotation 读、值是数字还是时间、往哪头偏。下面是一个完整例子：
+
 ```yaml
 apiVersion: kubescheduler.config.k8s.io/v1
 kind: KubeSchedulerConfiguration
@@ -40,7 +42,11 @@ profiles:
 
 这是 `manifests/nodemetadata/scheduler-config.yaml` 中的第二个示例：节点用 annotation 标注每小时成本，越便宜的节点得分越高。Pod 通过 `schedulerName: cost-aware-scheduler` 选择这个 Profile。数据来源就是调度器 snapshot 里的 Node 对象，不需要额外的 informer 或 CRD，外部系统更新 annotation 后，下一个调度周期就能看到。
 
+这套配置能写什么，取决于参数结构的定义和校验，下一节看这两个。
+
 ## 二、参数与校验
+
+`NodeMetadataArgs` 的定义如下，五个字段分别决定读哪里、读什么、往哪个方向打分：
 
 ```go
 // apis/config/types.go
@@ -84,7 +90,11 @@ type NodeMetadataArgs struct {
 
 ## 三、源码
 
+源码分三块：Score 怎么取数、两条解析路径怎么算原始分、归一化怎么处理无效节点。
+
 ### 3.1 结构与 Score
+
+`Score` 本身很短，取数和比较都在 `calculateScore` 里，它负责把两类失败降级成哨兵值：
 
 ```go
 // pkg/nodemetadata/node_metadata.go
@@ -119,10 +129,12 @@ func (nm *NodeMetadata) Score(ctx context.Context, state framework.CycleState, p
 
 两个设计点：
 
-- key 不存在、值解析失败，都**不报错**，而是返回哨兵值 `math.MinInt64`。如果这里返回 `Error` 状态，框架会让整个 Pod 的本轮调度失败，一个节点的 annotation 写错就会让所有 Pod 都调度不了。用哨兵值把错误降级为「这个节点在本插件里得最低分」，符合 KEP 中「缺失或格式错误的元数据不应导致调度失败」的要求。
+- **key 不存在、值解析失败，都不报错，而是返回哨兵值 `math.MinInt64`。** 如果这里返回 `Error` 状态，框架会让整个 Pod 的本轮调度失败，一个节点的 annotation 写错就会让所有 Pod 都调度不了。用哨兵值把错误降级为「这个节点在本插件里得最低分」，符合 KEP 中「缺失或格式错误的元数据不应导致调度失败」的要求。
 - `node == nil` 分支里调用了 `nodeInfo.Node().Name`，这本身就是对 nil 指针取字段，会 panic。好在框架传进来的 `NodeInfo` 都来自 snapshot，节点不为空，这个分支实际走不到。
 
 ### 3.2 两条解析路径
+
+取到字符串之后，`Number` 和 `Timestamp` 分成两条路径解析，它们都要输出一个 int64 原始分：
 
 ```go
 // pkg/nodemetadata/node_metadata.go
@@ -167,13 +179,15 @@ func (nm *NodeMetadata) parseTimestampValue(value string) (int64, error) {
 }
 ```
 
-两条路径的共同思路是：把「偏好方向」编码到原始分的符号里，让归一化永远是「原始分越大越好」。`Lowest` 取负，`Newest` 用负的年龄，于是归一化代码不需要知道策略是什么。
+两条路径的共同思路是：**把「偏好方向」编码到原始分的符号里，让归一化永远是「原始分越大越好」。** `Lowest` 取负，`Newest` 用负的年龄，于是归一化代码不需要知道策略是什么。
 
-数值路径用 `ParseFloat` 接受小数，再用 `int64(numValue)` 转换。Go 的浮点到整数转换是**向零截断**，不是四舍五入。KEP 的 Known limitations 写的是「numeric values are rounded before scoring」，与代码不符，以代码为准：1.2 和 1.7 都变成 1。
+数值路径用 `ParseFloat` 接受小数，再用 `int64(numValue)` 转换。**Go 的浮点到整数转换是向零截断，不是四舍五入。** KEP 的 Known limitations 写的是「numeric values are rounded before scoring」，与代码不符，以代码为准：1.2 和 1.7 都变成 1。
 
 时间戳路径算的是 Score 时刻距离时间戳的秒数，未来的时间戳会得到负的年龄，`Newest` 下反而得分最高。每个节点调用一次 `time.Since`，同一轮打分里各节点的「现在」相差微秒级，不影响秒级精度。
 
 ### 3.3 NormalizeScore：为无效节点预留 0 分
+
+归一化的难点不在映射公式，而在怎么处理那些没有数据的节点：
 
 ```go
 // pkg/nodemetadata/node_metadata.go
@@ -260,15 +274,16 @@ func (nm *NodeMetadata) NormalizeScore(ctx context.Context, state framework.Cycl
 
 分数是线性的，1 天前和 2 小时前只差 10 分，10 天前则掉到最低。线性归一化放大的是候选集合中的极差，一个特别老的节点会把其余节点都推向高分端。
 
+两个算例的共同点是：分数由同一轮候选的极值决定，同样的 annotation 换一批节点就会得到不同的分数。下面回到实现层面，看几处只在边界上才会碰到的行为。
+
 ## 五、边界与坑
 
-**label 值的格式限制**。label 值最长 63 个字符，只能包含字母数字、`-`、`_`、`.`，且必须以字母数字开头和结尾。这带来两个后果：RFC3339 时间戳含有 `:`，不能作为 label 值，`metadataSource: Label` 配 `Timestamp` 时必须换成 `2006-01-02` 这类格式（`manifests/nodemetadata/scheduler-config.yaml` 第四个示例正是这么做的）；负数以 `-` 开头，也不能写进 label。annotation 没有这些限制，需要时间精度或负数时用 annotation。
+前三条来自「字符串解析 + 整数运算 + label 规范」这个组合，最后一条是插件的定位。
 
-**ParseFloat 接受的写法比想象的多**。`"1e3"`、`"0x1p-2"`、`"Inf"`、`"NaN"` 都能解析成功。超出 int64 范围的浮点数（包括 `Inf`、`NaN`）转成 int64 的结果在 Go 规范里是实现相关的，在 amd64 上通常得到 `MinInt64`，恰好与哨兵值相同而被当作无效，但不应依赖这个巧合。KEP 也把「值恰好等于 `math.MinInt64` 时会被当成无效」列为已知限制。
-
-**归一化乘法可能溢出**。`(score − min) × 99` 是 int64 乘法，有效值的极差超过约 9.3e16 时会溢出，产生负数或超过 100 的分数。框架在汇总分数前会检查每个插件的分数是否落在 `[0, 100]`，越界则返回错误，这个 Pod 本轮调度失败。秒级时间戳和常见的业务数字远到不了这个量级，但用纳秒时间戳当 `Number` 就有可能碰到。
-
-**它只是偏好**。KEP 强调这个插件是 advisory 的：它和其他打分插件按权重相加，不能保证 Pod 一定落在分数最高的节点上，也不会在 annotation 变化后迁移已运行的 Pod。需要硬约束时应使用 NodeAffinity。
+- label 值的格式限制：label 值最长 63 个字符，只能包含字母数字、`-`、`_`、`.`，且必须以字母数字开头和结尾。这带来两个后果：RFC3339 时间戳含有 `:`，不能作为 label 值，`metadataSource: Label` 配 `Timestamp` 时必须换成 `2006-01-02` 这类格式（`manifests/nodemetadata/scheduler-config.yaml` 第四个示例正是这么做的）；负数以 `-` 开头，也不能写进 label。annotation 没有这些限制，需要时间精度或负数时用 annotation。
+- ParseFloat 接受的写法比想象的多：`"1e3"`、`"0x1p-2"`、`"Inf"`、`"NaN"` 都能解析成功。超出 int64 范围的浮点数（包括 `Inf`、`NaN`）转成 int64 的结果在 Go 规范里是实现相关的，在 amd64 上通常得到 `MinInt64`，恰好与哨兵值相同而被当作无效，但不应依赖这个巧合。KEP 也把「值恰好等于 `math.MinInt64` 时会被当成无效」列为已知限制。
+- 归一化乘法可能溢出：`(score − min) × 99` 是 int64 乘法，有效值的极差超过约 9.3e16 时会溢出，产生负数或超过 100 的分数。**框架在汇总分数前会检查每个插件的分数是否落在 `[0, 100]`，越界则返回错误，这个 Pod 本轮调度失败。** 秒级时间戳和常见的业务数字远到不了这个量级，但用纳秒时间戳当 `Number` 就有可能碰到。
+- 它只是偏好：KEP 强调这个插件是 advisory 的，它和其他打分插件按权重相加，不能保证 Pod 一定落在分数最高的节点上，也不会在 annotation 变化后迁移已运行的 Pod。需要硬约束时应使用 NodeAffinity。
 
 ## 六、发散：和 NodeAffinity 加权偏好的对比
 
@@ -282,7 +297,7 @@ func (nm *NodeMetadata) NormalizeScore(ctx context.Context, state framework.Cycl
 | 数据来源 | 只能是 label | label 或 annotation |
 | 时间语义 | 无 | 支持按时间新旧打分 |
 
-当偏好是「越便宜越好」这种连续量时，NodeMetadata 不需要在每个工作负载里罗列档位；当偏好只对部分工作负载生效时，NodeAffinity 更灵活。两者也可以组合：用 Profile 区分工作负载类别，再在对应 Profile 里启用 NodeMetadata。
+**当偏好是「越便宜越好」这种连续量时，NodeMetadata 不需要在每个工作负载里罗列档位**；当偏好只对部分工作负载生效时，NodeAffinity 更灵活。两者也可以组合：用 Profile 区分工作负载类别，再在对应 Profile 里启用 NodeMetadata。
 
 这个插件的另一个价值是解耦：成本系统、资产管理系统只需要往 Node 上写 annotation，就能影响调度，而不必改动调度器或工作负载定义。代价是数据质量完全依赖这些外部系统，元数据过期了，调度器无从知晓。
 

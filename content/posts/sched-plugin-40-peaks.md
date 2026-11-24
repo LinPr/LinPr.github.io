@@ -28,7 +28,11 @@ Peaks 的做法是：对每个节点，用它的功耗模型分别计算「当�
 
 ## 二、参数与功耗模型的加载
 
+Peaks 的参数比前三个插件都简单，没有 `TrimaranSpec`，只有一个地址和一个模型表。它的不少坑也正出在这么少的东西上。
+
 ### 2.1 PeaksArgs
+
+`PeaksArgs` 只有两个字段。
 
 ```go
 // apis/config/types.go
@@ -70,7 +74,7 @@ type PowerModel struct {
 	NodePowerModel map[string]PowerModel `json:nodePowerModel",inline"`
 ```
 
-`json:` 后面缺了左引号，`reflect.StructTag` 解析不出 json 键，序列化库会退回使用字段名本身。而 apimachinery 的 JSON 反序列化（`kjson.UnmarshalCaseSensitivePreserveInts`）是区分大小写的，所以配置文件里必须写 **`WatcherAddress`、`NodePowerModel`**，首字母大写，和其它插件的驼峰写法不同。仓库里的 `pkg/trimaran/peaks/deployment/scheduler-config.yaml` 正是这样写的：
+`json:` 后面缺了左引号，`reflect.StructTag` 解析不出 json 键，序列化库会退回使用字段名本身。而 apimachinery 的 JSON 反序列化（`kjson.UnmarshalCaseSensitivePreserveInts`）是区分大小写的，所以配置文件里必须写 `WatcherAddress`、`NodePowerModel`，首字母大写，和其它插件的驼峰写法不同。仓库里的 `pkg/trimaran/peaks/deployment/scheduler-config.yaml` 正是这样写的：
 
 ```yaml
   pluginConfig:
@@ -83,6 +87,8 @@ type PowerModel struct {
 v1 包里也没有 `SetDefaults_PeaksArgs`，两个字段都没有默认值，也没有校验。
 
 ### 2.2 功耗模型的两种来源
+
+模型可以从插件参数里来，也可以从文件里来，`initNodePowerModels` 负责二选一。
 
 ```go
 // pkg/trimaran/peaks/peaks.go
@@ -106,9 +112,9 @@ func initNodePowerModels(powerModel map[string]config.PowerModel) error {
 
 逻辑是：配置里有 `NodePowerModel` 就直接用；没有就读环境变量 `NODE_POWER_MODEL` 指向的 JSON 文件，格式是 `{"节点名": {"k0": …, "k1": …, "k2": …}}`。
 
-这里有一个 Go 语义上的问题。`powerModel` 是值传递进来的 map。`Decode(&powerModel)` 对 **nil map** 会新分配一个 map，并赋给函数内的局部变量；对**非 nil 的空 map**，则把键值写进原来那个 map。调用方传入的是 `args.NodePowerModel`：
+这里有一个 Go 语义上的问题。`powerModel` 是值传递进来的 map。`Decode(&powerModel)` 对 nil map 会新分配一个 map，并赋给函数内的局部变量；对非 nil 的空 map，则把键值写进原来那个 map。调用方传入的是 `args.NodePowerModel`：
 
-- 配置里完全不写 `NodePowerModel`：经过 v1 → 内部类型的转换（`autoConvert_v1_PeaksArgs_To_config_PeaksArgs` 是直接按指针转换的），它是 **nil**。文件被成功解析，但结果只存在局部变量里，函数返回后就丢了。插件拿到的仍是 nil map，所有节点都使用零值模型。
+- 配置里完全不写 `NodePowerModel`：经过 v1 → 内部类型的转换（`autoConvert_v1_PeaksArgs_To_config_PeaksArgs` 是直接按指针转换的），它是 nil。文件被成功解析，但结果只存在局部变量里，函数返回后就丢了。插件拿到的仍是 nil map，所有节点都使用零值模型。
 - 配置里写 `NodePowerModel: {}`：它是一个非 nil 的空 map，文件内容会写进这个 map，插件能正常使用。单测 `TestPeaksScore` 走的就是这条路径（`NodePowerModel: map[string]pluginConfig.PowerModel{}`）。
 
 所以，如果打算用 ConfigMap 挂载模型文件、再通过环境变量引用，配置里要显式写一个空的 `NodePowerModel: {}`，否则文件被读了，但不会生效。另外，`deployment/README.md` 里给的 JSON 模板把系数写成了带引号的字符串（`"k0":"<replace with node 1 k0>"`），而 `PowerModel` 的字段是 `float64`，替换时必须写成数字，否则解码报错，`New` 失败。同目录下的 `deployment.yaml` 既没有挂载这个 ConfigMap，也没有设置 `NODE_POWER_MODEL`，需要自己补上。
@@ -129,6 +135,8 @@ func getPowerModel(nodeName string, powerModelMap map[string]config.PowerModel) 
 模型按**节点名**索引。v1 类型的注释写着「按节点标签关联功耗模型会在后续 PR 中加入」，目前还没有实现。每新增一个节点都要更新配置，并重启调度器（模型只在 `New` 时加载一次）。
 
 ## 三、Score：计算功耗跳变
+
+模型加载好之后，Score 对每个节点做的事只有一件：算出「放上这个 Pod，功耗会增加多少」，再把这个增量当作代价返回。
 
 ```go
 // pkg/trimaran/peaks/peaks.go
@@ -211,12 +219,16 @@ raw   = int64(ΔP × 10^15)        当 p ≤ 100
 
 对同一个节点模型、同一个 Pod（b 固定），ΔP = K1·(e^(K2·b) − 1)·e^(K2·x)，它随当前利用率 x 单调变化：
 
-- **K1 > 0、K2 > 0**（凸、递增，最常见的指数模型）：x 越大，ΔP 越大。在同构节点之间，Peaks 会把 Pod 放到**利用率最低**的节点，效果是**分散**。
-- **K1 < 0、K2 < 0**（同样递增，但是凹的）：e^(K2·x) 随 x 减小，ΔP 随 x 减小。Peaks 偏好**利用率高**的节点，效果是**装箱**。
+- **K1 > 0、K2 > 0**（凸、递增，最常见的指数模型）：x 越大，ΔP 越大。在同构节点之间，Peaks 会把 Pod 放到利用率最低的节点，效果是分散。
+- **K1 < 0、K2 < 0**（同样递增，但是凹的）：e^(K2·x) 随 x 减小，ΔP 随 x 减小。Peaks 偏好利用率高的节点，效果是装箱。
 
-KEP 的 Story 2 说「同构节点、只要曲线非线性就能省电」，指的就是这两种情况，它们的效果方向相反。KEP 实验里观察到的「Peaks 装箱、默认调度器分散」，来自异构节点、高能效节点的 K1 较小的场景。对于常见的凸模型，在同构节点之间，Peaks 的行为接近按实际 CPU 负载做 `LeastAllocated`。这时想省电，更好的办法是装箱后让空节点被 Cluster Autoscaler 回收，因为空载功耗（K0 + K1）只有关机才能省掉，KEP 中「Shutting down of a cluster node」这个用例也说明了这一点。
+KEP 的 Story 2 说「同构节点、只要曲线非线性就能省电」，指的就是这两种情况，它们的效果方向相反。
+
+KEP 实验里观察到的「Peaks 装箱、默认调度器分散」，来自异构节点、高能效节点的 K1 较小的场景。对于常见的凸模型，在同构节点之间，Peaks 的行为接近按实际 CPU 负载做 `LeastAllocated`。这时想省电，更好的办法是装箱后让空节点被 Cluster Autoscaler 回收，因为空载功耗（K0 + K1）只有关机才能省掉，KEP 中「Shutting down of a cluster node」这个用例也说明了这一点。
 
 ## 四、NormalizeScore：反向归一化
+
+Score 返回的是代价，量级在 10¹⁶ 左右；框架要求的是 0~100 的分数。两者的方向和量纲都不对，转换由 `NormalizeScore` 完成，这也是 Trimaran 四个插件里唯一一个非空实现。
 
 ```go
 // pkg/trimaran/peaks/peaks.go
@@ -273,27 +285,29 @@ Score 在以下五种情况下都返回 0：
 | n2 | 60 | 0.015 | 10% | 35% |
 | n3 | 30 | 0.02 | 90% | 115% |
 
-**n1**：ΔP = 30 × (e^1.1 − e^0.6) = 30 × (3.00417 − 1.82212) = **35.46 W**，原始分 35461416706677740。
+**n1**：ΔP = 30 × (e^1.1 − e^0.6) = 30 × (3.00417 − 1.82212) = 35.46 W，原始分 35461416706677740。
 
-**n2**：ΔP = 60 × (e^0.525 − e^0.15) = 60 × (1.69046 − 1.16183) = **31.72 W**，原始分 31717476339048504。
+**n2**：ΔP = 60 × (e^0.525 − e^0.15) = 60 × (1.69046 − 1.16183) = 31.72 W，原始分 31717476339048504。
 
-**n3**：p = 115 > 100，原始分 **0**。
+**n3**：p = 115 > 100，原始分 0。
 
-只有 n1、n2 参与时：min = 3.172×10¹⁶，max = 3.546×10¹⁶。n1 → 100 − 100 = **0**，n2 → 100 − 0 = **100**。Peaks 选 n2。
+只有 n1、n2 参与时：min = 3.172×10¹⁶，max = 3.546×10¹⁶。n1 → 100 − 100 = 0，n2 → 100 − 0 = 100。Peaks 选 n2。
 
 这个结果值得细看。n1 在 0% 到 100% 的整个范围内，功耗都比 n2 低（30·e^(0.02x) < 60·e^(0.015x) 等价于 x < 138.6），按直觉它是「更节能」的机器。但 n1 已经运行在 30%，处在自己指数曲线较陡的一段；n2 只有 10%，还在平缓段。所以同样 25 个百分点，n2 多耗的电更少。Peaks 优化的是**这一次放置的边际功耗**，不是机器的能效排名。
 
 三台都参与时：min = 0（n3），max = 3.546×10¹⁶。
 
-- n1 → 100 − ⌊100 × 1⌋ = **0**
-- n2 → 100 − ⌊100 × 0.8944⌋ = 100 − 89 = **11**
-- n3 → 100 − 0 = **100**
+- n1 → 100 − ⌊100 × 1⌋ = 0
+- n2 → 100 − ⌊100 × 0.8944⌋ = 100 − 89 = 11
+- n3 → 100 − 0 = 100
 
 预测会超载的 n3 拿到满分。`NodeResourcesFit` 只按 request 过滤，n3 的实际负载 90% 不会让它被过滤掉，只要 request 还放得下，它就会出现在打分列表里。如果 Peaks 是 Profile 里权重最高的打分插件，Pod 就会被送到这台最热的机器上。
 
 ## 六、边界情况与坑
 
-**新节点、采集失败的节点、模型没覆盖的节点都会被优先选择。** 这是 4.1 节的直接结论。在仓库给出的示例配置（`deployment/scheduler-config.yaml`）里，score 只启用了 Peaks，其它打分插件全部禁用（`disabled: '*'`），Peaks 的分数就是全部依据。一个刚加入集群、还没有被 load-watcher 采集、也没有配置模型的节点，会持续得到满分，接收所有新 Pod，直到指标出现。缓解办法是：保证模型覆盖所有节点；同时启用 TLP 或 `NodeResourcesFit` 等打分插件来稀释 Peaks 的权重，或者用 nodeAffinity 把 Peaks 调度器的 Pod 限制在已建模的节点上。
+**新节点、采集失败的节点、模型没覆盖的节点都会被优先选择。** 这是 4.1 节的直接结论。在仓库给出的示例配置（`deployment/scheduler-config.yaml`）里，score 只启用了 Peaks，其它打分插件全部禁用（`disabled: '*'`），Peaks 的分数就是全部依据。
+
+一个刚加入集群、还没有被 load-watcher 采集、也没有配置模型的节点，会持续得到满分，接收所有新 Pod，直到指标出现。缓解办法是：保证模型覆盖所有节点；同时启用 TLP 或 `NodeResourcesFit` 等打分插件来稀释 Peaks 的权重，或者用 nodeAffinity 把 Peaks 调度器的 Pod 限制在已建模的节点上。
 
 **只考虑 CPU。** 内存、网络的功耗贡献都不在模型里，这在 KEP 的 Non-Goals 中写明了。load-watcher 的 Prometheus provider 虽然会拉取 Kepler、Scaphandre 的能耗指标（类型为 `Energy`），但 Peaks 没有使用这些实测值，只用 CPU 利用率去推理模型。
 
@@ -305,9 +319,13 @@ Score 在以下五种情况下都返回 0：
 
 ## 七、发散
 
-**功耗感知调度的几个层次。** 从粗到细大致有四层：选择能效更高的机型（离线规划），关掉空闲节点（Cluster Autoscaler / Karpenter 的缩容），调度时选择边际功耗低的节点（Peaks），以及运行时调频调压（DVFS，由内核和硬件完成）。按 KEP 自己的数据，节点空载功耗占总功耗的比例很大，所以第二层的收益通常最大。Peaks 在第三层，它真正的价值在于异构集群：当能效差异来自机型而不是利用率时，它能把负载引导到高能效机器上。对于同构集群和常见的凸模型，Peaks 实际上会分散负载，和「腾空节点再关掉」的目标相反，这一点需要在启用前想清楚。
+**功耗感知调度的几个层次。** 从粗到细大致有四层：选择能效更高的机型（离线规划），关掉空闲节点（Cluster Autoscaler / Karpenter 的缩容），调度时选择边际功耗低的节点（Peaks），以及运行时调频调压（DVFS，由内核和硬件完成）。按 KEP 自己的数据，节点空载功耗占总功耗的比例很大，所以第二层的收益通常最大。
 
-**为什么模型选 K0 + K1·e^(K2·x)。** 三个参数刚好能表达「空载功耗 + 随负载上升、斜率逐渐变大」的形状。这和现代 CPU 在高负载时升频、电压随之升高，功耗按 f·V² 增长的现象一致。但实测曲线也常见分段线性，甚至在中段呈凹形。插件把模型形式写死在 `getPowerJumpForUtilisation` 里，要换成分段线性或查表模型，需要修改代码。
+Peaks 在第三层，它真正的价值在于异构集群：当能效差异来自机型而不是利用率时，它能把负载引导到高能效机器上。对于同构集群和常见的凸模型，Peaks 实际上会分散负载，和「腾空节点再关掉」的目标相反，这一点需要在启用前想清楚。
+
+**为什么模型选 K0 + K1·e^(K2·x)。** 三个参数刚好能表达「空载功耗 + 随负载上升、斜率逐渐变大」的形状。这和现代 CPU 在高负载时升频、电压随之升高，功耗按 f·V² 增长的现象一致。
+
+但实测曲线也常见分段线性，甚至在中段呈凹形。插件把模型形式写死在 `getPowerJumpForUtilisation` 里，要换成分段线性或查表模型，需要修改代码。
 
 **和其它 Trimaran 插件一起用。** Peaks 不创建 `PodAssignEventHandler`，也不支持库模式，所以它和 TLP、LVRB 同时启用时不会遇到第 37 篇提到的 `/watcher` 重复注册问题（前提是那几个也用服务模式）。但目标是否冲突要单独判断：Peaks（凸模型）倾向分散，TLP 倾向装箱。
 
@@ -322,10 +340,16 @@ Score 在以下五种情况下都返回 0：
 
 [开篇](/posts/sched-plugin-00-journey/)跟着一个 Pod 走过了调度的全过程，之后的四十篇按顺序拆开了每一站。回头看，这些插件可以按「判断依据从哪里来」分成三层，每往下一层，插件作者要回答的问题就多一些。
 
-**第一层，数据就在 Pod 和 Node 对象上。** [SchedulingGates](/posts/sched-plugin-01-scheduling-gates/) 和 [PrioritySort](/posts/sched-plugin-02-priority-sort/) 决定 Pod 能否出队、按什么顺序出队；[NodeName](/posts/sched-plugin-03-node-name/)、[NodeUnschedulable](/posts/sched-plugin-04-node-unschedulable/)、[TaintToleration](/posts/sched-plugin-05-taint-toleration/)、[NodeAffinity](/posts/sched-plugin-06-node-affinity/)、[NodePorts](/posts/sched-plugin-07-node-ports/)、[NodeResourcesFit](/posts/sched-plugin-08-node-resources-fit/) 只需要比较两个对象的字段。这一层最需要弄清楚的是 Status code：`Unschedulable` 还是 `UnschedulableAndUnresolvable`，决定了 [DefaultPreemption](/posts/sched-plugin-18-default-preemption/) 会不会为它去尝试抢占；QueueingHint 决定了哪些集群事件能把被拒绝的 Pod 重新放回 activeQ。
+**第一层，数据就在 Pod 和 Node 对象上。** [SchedulingGates](/posts/sched-plugin-01-scheduling-gates/) 和 [PrioritySort](/posts/sched-plugin-02-priority-sort/) 决定 Pod 能否出队、按什么顺序出队；[NodeName](/posts/sched-plugin-03-node-name/)、[NodeUnschedulable](/posts/sched-plugin-04-node-unschedulable/)、[TaintToleration](/posts/sched-plugin-05-taint-toleration/)、[NodeAffinity](/posts/sched-plugin-06-node-affinity/)、[NodePorts](/posts/sched-plugin-07-node-ports/)、[NodeResourcesFit](/posts/sched-plugin-08-node-resources-fit/) 只需要比较两个对象的字段。
 
-**第二层，数据在其它 API 对象和调度器自己的缓存里。** 卷相关的插件（[VolumeBinding](/posts/sched-plugin-11-volume-binding/) 等）要看 PV、PVC、StorageClass；[PodTopologySpread](/posts/sched-plugin-13-pod-topology-spread/) 和 [InterPodAffinity](/posts/sched-plugin-14-inter-pod-affinity/) 要统计全集群的 Pod 分布；[DynamicResources](/posts/sched-plugin-15-dynamic-resources/) 要和 ResourceClaim 的分配状态打交道；[GangScheduling](/posts/sched-plugin-21-gang-scheduling/) 和 out-of-tree 的 [Coscheduling](/posts/sched-plugin-27-coscheduling/)、[CapacityScheduling](/posts/sched-plugin-28-capacity-scheduling/)、[NodeResourceTopologyMatch](/posts/sched-plugin-30-node-resource-topology/) 引入了 PodGroup、ElasticQuota、NodeResourceTopology 等 CRD。这一层的难点在于一致性：CycleState 怎么存、`Clone` 怎么写、PreFilterExtensions 的 AddPod/RemovePod 怎么让抢占模拟看到正确的状态、Reserve 失败时怎么回滚。
+这一层最需要弄清楚的是 Status code：`Unschedulable` 还是 `UnschedulableAndUnresolvable`，决定了 [DefaultPreemption](/posts/sched-plugin-18-default-preemption/) 会不会为它去尝试抢占；QueueingHint 决定了哪些集群事件能把被拒绝的 Pod 重新放回 activeQ。
 
-**第三层，数据在集群之外。** Trimaran 四个插件的输入来自 Prometheus、metrics-server 和人工训练的功耗模型。这些数据有滞后、会缺失、会过期，而且调度器自己的 assume 机制看不到它们。这四篇反复遇到同一类问题：缺数据时给几分，补偿逻辑和数据窗口是否匹配，分数为 0 在归一化之后是什么含义，多个实例能否共存。它们都只做 Score，不做 Filter，原因也在这里：外部数据不可靠时，最多是放得不够好，而不是让 Pod 一直 Pending。
+**第二层，数据在其它 API 对象和调度器自己的缓存里。** 卷相关的插件（[VolumeBinding](/posts/sched-plugin-11-volume-binding/) 等）要看 PV、PVC、StorageClass；[PodTopologySpread](/posts/sched-plugin-13-pod-topology-spread/) 和 [InterPodAffinity](/posts/sched-plugin-14-inter-pod-affinity/) 要统计全集群的 Pod 分布；[DynamicResources](/posts/sched-plugin-15-dynamic-resources/) 要和 ResourceClaim 的分配状态打交道；[GangScheduling](/posts/sched-plugin-21-gang-scheduling/) 和 out-of-tree 的 [Coscheduling](/posts/sched-plugin-27-coscheduling/)、[CapacityScheduling](/posts/sched-plugin-28-capacity-scheduling/)、[NodeResourceTopologyMatch](/posts/sched-plugin-30-node-resource-topology/) 引入了 PodGroup、ElasticQuota、NodeResourceTopology 等 CRD。
+
+这一层的难点在于一致性：CycleState 怎么存、`Clone` 怎么写、PreFilterExtensions 的 AddPod/RemovePod 怎么让抢占模拟看到正确的状态、Reserve 失败时怎么回滚。
+
+**第三层，数据在集群之外。** Trimaran 四个插件的输入来自 Prometheus、metrics-server 和人工训练的功耗模型。这些数据有滞后、会缺失、会过期，而且调度器自己的 assume 机制看不到它们。
+
+这四篇反复遇到同一类问题：缺数据时给几分，补偿逻辑和数据窗口是否匹配，分数为 0 在归一化之后是什么含义，多个实例能否共存。它们都只做 Score，不做 Filter，原因也在这里：外部数据不可靠时，最多是放得不够好，而不是让 Pod 一直 Pending。
 
 整个调度框架的设计，就是在这三层之间划清责任：第一、二层插件负责「能不能放」，用 Status code 和 QueueingHint 跟队列协作；所有层的插件都可以参与「放哪里更好」，最后由 [DefaultBinder](/posts/sched-plugin-24-default-binder/) 写出一个 Binding。读完全部插件之后再看 `schedule_one.go`，每一个扩展点调用背后对应的是哪些问题，应该都能对上号了。

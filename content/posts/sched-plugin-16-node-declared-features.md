@@ -13,9 +13,9 @@ description: "NodeDeclaredFeatures 让 kubelet 声明自己支持的特性，调
 
 {{< figure src="/images/posts/sched-plugins/callstack/16.svg" link="/images/posts/sched-plugins/callstack/16.svg" caption="NodeDeclaredFeatures 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
 
-[上一篇](/posts/sched-plugin-15-dynamic-resources/)的 `DynamicResources` 处理的是「节点上有没有某种设备」。`NodeDeclaredFeatures` 处理的问题更抽象：节点上的 **kubelet 会不会**某个功能。它是 Filter 链上最后一个插件，也是 in-tree 插件里最年轻的之一。
+[上一篇](/posts/sched-plugin-15-dynamic-resources/)的 `DynamicResources` 处理的是「节点上有没有某种设备」。`NodeDeclaredFeatures` 处理的问题更抽象：节点上的 kubelet 会不会某个功能。它是 Filter 链上最后一个插件，也是 in-tree 插件里最年轻的之一。
 
-本文基于 Kubernetes master 提交 `aabdf5a2`（1.38 开发周期）。插件由 feature gate `NodeDeclaredFeatures` 控制，对应 [KEP-5328](https://kep.k8s.io/5328)：1.35 Alpha，1.36 Beta 默认开启，1.37 GA 并锁定开启。gate 开启时 `applyFeatureGates` 把它**追加**到默认 MultiPoint 列表末尾（排在 `DefaultBinder` 之后），所以在 Filter 链上它最后执行。它实现了 PreFilter、Filter、`EnqueueExtensions` 和 `SignPlugin`，没有 Score，没有参数。
+本文基于 Kubernetes master 提交 `aabdf5a2`（1.38 开发周期）。插件由 feature gate `NodeDeclaredFeatures` 控制，对应 [KEP-5328](https://kep.k8s.io/5328)：1.35 Alpha，1.36 Beta 默认开启，1.37 GA 并锁定开启。gate 开启时 `applyFeatureGates` 把它追加到默认 MultiPoint 列表末尾（排在 `DefaultBinder` 之后），所以在 Filter 链上它最后执行。它实现了 PreFilter、Filter、`EnqueueExtensions` 和 `SignPlugin`，没有 Score，没有参数。
 
 ## 一、问题：控制面先升级，节点后升级
 
@@ -30,8 +30,10 @@ Kubernetes 的版本偏差策略允许 kubelet 比 kube-apiserver 落后若干�
 `NodeDeclaredFeatures` 的思路是把这份知识写进一个共享库：
 
 - kubelet 启动时，根据自己的 feature gate、容器运行时能力和版本，算出自己支持的特性列表，写进 `Node.status.declaredFeatures`；
-- 调度器从 Pod spec **推断**出它需要哪些特性，过滤掉没有声明这些特性的节点；
+- 调度器从 Pod spec 推断出它需要哪些特性，过滤掉没有声明这些特性的节点；
 - 用户不需要写任何东西，Pod spec 本身就是需求声明。
+
+要让这件事成立，两侧必须对「特性叫什么名字」有一致的理解。下一节的共享库负责的就是这个一致性。
 
 ## 二、共享库：特性注册表
 
@@ -101,7 +103,7 @@ func (f *restartAllContainersFeature) InferForUpdate(oldPodInfo, newPodInfo *typ
 
 节点开了这个 gate 就声明；Pod 只要有一条容器重启规则用了 `RestartAllContainers` 就需要它。字段不可变，所以更新时永远不需要。
 
-有的特性的 `Discover` 还依赖容器运行时，比如 `UserNamespacesHostNetworkSupport` 要求 gate 开启**并且** CRI 报告支持「user namespace + host network」；它的 `InferForScheduling` 检查 `hostNetwork: true` 且 `hostUsers: false`。
+有的特性的 `Discover` 还依赖容器运行时，比如 `UserNamespacesHostNetworkSupport` 要求 gate 开启并且 CRI 报告支持「user namespace + host network」；它的 `InferForScheduling` 检查 `hostNetwork: true` 且 `hostUsers: false`。
 
 ### 2.2 当前注册表
 
@@ -136,7 +138,9 @@ var AllFeatures = []types.Feature{
 | `InPlacePodVerticalScalingMemoryBackedVolumes` | 否 | 内存型 emptyDir 的 `sizeLimit` 变化 |
 | `ExtendWebSocketsToKubelet`、`DRANodeAllocatableResources`、`DRAOptionalNodeOperations` | 否 | 否 |
 
-第二类是「原地扩缩容」相关的特性：调度时 Pod 还没有被修改过，只有运行中修改 resources 时才需要节点支持，所以它们只在 Pod **更新**的检查里起作用（见第五节）。第三类对 Pod 的调度和更新都不施加约束，声明它们是为了让其它组件读取：`DRAOptionalNodeOperations` 的注释说明，ResourceClaim 的分配结果要到 PreBind 才确定，PreFilter 推断不出来，这类过滤由 `DynamicResources` 插件自己做；`DRANodeAllocatableResources` 则被 apiserver 的准入插件用来校验 ResourceSlice。
+第二类是「原地扩缩容」相关的特性：调度时 Pod 还没有被修改过，只有运行中修改 resources 时才需要节点支持，所以它们只在 Pod 更新的检查里起作用（见第五节）。
+
+第三类对 Pod 的调度和更新都不施加约束，声明它们是为了让其它组件读取：`DRAOptionalNodeOperations` 的注释说明，ResourceClaim 的分配结果要到 PreBind 才确定，PreFilter 推断不出来，这类过滤由 `DynamicResources` 插件自己做；`DRANodeAllocatableResources` 则被 apiserver 的准入插件用来校验 ResourceSlice。
 
 ### 2.3 从名字到位图
 
@@ -183,6 +187,8 @@ func (b bitmap) IsSubset(other bitmap) (bool, error) {
 
 {{< figure src="/images/posts/sched-plugins/16-ndf-bitmap.svg" caption="注册表排序后每个特性占固定的一位；节点声明、Pod 需求都变成同样长度的位图，Filter 只做一次子集判断。下方是同一个库在三个组件里的用法（点击查看大图）" link="/images/posts/sched-plugins/16-ndf-bitmap.svg" >}}
 
+特性库到这里把两件事说清楚了：节点声明什么、Pod 需要什么。接下来分别看两侧怎么落地，先看节点侧。
+
 ## 三、节点侧：kubelet 声明
 
 kubelet 在初始化时（`NewMainKubelet`）计算一次，之后不再变化：
@@ -224,6 +230,8 @@ API 字段的定义是一个 `listType=atomic` 的字符串列表：
 
 与之相比，同在 `NodeStatus` 里的 `features` 字段（`NodeFeatures` 结构体，目前只有一个 `supplementalGroupsPolicy` 布尔值）每增加一个特性都要改 API 类型。`declaredFeatures` 用字符串列表承载，增加特性只需要往注册表里加一个实现，不涉及 API 变更。
 
+节点声明完毕，调度器要拿它做判断，中间还隔着一层位图转换。
+
 ## 四、调度器侧：插件源码
 
 ### 4.1 `NodeInfo` 里预先转好位图
@@ -249,6 +257,8 @@ func (n *NodeInfo) SetNode(node *v1.Node) {
 
 ### 4.2 结构体与 `New`
 
+插件本身很薄，只持有框架、版本和两个开关：
+
 ```go
 // pkg/scheduler/framework/plugins/nodedeclaredfeatures/nodedeclaredfeatures.go
 type NodeDeclaredFeatures struct {
@@ -272,9 +282,11 @@ func New(ctx context.Context, plArgs runtime.Object, fh fwk.Handle, fts feature.
 }
 ```
 
-gate 关闭时返回一个空壳插件（`enabled` 为 false），所有扩展点直接放行或 `Skip`，`EventsToRegister` 返回空。这样即使用户在自定义配置里显式启用了它，也不会出错。`version` 是**调度器自身**的版本，下一节会看到它的作用。
+gate 关闭时返回一个空壳插件（`enabled` 为 false），所有扩展点直接放行或 `Skip`，`EventsToRegister` 返回空。这样即使用户在自定义配置里显式启用了它，也不会出错。`version` 是调度器自身的版本，下一节会看到它的作用。
 
 ### 4.3 PreFilter
+
+PreFilter 把 Pod spec 推断成一张需求位图，写进 CycleState：
 
 ```go
 // pkg/scheduler/framework/plugins/nodedeclaredfeatures/nodedeclaredfeatures.go
@@ -321,6 +333,8 @@ func (s *preFilterState) Clone() fwk.StateData {
 
 ### 4.4 Filter
 
+轮到 Filter 时，Pod 的需求已经算好，每个候选节点只剩一次子集判断：
+
 ```go
 // pkg/scheduler/framework/plugins/nodedeclaredfeatures/nodedeclaredfeatures.go
 func (pl *NodeDeclaredFeatures) Filter(ctx context.Context, cycleState fwk.CycleState, pod *v1.Pod, nodeInfo fwk.NodeInfo) *fwk.Status {
@@ -346,11 +360,15 @@ func (pl *NodeDeclaredFeatures) Filter(ctx context.Context, cycleState fwk.Cycle
 }
 ```
 
-注释说明了一个取舍：库里的 `MatchNodeFeatureSet` 在不匹配时会计算差集并把位图反解成名字列表，用于生成可读的错误信息（kubelet 和 apiserver 准入就用它）。Filter 在每个候选节点上都要跑，几千个节点各算一次差集、分配一个字符串切片是不必要的开销，所以只做 `IsSubset`，原因字符串是固定的 `node(s) didn't match Pod's required features`。代价是调度失败事件里看不出具体缺哪个特性，排查时需要自己比对 Pod spec 和节点的 `status.declaredFeatures`。
+注释说明了一个取舍：库里的 `MatchNodeFeatureSet` 在不匹配时会计算差集并把位图反解成名字列表，用于生成可读的错误信息（kubelet 和 apiserver 准入就用它）。
+
+Filter 在每个候选节点上都要跑，几千个节点各算一次差集、分配一个字符串切片是不必要的开销，所以只做 `IsSubset`，原因字符串是固定的 `node(s) didn't match Pod's required features`。代价是调度失败事件里看不出具体缺哪个特性，排查时需要自己比对 Pod spec 和节点的 `status.declaredFeatures`。
 
 失败返回 `UnschedulableAndUnresolvable`：节点会不会某个功能取决于 kubelet 版本和配置，驱逐 Pod 改变不了它，抢占不应该考虑这些节点。
 
 ### 4.5 MaxVersion：特性「毕业」之后
+
+版本比较出现在两处，先是推断侧：
 
 ```go
 // staging/src/k8s.io/component-helpers/nodedeclaredfeatures/framework.go
@@ -371,6 +389,8 @@ func (f *Framework) InferForPodScheduling(podInfo *types.PodInfo, targetVersion 
 	return reqs, nil
 }
 ```
+
+发现侧对称地做同一件事：
 
 ```go
 // staging/src/k8s.io/component-helpers/nodedeclaredfeatures/framework.go
@@ -399,6 +419,8 @@ func (f *Framework) DiscoverNodeFeatures(cfg *types.NodeConfiguration) []string 
 
 ### 4.6 SignPod
 
+与前两篇不同，这个插件的签名片段直接来自推断结果：
+
 ```go
 // pkg/scheduler/framework/plugins/nodedeclaredfeatures/nodedeclaredfeatures.go
 func (pl *NodeDeclaredFeatures) SignPod(ctx context.Context, pod *v1.Pod) ([]fwk.SignFragment, *fwk.Status) {
@@ -415,7 +437,11 @@ func (pl *NodeDeclaredFeatures) SignPod(ctx context.Context, pod *v1.Pod) ([]fwk
 
 与前两篇的插件不同，它总是愿意签名：需求只取决于 Pod spec，两个推断结果相同的 Pod 在这个插件上的可行节点集合必然相同。签名片段是位图的字符串形式（如 `0000000100`），键是 `v1.Pod.Spec.RequiredFeatures()`。
 
+签名解决的是批量调度时的结果复用。被 Filter 拒掉的 Pod 还得靠事件才能回来，这是下一节的内容。
+
 ## 五、EventsToRegister 与 QueueingHint
+
+事件注册只有两条，分别对应需求侧和节点侧各一种变化：
 
 ```go
 // pkg/scheduler/framework/plugins/nodedeclaredfeatures/nodedeclaredfeatures.go
@@ -457,7 +483,7 @@ hint 的判断都很直接：
 
 ### 6.1 kubelet 准入
 
-kubelet 注册了一个 `declaredFeaturesAdmitHandler`，Pod 到达节点时用**自己**的位图再检查一次：
+kubelet 注册了一个 `declaredFeaturesAdmitHandler`，Pod 到达节点时用自己算出的位图再检查一次：
 
 ```go
 // pkg/kubelet/lifecycle/handlers.go
@@ -485,7 +511,7 @@ func (c *declaredFeaturesAdmitHandler) Admit(_ context.Context, attrs *PodAdmitA
 
 ### 6.2 apiserver 准入：Pod 更新
 
-原地扩缩容这类特性在调度时不需要，在**运行中修改**时才需要。负责这一环的是 apiserver 的准入插件 `NodeDeclaredFeatureValidator`，它在默认开启的准入插件列表里，只在 gate 开启时生效：
+原地扩缩容这类特性在调度时不需要，在运行中修改时才需要。负责这一环的是 apiserver 的准入插件 `NodeDeclaredFeatureValidator`，它在默认开启的准入插件列表里，只在 gate 开启时生效：
 
 ```go
 // plugin/pkg/admission/nodedeclaredfeatures/admission.go
@@ -521,6 +547,8 @@ kubelet 收到 Pod 更新时也会做一次同样的推断（`HandlePodUpdates` 
 
 同一个准入插件还顺带校验 `ResourceSlice`：设备声明了 node allocatable 资源时，要求它对应的节点声明了 `DRANodeAllocatableResources`。这是注册表里「对调度和更新都不施加约束」的特性被消费的地方之一。
 
+三道检查——调度器、kubelet、apiserver——分工到此清楚了。剩下的是几处容易误判的地方。
+
 ## 七、边界情况与坑
 
 **注册表是编译进二进制的。** 用户不能声明自定义特性，也不能给已有特性改推断规则。第三方调度器如果要复用这个插件，需要 vendor 与集群版本匹配的 `component-helpers`，否则注册表长度不同，位图大小不一致——`IsSubset` 遇到大小不一致会返回错误。不过调度器的位图（`NodeInfo.DeclaredFeatures` 和 `reqs`）都来自同一个 `DefaultFramework`，大小必然一致，这个错误分支只在误用时触发。
@@ -535,7 +563,9 @@ kubelet 收到 Pod 更新时也会做一次同样的推断（`HandlePodUpdates` 
 
 ### 8.1 与 Node Feature Discovery 的对比
 
-社区项目 Node Feature Discovery（NFD）也是「节点声明能力、Pod 按能力选节点」，但路径完全不同：NFD 探测硬件和内核特性（CPU 指令集、PCI 设备、内核模块），写成节点**标签**，Pod 用 `nodeSelector`/`nodeAffinity` **显式**选择。`NodeDeclaredFeatures` 只管 Kubernetes 自身功能，写在节点 **status** 里，需求从 Pod spec **隐式**推断。前者面向工作负载的硬件需求，后者面向控制面与节点之间的版本兼容，两者互不替代。
+社区项目 Node Feature Discovery（NFD）也是「节点声明能力、Pod 按能力选节点」，但路径完全不同：NFD 探测硬件和内核特性（CPU 指令集、PCI 设备、内核模块），写成节点标签，Pod 用 `nodeSelector`/`nodeAffinity` 显式选择。
+
+`NodeDeclaredFeatures` 只管 Kubernetes 自身功能，写在节点 status 里，需求从 Pod spec 隐式推断。前者面向工作负载的硬件需求，后者面向控制面与节点之间的版本兼容，两者互不替代。
 
 用 status 而不是标签有一个实际原因：标签可以被任何有 node 写权限的人修改，status 只由 kubelet 上报。一个由 kubelet 版本和配置决定的事实，放在只有 kubelet 写的地方更可靠。
 
@@ -545,7 +575,9 @@ kubelet 收到 Pod 更新时也会做一次同样的推断（`HandlePodUpdates` 
 
 ### 8.3 对升级流程的意义
 
-有了这个插件，「控制面先升级、开 gate，节点慢慢滚动」的流程不再需要额外的协调：新功能的 Pod 会自动落到已升级的节点上，旧节点只接收不需要新功能的 Pod。代价是新功能的 Pod 在升级早期可调度节点很少，需要关注它们是否因为容量不足而 Pending。另一方面，如果某个节点因为回滚 kubelet 失去了某个特性，已经在上面运行的 Pod 不会被驱逐（调度器只在调度时检查，kubelet 准入只在 Pod 到达时检查），但它们之后的原地更新会被 apiserver 准入拒绝。
+有了这个插件，「控制面先升级、开 gate，节点慢慢滚动」的流程不再需要额外的协调：新功能的 Pod 会自动落到已升级的节点上，旧节点只接收不需要新功能的 Pod。
+
+代价是新功能的 Pod 在升级早期可调度节点很少，需要关注它们是否因为容量不足而 Pending。另一方面，如果某个节点因为回滚 kubelet 失去了某个特性，已经在上面运行的 Pod 不会被驱逐（调度器只在调度时检查，kubelet 准入只在 Pod 到达时检查），但它们之后的原地更新会被 apiserver 准入拒绝。
 
 ## 小结
 

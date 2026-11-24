@@ -32,6 +32,8 @@ description: "NodeResourcesBalancedAllocation 让各种资源在节点上被均�
 
 `NodeResourcesFit` 的 `LeastAllocated` 只看每种资源的剩余比例的平均值，它不在乎资源之间是否失衡：CPU 剩 10%、内存剩 90% 和两者都剩 50%，平均下来一样。`NodeResourcesBalancedAllocation` 补上这个维度：**让同一个节点上各种资源的请求占比尽量接近**。偏 CPU 的 Pod 被引向内存紧张的节点，偏内存的 Pod 被引向 CPU 紧张的节点，整个集群的资源碎片因此减少。
 
+要弄清它怎么衡量「接近」，得先看它拿到了哪些输入、能配置什么。
+
 ## 二、结构体与参数
 
 ```go
@@ -112,12 +114,14 @@ func SetDefaults_NodeResourcesBalancedAllocationArgs(obj *configv1.NodeResources
 
 和 `NodeResourcesFit` 的打分器相比有两处关键差异：
 
-- **`useRequested: true`**。节点一侧用 `NodeInfo.Requested` 而不是 `NonZeroRequested`；Pod 一侧计算请求量时不设置 `NonMissingContainerRequests`，没写 requests 的容器就按 0 算，不会被替换成 100m/200MiB。
-- **feature 开关全部传进了打分器**。`enablePodLevelResources` 等字段在这里被正确设置，Pod 级 resources 会参与打分计算。（`NodeResourcesFit` 通过 `getScorer` 构造的打分器没有设置这些字段，第 08 篇的边界情况里讨论过这个差异。）
+- `useRequested: true`：节点一侧用 `NodeInfo.Requested` 而不是 `NonZeroRequested`；Pod 一侧计算请求量时不设置 `NonMissingContainerRequests`，没写 requests 的容器就按 0 算，不会被替换成 100m/200MiB。
+- feature 开关全部传进了打分器：`enablePodLevelResources` 等字段在这里被正确设置，Pod 级 resources 会参与打分计算。（`NodeResourcesFit` 通过 `getScorer` 构造的打分器没有设置这些字段，第 08 篇的边界情况里讨论过这个差异。）
 
 为什么要用真实请求而不是非零请求？`NodeResourcesFit` 用非零默认值，是为了让 BestEffort Pod 在 `LeastAllocated` 下被摊开。均衡度关心的是比例关系，凭空给每个容器加上 100m CPU 和 200MiB 内存会扭曲这个比例：一个只请求 4Gi 内存、没写 CPU 的 Pod，在非零口径下变成了「100m CPU + 4Gi」，均衡度的判断就偏了。
 
 ## 三、PreScore：BestEffort 直接跳过
+
+参数就位之后，PreScore 先把打分要用的请求量算出来，再决定这个 Pod 要不要参与打分。跳过的判定和「BestEffort」这个名字有关，含义却和 QoS 分类不同。
 
 ```go
 // pkg/scheduler/framework/plugins/noderesources/balanced_allocation.go
@@ -146,13 +150,15 @@ func (ba *BalancedAllocation) PreScore(ctx context.Context, cycleState fwk.Cycle
 }
 ```
 
-`isBestEffortPod` 检查的是 `podRequests` 是否全为 0，而 `podRequests` 只覆盖配置的资源（默认 CPU 和内存）。所以这里的「BestEffort」不是 QoS 意义上的 BestEffort：一个只请求了 GPU、没写 CPU 和内存的 Pod，在默认配置下同样会被跳过。
+`isBestEffortPod` 检查的是 `podRequests` 是否全为 0，而 `podRequests` 只覆盖配置的资源（默认 CPU 和内存）。**所以这里的「BestEffort」不是 QoS 意义上的 BestEffort**：一个只请求了 GPU、没写 CPU 和内存的 Pod，在默认配置下同样会被跳过。
 
 跳过的理由写在注释里指向的 issue：请求量为 0 的 Pod 放到哪里都不改变节点的资源占比，如果参与打分，均衡度最好的那个节点每次都会胜出，而 BestEffort Pod 放上去之后它的均衡度并不变，于是下一个 BestEffort Pod 还会选它，大量 Pod 堆到同一个节点上。返回 `Skip` 后，框架把插件名记进 `SkipScorePlugins`，这个周期里它的 Score 不会被调用，在总分中贡献 0（对所有节点都是 0，不影响排序）。
 
 CycleState 里存的是 `balancedAllocationPreScoreState`，key 为 `"PreScoreNodeResourcesBalancedAllocation"`，`Clone` 返回自身。打分阶段没有抢占模拟，这份状态也不会被修改。
 
 ## 四、Score：均衡度的改善量
+
+跳过的 Pod 不在这个周期里打分。留下的 Pod，Score 的逻辑很短：取 PreScore 存下的请求量，交给和 `NodeResourcesFit` 共享的打分骨架。
 
 ```go
 // pkg/scheduler/framework/plugins/noderesources/balanced_allocation.go
@@ -196,7 +202,11 @@ func balancedResourceScorer(requested, allocated, allocatable []int64) int64 {
 }
 ```
 
+**最终分比较的是放上这个 Pod 前后均衡度的差，而不是放上之后的绝对值。** 下面把两个分量分开看：先看「放上之后」的单次均衡分怎么算，再看差值如何映射回 50 到 100。
+
 ### 4.1 单次均衡分：标准差
+
+单次均衡分只衡量一件事：一组请求占比彼此有多接近。
 
 ```go
 // pkg/scheduler/framework/plugins/noderesources/balanced_allocation.go
@@ -265,21 +275,21 @@ score = 50 + (50 + Δ) / 2                     ∈ [50, 100]
 | | 节点 X（10 核 / 20Gi） | 节点 Y（20 核 / 40Gi） |
 | --- | --- | --- |
 | 放之前 | CPU 7 核（0.70），内存 2Gi（0.10） | CPU 10 核（0.50），内存 20Gi（0.50） |
-| scoreWithoutPod | std = 0.30，**70** | std = 0，**100** |
+| scoreWithoutPod | std = 0.30，70 | std = 0，100 |
 | 放之后 | CPU 8 核（0.80），内存 10Gi（0.50） | CPU 11 核（0.55），内存 28Gi（0.70） |
-| scoreWithPod | std = 0.15，**85** | std = 0.075，`int(92.5)` = **92** |
+| scoreWithPod | std = 0.15，85 | std = 0.075，`int(92.5)` = 92 |
 | Δ | +15 | −8 |
-| 最终分 | 50 + (50 + 15) / 2 = 50 + 32 = **82** | 50 + (50 − 8) / 2 = 50 + 21 = **71** |
+| 最终分 | 50 + (50 + 15) / 2 = 50 + 32 = 82 | 50 + (50 − 8) / 2 = 50 + 21 = 71 |
 
 注意 `(50 + 15) / 2` 是 Go 的整数除法，65 / 2 = 32。
 
-这样设计还有一个直观的好处：Pod 对节点均衡度的影响越小（大节点、小 Pod），Δ 越接近 0，分数越接近 75，这个插件就越「中立」；只有当 Pod 相对节点足够大、确实会改变均衡度时，它才会拉开差距。旧的「只看放上之后」的做法则会持续偏爱本来就均衡的大节点，不管放的是什么 Pod。
+这样设计还有一个直观的好处：**Pod 对节点均衡度的影响越小（大节点、小 Pod），Δ 越接近 0，分数越接近 75，这个插件就越「中立」**；只有当 Pod 相对节点足够大、确实会改变均衡度时，它才会拉开差距。旧的「只看放上之后」的做法则会持续偏爱本来就均衡的大节点，不管放的是什么 Pod。
 
 把分数压回 [50, 100] 而不是直接用 [0, 100] 表示 Δ，代码注释给出的理由是「更接近只考虑放上之后分数的原始实现」：插件的分数区间不变，它在总分里的份量也就不变，升级后不会突然变得比其他插件更重或更轻。
 
 ### 4.3 哪些资源会被计入
 
-`calculateNodeAllocatableRequest` 是两个插件共用的：
+公式和映射都定了，还剩一个输入问题：配置的资源里，哪些真正进入标准差。`calculateNodeAllocatableRequest` 是两个插件共用的：
 
 ```go
 // pkg/scheduler/framework/plugins/noderesources/resource_allocation.go
@@ -313,7 +323,7 @@ score = 50 + (50 + Δ) / 2                     ∈ [50, 100]
 
 ## 五、与 NodeResourcesFit 的配合
 
-两个插件同时启用，是默认配置下打分的主力：
+单看这个插件，分数区间只有 50 宽；放回默认 Profile，它和 `LeastAllocated` 一起构成打分的主力。两者的差异可以列成一张表：
 
 | | NodeResourcesFit（LeastAllocated） | NodeResourcesBalancedAllocation |
 | --- | --- | --- |
@@ -324,32 +334,30 @@ score = 50 + (50 + Δ) / 2                     ∈ [50, 100]
 | 分数区间 | 0~100 | 50~100 |
 | 默认插件权重 | 1 | 1 |
 
-`BalancedAllocation` 的分数区间只有 50 宽，实际场景中 Δ 通常很小，节点之间的差距往往只有几分，而 `LeastAllocated` 的差距可以是几十分。所以在默认配置下，它更像一个「平手时的裁判」：剩余量差不多的节点之间，挑一个放上去更均衡的。
+`BalancedAllocation` 的分数区间只有 50 宽，实际场景中 Δ 通常很小，节点之间的差距往往只有几分，而 `LeastAllocated` 的差距可以是几十分。所以在默认配置下，**它更像一个「平手时的裁判」：剩余量差不多的节点之间，挑一个放上去更均衡的。**
 
 在装箱场景下（`NodeResourcesFit` 用 `MostAllocated`），两者的配合更有意义：`MostAllocated` 把 Pod 往满的节点上推，`BalancedAllocation` 防止节点被单一资源塞满。如果只装箱不均衡，最终节点会「CPU 满、内存空」，下一个 Pod 放不进去，Cluster Autoscaler 又加一个节点。
 
 ## 六、边界情况与坑
 
-**它不能阻止任何调度。** 纯打分插件，分数再低也只是排名靠后。想要「节点 CPU 超过 80% 不再接收 Pod」这样的硬约束，需要别的手段。
+打分规则和它在默认配置里的分量都清楚了，剩下几条容易踩的边界：
 
-**超额请求被截断。** 占比超过 1 时按 1 处理。节点的 `Requested` 可能超过 `allocatable`（比如 allocatable 被调小），这时所有超额的维度都按 100% 计，彼此之间看起来是均衡的。
-
-**Pod 级 resources 生效，但只覆盖 CPU 和内存。** 由于工厂函数传入了 `enablePodLevelResources`，Pod 级 requests 会参与计算；扩展资源仍然只看容器级。
-
-**只请求 GPU 的 Pod 在默认配置下被跳过。** 默认 `resources` 只有 CPU 和内存，`isBestEffortPod` 只看这两项。
-
-**分数「中立值」是 75，不是 0 或 100。** 看调度日志里的插件分数时，75 表示这个 Pod 对节点均衡度几乎没有影响，而不是「中等均衡」。
+- 它不能阻止任何调度。纯打分插件，分数再低也只是排名靠后；想要「节点 CPU 超过 80% 不再接收 Pod」这样的硬约束，需要别的手段。
+- 超额请求被截断。占比超过 1 时按 1 处理。节点的 `Requested` 可能超过 `allocatable`（比如 allocatable 被调小），这时所有超额的维度都按 100% 计，彼此之间看起来是均衡的。
+- Pod 级 resources 生效，但只覆盖 CPU 和内存。由于工厂函数传入了 `enablePodLevelResources`，Pod 级 requests 会参与计算；扩展资源仍然只看容器级。
+- 只请求 GPU 的 Pod 在默认配置下被跳过。默认 `resources` 只有 CPU 和内存，`isBestEffortPod` 只看这两项。
+- **分数的「中立值」是 75，不是 0 或 100。** 看调度日志里的插件分数时，75 表示这个 Pod 对节点均衡度几乎没有影响，而不是「中等均衡」。
 
 ## 七、发散：这个插件的公式演进
 
 `BalancedAllocation` 的公式变过几次，每次都对应一个真实的问题：
 
-1. **差值版本。** 早期实现只支持 CPU 和内存，分数是 `(1 − |cpuFraction − memoryFraction|) × MaxNodeScore`，任何一项占比达到 1 时直接给 0 分。两种资源时这与标准差版本只差一个系数 2，但它无法扩展到第三种资源。
-2. **标准差版本。** 为了支持扩展资源（GPU 等），改为对任意数量的资源计算标准差，占比超过 1 时截断。这就是今天的 `balancedResourceScore`，两种资源的特例保留了下来。
-3. **真实请求口径与 BestEffort 跳过。** 这个插件改为用真实 requests（`useRequested: true`），不再沿用 `NodeResourcesFit` 的非零默认值；源码注释引用的 issue #129138 讨论了大量 BestEffort Pod 被调度到同一个节点的问题，对应的处理是 PreScore 对零请求的 Pod 返回 `Skip`。
-4. **改善量版本。** 当前的 `balancedResourceScorer` 同时计算放上前后的均衡分，用差值打分。代码注释明确写了这是为了「接近只考虑放上之后分数的原始实现」而把区间压回 [50, 100]。
+1. 差值版本：早期实现只支持 CPU 和内存，分数是 `(1 − |cpuFraction − memoryFraction|) × MaxNodeScore`，任何一项占比达到 1 时直接给 0 分。两种资源时这与标准差版本只差一个系数 2，但它无法扩展到第三种资源。
+2. 标准差版本：为了支持扩展资源（GPU 等），改为对任意数量的资源计算标准差，占比超过 1 时截断。这就是今天的 `balancedResourceScore`，两种资源的特例保留了下来。
+3. 真实请求口径与 BestEffort 跳过：这个插件改为用真实 requests（`useRequested: true`），不再沿用 `NodeResourcesFit` 的非零默认值；源码注释引用的 issue #129138 讨论了大量 BestEffort Pod 被调度到同一个节点的问题，对应的处理是 PreScore 对零请求的 Pod 返回 `Skip`。
+4. 改善量版本：当前的 `balancedResourceScorer` 同时计算放上前后的均衡分，用差值打分。代码注释明确写了这是为了「接近只考虑放上之后分数的原始实现」而把区间压回 [50, 100]。
 
-这条演进路线反映了打分插件设计上一个反复出现的主题：一个只看「结果状态」的分数，会持续偏爱某一类节点（这里是本来就均衡的大节点），而看「变化量」的分数能区分不同的 Pod 对不同节点的影响。
+这条演进路线反映了打分插件设计上一个反复出现的主题：**一个只看「结果状态」的分数，会持续偏爱某一类节点（这里是本来就均衡的大节点），而看「变化量」的分数能区分不同的 Pod 对不同节点的影响。**
 
 从更宏观的角度看，`BalancedAllocation` 只在单个节点的维度上做均衡，并不知道集群整体的资源配比。如果集群里所有节点的 CPU 内存比都是 1:4，而工作负载整体是 1:8，任何调度策略都无法避免 CPU 闲置，这需要在节点规格选型上解决。
 

@@ -13,15 +13,19 @@ description: "QOSSort 是 out-of-tree 部分的第一个插件，在 PrioritySor
 
 {{< figure src="/images/posts/sched-plugins/callstack/25.svg" link="/images/posts/sched-plugins/callstack/25.svg" caption="QOSSort 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
 
-[上一篇](/posts/sched-plugin-24-default-binder/)的 DefaultBinder 把 `Binding` 写进 API Server，一个 Pod 在默认 Profile 里的旅程到此走完。从这一篇开始，系列转向 [kubernetes-sigs/scheduler-plugins](https://github.com/kubernetes-sigs/scheduler-plugins)：这些插件不随 Kubernetes 发布，要自己编译、部署、配置才会生效。本文基于 scheduler-plugins 提交 `cfeb3aa`，它依赖的 Kubernetes 版本是 v1.36.4，框架代码的引用以 v1.36.4 为准；和 Kubernetes master（提交 `aabdf5a2`）有差异的地方会单独指出。
+[上一篇](/posts/sched-plugin-24-default-binder/)的 DefaultBinder 把 `Binding` 写进 API Server，一个 Pod 在默认 Profile 里的旅程到此走完。从这一篇开始，系列转向 [kubernetes-sigs/scheduler-plugins](https://github.com/kubernetes-sigs/scheduler-plugins)：这些插件不随 Kubernetes 发布，要自己编译、部署、配置才会生效。
 
-QOSSort 是 out-of-tree 插件里最小的一个：只实现 QueueSort 扩展点，三十行代码，README 里把成熟度标成 Sample（示范用途）。它适合作为第一篇，因为在读它之前，需要先把「out-of-tree 插件到底跑在哪里」讲清楚，而这件事对后面每一篇都适用。
+本文基于 scheduler-plugins 提交 `cfeb3aa`，它依赖的 Kubernetes 版本是 v1.36.4，框架代码的引用以 v1.36.4 为准；和 Kubernetes master（提交 `aabdf5a2`）有差异的地方会单独指出。
+
+QOSSort 是 out-of-tree 插件里最小的一个：只实现 QueueSort 扩展点，三十行代码，README 里把成熟度标成 Sample（示范用途）。
+
+选它作这一部分的第一篇，是因为读它之前得先回答一个对后面每篇都适用的问题：out-of-tree 插件到底跑在哪里。所以本文前半段讲运行机制，后半段才进入源码。
 
 ## 一、out-of-tree 插件怎么跑起来
 
 ### 1.1 编译出另一个调度器二进制
 
-scheduler-plugins 不提供动态加载机制，插件是在编译期链接进二进制的。仓库的入口 `cmd/scheduler/main.go` 直接复用了 kube-scheduler 的命令行：
+scheduler-plugins 不提供动态加载机制，插件是在编译期链接进二进制的。所以第一步要弄清的是：这个二进制由谁拼出来。仓库的入口 `cmd/scheduler/main.go` 直接复用了 kube-scheduler 的命令行：
 
 ```go
 // cmd/scheduler/main.go
@@ -70,7 +74,9 @@ func WithPlugin(name string, factory runtime.PluginFactory) Option {
 	}
 ```
 
-`Merge` 内部逐个调用 `Register`，同名插件会返回 `a plugin named ... already exists` 错误，所以 out-of-tree 插件不能顶替 in-tree 插件的名字。合并的结果是：scheduler-plugins 编译出的二进制包含全部 in-tree 插件加上 15 个 out-of-tree 插件（`crossnodepreemption` 在 main.go 里被注释掉了），默认 Profile 不做任何配置也能照常工作。
+`Merge` 内部逐个调用 `Register`，同名插件会返回 `a plugin named ... already exists` 错误，所以 out-of-tree 插件不能顶替 in-tree 插件的名字。
+
+合并的结果是：scheduler-plugins 编译出的二进制包含全部 in-tree 插件加上 15 个 out-of-tree 插件（`crossnodepreemption` 在 main.go 里被注释掉了），默认 Profile 不做任何配置也能照常工作。
 
 这个二进制有两种部署方式（见仓库 `doc/install.md`）：作为第二个调度器与默认调度器并存，或者直接替换控制面上的 kube-scheduler。
 
@@ -144,7 +150,9 @@ func responsibleForPod(pod *v1.Pod, profiles profile.Map) bool {
 	}
 ```
 
-于是 scheduler-plugins 里的三个 QueueSort 插件——本篇的 QOSSort、[下一篇](/posts/sched-plugin-26-topological-sort/)的 TopologicalSort、再下一篇的 [Coscheduling](/posts/sched-plugin-27-coscheduling/)——在同一个调度器进程里只能选一个，而且不是「每个 Profile 选一个」，是整个进程选一个。想同时用 QOSSort 和 Coscheduling，只能部署两个调度器进程。
+于是 scheduler-plugins 里的三个 QueueSort 插件——本篇的 QOSSort、[下一篇](/posts/sched-plugin-26-topological-sort/)的 TopologicalSort、再下一篇的 [Coscheduling](/posts/sched-plugin-27-coscheduling/)——在同一个调度器进程里只能选一个。
+
+**这不是「每个 Profile 选一个」，而是整个进程选一个。** 想同时用 QOSSort 和 Coscheduling，只能部署两个调度器进程。
 
 {{< figure src="/images/posts/sched-plugins/25-out-of-tree-runtime.svg" caption="out-of-tree 插件的三个阶段：编译期注册工厂、启动时合并 Registry、配置期由 Profile 启用；排序队列全进程共享，所以 QueueSort 只能四选一（点击查看大图）" link="/images/posts/sched-plugins/25-out-of-tree-runtime.svg" >}}
 
@@ -160,9 +168,11 @@ func responsibleForPod(pod *v1.Pod, profiles profile.Map) bool {
 
 不写这一行，`queueSort.enabled` 里的 QOSSort 和 multiPoint 展开出来的 PrioritySort 会同时进入 `queueSortPlugins`，启动时报上面那条 `but got 2`。另一种写法是 helm chart 采用的：在 `multiPoint.enabled` 里启用插件，同时在 `multiPoint.disabled` 里禁用 `PrioritySort`。
 
+到这里，运行机制就齐了：插件编译进二进制、由 Profile 启用、按 `schedulerName` 路由到各自的 framework，而排序队列是整个进程共享的。QOSSort 唯一能动的地方，正是这个共享的队列。
+
 ## 二、它解决什么问题
 
-PrioritySort 的排序键是「优先级降序、入队时间升序」。在很多集群里，绝大多数业务 Pod 没有设置 PriorityClass，优先级都是 0，排序实际上退化成 FIFO。设想集群资源紧张时同时提交了下面两个 Pod：
+默认的出队顺序由 PrioritySort 决定，排序键是「优先级降序、入队时间升序」。在很多集群里，绝大多数业务 Pod 没有设置 PriorityClass，优先级都是 0，排序实际上退化成 FIFO。设想集群资源紧张时同时提交了下面两个 Pod：
 
 ```yaml
 # batch-probe：BestEffort，不声明任何 requests/limits
@@ -185,6 +195,8 @@ containers:
 
 ### 3.1 结构体与工厂
 
+QOSSort 的入口只有三样东西：插件名、一个空结构体、一个工厂函数。
+
 ```go
 // pkg/qos/queue_sort.go
 // Name is the name of the plugin used in the plugin registry and configurations.
@@ -204,6 +216,8 @@ func New(_ context.Context, _ runtime.Object, _ fwk.Handle) (fwk.Plugin, error) 
 空结构体，不读参数、不持有 `Handle`，也没有对应的 Args 类型和默认值。QueueSort 插件运行在队列里，此时还没有调度周期，因此也谈不上 CycleState。
 
 ### 3.2 Less：三级比较
+
+框架只会调用它的 `Less`，排序规则全在这一个方法里。方法注释已经写清了三级键：
 
 ```go
 // pkg/qos/queue_sort.go
@@ -235,6 +249,8 @@ func (*Sort) Less(pInfo1, pInfo2 fwk.QueuedPodInfo) bool {
 这三级构成一个字典序比较，键是 `(-priority, -qosRank, timestamp)`，满足严格弱序：`Less(a, a)` 为 false，传递性成立。这一点看似平常，[下一篇](/posts/sched-plugin-26-topological-sort/)的 TopologicalSort 就没有做到。
 
 ### 3.3 compQOS：QoS 等级从哪里来
+
+三级里唯一新增的是中间那层 QoS，它由 `compQOS` 算出来。函数本身只是查表：
 
 ```go
 // pkg/qos/queue_sort.go
@@ -270,9 +286,17 @@ func GetPodQOS(pod *v1.Pod) v1.PodQOSClass {
 }
 ```
 
-`status.qosClass` 由 API Server 在创建 Pod 时写入（`pkg/registry/core/pod/strategy.go` 的 `PrepareForCreate` 里 `pod.Status.QOSClass = qos.GetPodQOS(pod)`），之后不会变化：原地扩缩容的校验明确拒绝改变 QoS 的 resize（`Pod QOS Class may not change as a result of resizing`）。所以队列里的 Pod 几乎都走第一个分支，比较成本只是两次字段读取。只有绕过 API Server 构造的 Pod（比如单元测试）才会走 `ComputePodQOS`。
+`status.qosClass` 由 API Server 在创建 Pod 时写入（`pkg/registry/core/pod/strategy.go` 的 `PrepareForCreate` 里 `pod.Status.QOSClass = qos.GetPodQOS(pod)`），之后不会变化：原地扩缩容的校验明确拒绝改变 QoS 的 resize（`Pod QOS Class may not change as a result of resizing`）。
 
-`ComputePodQOS` 的规则只看 cpu 和 memory 两种资源：所有容器（含 init 容器）都没有声明 cpu/memory 的 requests 和 limits 是 BestEffort；每个容器的 cpu 和 memory 都设置了 limits 且汇总后 requests 等于 limits 是 Guaranteed；其余是 Burstable。开启 `PodLevelResources` 且 Pod 声明了 `spec.resources` 时，改用 Pod 级资源判断。GPU 之类的扩展资源不影响 QoS，一个只申请了 `nvidia.com/gpu` 的 Pod 仍然是 BestEffort。
+所以队列里的 Pod 几乎都走第一个分支，比较成本只是两次字段读取。只有绕过 API Server 构造的 Pod（比如单元测试）才会走 `ComputePodQOS`。
+
+`ComputePodQOS` 的规则只看 cpu 和 memory 两种资源，结果分三类：
+
+- 所有容器（含 init 容器）都没有声明 cpu/memory 的 requests 和 limits，是 BestEffort；
+- 每个容器的 cpu 和 memory 都设置了 limits，且汇总后 requests 等于 limits，是 Guaranteed；
+- 其余是 Burstable。
+
+开启 `PodLevelResources` 且 Pod 声明了 `spec.resources` 时，改用 Pod 级资源判断。GPU 之类的扩展资源不影响 QoS，一个只申请了 `nvidia.com/gpu` 的 Pod 仍然是 BestEffort。
 
 `qosOrder` 每次比较都新建一个 map，严格说是一次小的堆分配。activeQ 每次 Push/Pop 做 O(log n) 次比较，这点开销在调度周期面前可以忽略，但它说明这份代码定位是示范，没有为热路径优化。
 
@@ -280,11 +304,13 @@ func GetPodQOS(pod *v1.Pod) v1.PodQOSClass {
 
 ### 3.4 没有的东西
 
+看完实现，还要看它刻意没实现的部分，因为那决定了它的影响范围有多窄。
+
 QOSSort 不实现任何其它扩展点，也不需要 `EventsToRegister`：框架只为 PreEnqueue、PreFilter、Filter、Reserve、Permit 插件收集 EnqueueExtensions（`shouldHaveEnqueueExtensions`），QueueSort 插件不会拒绝 Pod，自然没有「什么事件让它重新入队」的问题。它影响的只是 Pod 在 activeQ 里的位置。
 
 ## 四、与 PrioritySort 对照
 
-v1.36.4 的 PrioritySort：
+既然差别只在排序键上，和 PrioritySort 直接对照最清楚。v1.36.4 的 PrioritySort 只有两级比较：
 
 ```go
 // pkg/scheduler/framework/plugins/queuesort/priority_sort.go（k8s v1.36.4）
@@ -295,7 +321,7 @@ func (pl *PrioritySort) Less(pInfo1, pInfo2 fwk.QueuedPodInfo) bool {
 }
 ```
 
-两者的差别只有中间那一层 QoS，优先级仍然是第一排序键。QOSSort 不会让一个优先级 0 的 Guaranteed Pod 超过优先级 1 的 BestEffort Pod。
+**两者的差别只有中间那一层 QoS，优先级仍然是第一排序键。** QOSSort 不会让一个优先级 0 的 Guaranteed Pod 超过优先级 1 的 BestEffort Pod。
 
 这个比较函数不只用于 activeQ。v1.36.4 的 backoffQ 在 `SchedulerPopFromBackoffQ`（1.33 起 Beta，默认开启）打开时，用 `lessBackoffCompletedWithPriority` 排序：先比退避到期时间，到期时间落在同一个对齐窗口时，再调用 activeQ 的 Less：
 
@@ -325,9 +351,13 @@ type QueueSortPlugin interface {
 }
 ```
 
-`QueuedEntityInfo` 可以是单个 Pod，也可以是 PodGroup（`EntityKeyType` 取值 `pod`、`podgroup`、`compositepodgroup`），PrioritySort 相应地改成了 `entity1.GetPriority()`。QOSSort 现在拿到的是 `QueuedPodInfo`，升级到这套接口后需要先按实体类型分流：PodGroup 没有天然的 QoS，要么取成员的某种聚合，要么跳过 QoS 这一层。这是 scheduler-plugins 跟进新版本时 QueueSort 类插件都要面对的改动。
+`QueuedEntityInfo` 可以是单个 Pod，也可以是 PodGroup（`EntityKeyType` 取值 `pod`、`podgroup`、`compositepodgroup`），PrioritySort 相应地改成了 `entity1.GetPriority()`。
+
+QOSSort 现在拿到的是 `QueuedPodInfo`，升级到这套接口后需要先按实体类型分流：PodGroup 没有天然的 QoS，要么取成员的某种聚合，要么跳过 QoS 这一层。这是 scheduler-plugins 跟进新版本时 QueueSort 类插件都要面对的改动。
 
 ## 五、边界与坑
+
+代码层面就这些。真正需要留意的是它在调度周期里的作用边界——哪些事情它管，哪些它管不着。
 
 **QoS 只影响出队顺序，不影响抢占。** 一个优先级 0 的 Guaranteed Pod 调度失败后，[DefaultPreemption](/posts/sched-plugin-18-default-preemption/) 只会考虑优先级更低的 Pod 作为受害者，同优先级的 BestEffort Pod 不会被它驱逐。想让关键负载能抢占，还是要用 PriorityClass。
 
@@ -339,7 +369,9 @@ type QueueSortPlugin interface {
 
 ## 六、发散：QoS 在调度之后还意味着什么
 
-调度器里 QoS 只用来排序，节点上它的作用更具体。kubelet 根据 QoS 设置容器的 `oom_score_adj`：
+上面几条都在调度器内部。而 QoS 这个信号在节点上还有一套完全不同的用法，值得放进来对照。
+
+kubelet 根据 QoS 设置容器的 `oom_score_adj`：
 
 ```go
 // pkg/kubelet/qos/policy.go（k8s master aabdf5a2）
@@ -376,7 +408,9 @@ func rankMemoryPressure(pods []*v1.Pod, stats statsFunc) {
 
 先看用量是否超过 requests，再看优先级，最后看超出 requests 的量。BestEffort 的 requests 为 0，只要有内存用量就「超过 requests」，所以实际效果和按 QoS 驱逐相近，但依据是 requests 而不是 QoS 标签。
 
-把这两件事和 QOSSort 放在一起看：QoS 在 Kubernetes 里是一个由 requests/limits 推导出来的派生属性，节点侧用它（或它的来源 requests）决定谁先牺牲；QOSSort 把同样的信号用到了调度入口，让「要求确定资源」的 Pod 先拿到资源。它与 PriorityClass 不冲突：PriorityClass 是显式声明的业务重要性，QoS 是资源声明方式的副产品。优先级体系划分得足够细的集群，QOSSort 几乎没有发挥空间；大多数 Pod 都是优先级 0 的集群，它是一个不需要改任何工作负载就能生效的调整。
+把这两件事和 QOSSort 放在一起看：QoS 在 Kubernetes 里是一个由 requests/limits 推导出来的派生属性，节点侧用它（或它的来源 requests）决定谁先牺牲；QOSSort 把同样的信号用到了调度入口，让「要求确定资源」的 Pod 先拿到资源。
+
+它与 PriorityClass 不冲突：PriorityClass 是显式声明的业务重要性，QoS 是资源声明方式的副产品。优先级体系划分得足够细的集群，QOSSort 几乎没有发挥空间；大多数 Pod 都是优先级 0 的集群，它是一个不需要改任何工作负载就能生效的调整。
 
 ## 七、小结
 

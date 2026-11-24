@@ -19,6 +19,8 @@ description: "NodePorts 检查 Pod 的 hostPort 是否和节点上已有 Pod 冲
 
 ## 一、什么样的 Pod 会被它拦下
 
+先划清范围：`NodePorts` 只关心那些会真正占住节点主机端口的 Pod。
+
 `hostPort` 把节点上的一个端口映射到容器端口。同一个节点上，同一个 IP、同一个协议、同一个端口只能给一个 Pod：
 
 ```yaml
@@ -55,6 +57,8 @@ spec:
 
 ## 二、从 Pod 里收集端口
 
+确认了谁来查，接下来看它查什么。端口清单由 `GetHostPorts` 从 Pod spec 里提取：
+
 ```go
 // pkg/scheduler/util/utils.go
 func GetHostPorts(pod *v1.Pod) []v1.ContainerPort {
@@ -90,11 +94,24 @@ func GetHostPorts(pod *v1.Pod) []v1.ContainerPort {
 }
 ```
 
-init 容器里只有 `restartPolicy: Always` 的那种（也就是 sidecar）会被收集。普通 init 容器跑完就退出，调度器认为它不长期占用端口。这个函数有两个调用方：插件的 PreFilter（收集待调度 Pod 想要的端口），以及 `NodeInfo.update`（Pod 加入或离开节点时维护节点的已用端口）。两边用同一个函数，保证「想要」和「已占」的口径一致。
+清单里有两类容器，取舍不同：
+
+- init 容器只收集 `restartPolicy: Always` 的那种，也就是 sidecar。普通 init 容器跑完就退出，调度器认为它不长期占用端口。
+- 应用容器只保留 `hostPort > 0` 的声明。
+
+**所以清单上只有「会长期占端口」的容器。**
+
+这个函数有两个调用方：插件的 PreFilter（收集待调度 Pod 想要的端口），以及 `NodeInfo.update`（Pod 加入或离开节点时维护节点的已用端口）。两边用同一个函数，保证「想要」和「已占」的口径一致。
+
+端口从哪里收集已经清楚，剩下的是各扩展点分别怎么用它。
 
 ## 三、源码按扩展点拆
 
+下面按一次调度里的调用顺序拆开：工厂造出实例，PreFilter 准备状态，Filter 拿状态去查节点表，最后失败码决定抢占能不能介入。
+
 ### 3.1 结构体与工厂
+
+插件结构体只有一个字段，用来存一个 feature gate 的开关：
 
 ```go
 // pkg/scheduler/framework/plugins/nodeports/node_ports.go
@@ -107,9 +124,11 @@ func New(_ context.Context, _ runtime.Object, _ fwk.Handle, fts feature.Features
 }
 ```
 
-没有参数，连 `Handle` 都不保存。它需要的「节点已用端口」不从 informer 或 lister 里查，而是直接从 Filter 传进来的 `NodeInfo` 上读。
+没有参数，连 `Handle` 都不保存。**节点已用端口不从 informer 或 lister 里查，而是直接从 Filter 传进来的 `NodeInfo` 上读。**
 
 ### 3.2 PreFilter：没有端口就 Skip
+
+PreFilter 要做的事很少：判断这个 Pod 有没有端口，有就写进 CycleState。
 
 ```go
 // pkg/scheduler/framework/plugins/nodeports/node_ports.go
@@ -137,7 +156,7 @@ func (pl *NodePorts) PreFilter(ctx context.Context, cycleState fwk.CycleState, p
 
 CycleState 的 key 是 `"PreFilterNodePorts"`，值就是待调度 Pod 的端口切片。绝大多数 Pod 没有 `hostPort`，在这里返回 `Skip`，整个调度周期里 `NodePorts` 的 Filter 一次都不会被调用。
 
-`Clone` 返回自身，`PreFilterExtensions()` 返回 `nil`。这两个选择背后是同一个设计：CycleState 里只放**待调度 Pod 自己**的端口，节点的已用端口放在 `NodeInfo` 里。抢占模拟时，`DefaultPreemption` 在克隆出来的 `NodeInfo` 上删除受害者：
+`Clone` 返回自身，`PreFilterExtensions()` 返回 `nil`。**这两个选择背后是同一个设计：CycleState 里只放待调度 Pod 自己的端口，节点的已用端口不在状态里**。抢占模拟时，`DefaultPreemption` 在克隆出来的 `NodeInfo` 上删除受害者：
 
 ```go
 // pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go
@@ -152,6 +171,8 @@ CycleState 的 key 是 `"PreFilterNodePorts"`，值就是待调度 Pod 的端口
 `NodeInfo.RemovePod` 会顺带调用 `updateUsedPorts` 把受害者的端口从表里拿掉，再跑一次 Filter 就能看到端口被释放。插件不需要在 `RemovePod` 扩展里维护任何东西。对比后面的 `InterPodAffinity`、`PodTopologySpread`，它们在 PreFilter 里预计算了跨节点的计数，就必须实现 `AddPod`/`RemovePod` 来同步这些计数。
 
 ### 3.3 Filter：查表
+
+Filter 假定 PreFilter 已经把状态写好，它只负责拿状态和节点表做一次比对。
 
 ```go
 // pkg/scheduler/framework/plugins/nodeports/node_ports.go
@@ -185,11 +206,11 @@ func fitsPorts(wantPorts []v1.ContainerPort, portsInUse fwk.HostPortInfo) bool {
 
 和 `NodeAffinity` 不同，读不到 PreFilter 状态时这里不兜底，直接返回 `Error`。原因是 PreFilter 已经对「没有端口」的 Pod 返回了 `Skip`，Filter 被调用就意味着 PreFilter 一定写过状态。
 
-失败的状态码是 **`Unschedulable`**，原因串 `node(s) didn't have free ports for the requested pod ports`。
+**失败的状态码是 `Unschedulable`，而不是 `UnschedulableAndUnresolvable`**；原因串是 `node(s) didn't have free ports for the requested pod ports`。
 
 ### 3.4 HostPortInfo：三元组与 0.0.0.0
 
-节点的已用端口是一个两层 map：
+冲突怎么判，完全由已用端口的数据结构决定。它是一个以 `hostIP` 为外层 key 的两层 map：
 
 ```go
 // staging/src/k8s.io/kube-scheduler/framework/types.go
@@ -256,9 +277,11 @@ func (h HostPortInfo) sanitize(ip, protocol *string) {
 
 规则可以归纳为三条：
 
-1. **空值补全。** `hostIP` 为空按 `0.0.0.0`，`protocol` 为空按 `TCP`。`Add` 和 `CheckConflict` 都先 `sanitize`，所以「不写」和「写 0.0.0.0」在调度器眼里完全等价。
-2. **0.0.0.0 是通配。** 想要 `0.0.0.0:80/TCP`，就得在所有 IP 下都没人占 `80/TCP`；反过来，已经有人占了 `0.0.0.0:80/TCP`，任何具体 IP 的 `80/TCP` 都会冲突。这对应操作系统里 `INADDR_ANY` 的行为：绑定了通配地址，就不能再在某个具体地址上绑定同一端口。
-3. **具体 IP 之间互不影响。** `10.0.0.5:80` 和 `10.0.0.6:80` 可以共存在同一个节点上，适合多网卡节点上每个 IP 跑一个实例。
+1. 空值补全。`hostIP` 为空按 `0.0.0.0`，`protocol` 为空按 `TCP`。`Add` 和 `CheckConflict` 都先 `sanitize`，所以「不写」和「写 0.0.0.0」在调度器眼里完全等价。
+2. 0.0.0.0 是通配。想要 `0.0.0.0:80/TCP`，就得在所有 IP 下都没人占 `80/TCP`；反过来，已经有人占了 `0.0.0.0:80/TCP`，任何具体 IP 的 `80/TCP` 都会冲突。这对应操作系统里 `INADDR_ANY` 的行为：绑定了通配地址，就不能再在某个具体地址上绑定同一端口。
+3. 具体 IP 之间互不影响。`10.0.0.5:80` 和 `10.0.0.6:80` 可以共存在同一个节点上，适合多网卡节点上每个 IP 跑一个实例。
+
+**三条合起来只有一句：判冲突看的是「地址 + 协议 + 端口」三元组，而 `0.0.0.0` 在地址这一维上匹配一切。**
 
 协议是三元组的一部分，`TCP 53` 和 `UDP 53` 不冲突，这正是 DNS 服务同时监听两种协议的方式。
 
@@ -266,7 +289,7 @@ func (h HostPortInfo) sanitize(ip, protocol *string) {
 
 ### 3.5 为什么是 Unschedulable
 
-`Filter` 失败码决定了 `DefaultPreemption` 会不会在这个节点上找受害者：
+**失败码决定了 `DefaultPreemption` 会不会在这个节点上找受害者**。两种状态码的态度完全不同：
 
 | 状态码 | 抢占的态度 |
 | --- | --- |
@@ -279,7 +302,11 @@ func (h HostPortInfo) sanitize(ip, protocol *string) {
 
 对比上一篇的 `NodeAffinity` 和下一篇的 [NodeResourcesFit](/posts/sched-plugin-08-node-resources-fit/)：前者一律不可解决，后者视情况而定（请求量超过节点总量时不可解决），`NodePorts` 则一律可解决。它不需要区分，因为端口表里的每一项都对应某个可以驱逐的 Pod。
 
+扩展点的行为到这里就讲完了。但被拒绝的 Pod 不会立刻重试，它要等一个「情况可能已经变了」的信号。
+
 ## 四、EventsToRegister 与 QueueingHint
+
+这个信号由两样东西构成：`EventsToRegister` 声明插件关心哪些事件，QueueingHint 判断某个具体事件值不值得把 Pod 放回队列。
 
 ```go
 // pkg/scheduler/framework/plugins/nodeports/node_ports.go
@@ -296,10 +323,10 @@ func (pl *NodePorts) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWith
 
 两类事件能让被端口卡住的 Pod 有新机会：
 
-- **已调度的 Pod 被删除**，可能释放端口。容器的 `ports` 字段不可变，所以不需要订阅 Pod 更新。
-- **新节点加入**，新节点上端口全空。这里没有 hint 函数，等价于总是 `Queue`。节点更新不订阅，节点的任何属性变化都不会影响端口占用。
+- 已调度的 Pod 被删除，可能释放端口。容器的 `ports` 字段不可变，所以不需要订阅 Pod 更新。
+- 新节点加入，新节点上端口全空。这里没有 hint 函数，等价于总是 `Queue`。节点更新不订阅，节点的任何属性变化都不会影响端口占用。
 
-删除事件的 hint 写得很细：
+删除事件几乎在每个节点上都在发生，所以它单独配了 hint。这个函数要把「删了也没用」的情况提前挡掉：
 
 ```go
 // pkg/scheduler/framework/plugins/nodeports/node_ports.go
@@ -339,17 +366,25 @@ func (pl *NodePorts) isSchedulableAfterAssignedPodDeleted(logger klog.Logger, po
 
 依次排除三种「删了也没用」的情况：
 
-1. 被删的 Pod 既没有调度到节点，也没有被提名到节点，它从没占用过任何节点的端口。之所以还要看 `NominatedNodeName`：Filter 阶段框架会把提名到该节点、优先级不低于当前 Pod 的 Pod 临时加进 `NodeInfo` 再跑一遍（`RunFilterPluginsWithNominatedPods`），被提名的 Pod 实际上「预占」了端口，它被删除同样可能让端口空出来。
+1. 被删的 Pod 既没有调度到节点，也没有被提名到节点，它从没占用过任何节点的端口。
 2. 被删的 Pod 根本没有 `hostPort`。
-3. 被删 Pod 的端口和当前 Pod 想要的没有交集。这里的实现很巧妙：把被删 Pod 的端口装进一张临时的 `HostPortInfo`，再用 `fitsPorts` 检查当前 Pod 能不能「放进」这张表。能放进就说明没有交集，用的是和 Filter 完全一样的冲突语义，`0.0.0.0` 的通配规则自动生效。
+3. 被删 Pod 的端口和当前 Pod 想要的没有交集。
 
-hint 没有检查被删 Pod 在哪个节点。只要端口有交集就 `Queue`，哪怕那个节点因为别的原因（比如节点亲和）根本不在当前 Pod 的候选范围里。hint 的设计原则是宁可多唤醒，不可漏唤醒，节点维度的精确判断留给下一次调度周期本身。
+第 1 条里还要多看一眼 `NominatedNodeName`：Filter 阶段框架会把提名到该节点、优先级不低于当前 Pod 的 Pod 临时加进 `NodeInfo` 再跑一遍（`RunFilterPluginsWithNominatedPods`），被提名的 Pod 实际上「预占」了端口，它被删除同样可能让端口空出来。
+
+第 3 条的实现很巧妙：把被删 Pod 的端口装进一张临时的 `HostPortInfo`，再用 `fitsPorts` 检查当前 Pod 能不能「放进」这张表。能放进就说明没有交集，用的是和 Filter 完全一样的冲突语义，`0.0.0.0` 的通配规则自动生效。
+
+hint 没有检查被删 Pod 在哪个节点。只要端口有交集就 `Queue`，哪怕那个节点因为别的原因（比如节点亲和）根本不在当前 Pod 的候选范围里。**hint 的设计原则是宁可多唤醒，不可漏唤醒**，节点维度的精确判断留给下一次调度周期本身。
 
 集群里大多数 Pod 删除事件都发生在没有 `hostPort` 的 Pod 上，第 2 步就能把它们挡掉。这意味着一个等端口的 Pod 不会被每次滚动更新反复唤醒。
 
+到这里，判定逻辑、失败码和唤醒条件都齐了。剩下几种情况是插件判不到的，下一节把它们集中列出来。
+
 ## 五、边界情况与坑
 
-**Pod 内部的端口冲突，调度器不管。** `fitsPorts` 只拿待调度 Pod 的端口和节点表比较，不检查 Pod 自己的端口之间是否冲突。这件事由 API 校验负责，但校验的口径和调度器不一样：
+前面讲的是它怎么判，这一节讲它判不到什么。下面几种情况都会让 `NodePorts` 的结论和节点上的真实状态对不上。
+
+Pod 内部的端口冲突，调度器不管。`fitsPorts` 只拿待调度 Pod 的端口和节点表比较，不检查 Pod 自己的端口之间是否冲突。这件事由 API 校验负责，但校验的口径和调度器不一样：
 
 ```go
 // pkg/apis/core/validation/validation.go
@@ -359,15 +394,21 @@ hint 没有检查被删 Pod 在哪个节点。只要端口有交集就 `Queue`�
 			}
 ```
 
-API 校验按字面拼字符串去重，`TCP//80`（hostIP 为空）和 `TCP/0.0.0.0/80` 是两个不同的串，能通过校验；在调度器的 `sanitize` 之后它们是同一个三元组。另外，init 容器（包括 sidecar）是逐个单独校验的（源码注释是 `init containers run one-by-one`），sidecar 和应用容器之间的 `hostPort` 重复也不会被 API 拦下。这样的 Pod 能被调度，到了节点上由容器运行时或 CNI 报错。
+API 校验按字面拼字符串去重，`TCP//80`（hostIP 为空）和 `TCP/0.0.0.0/80` 是两个不同的串，能通过校验；在调度器的 `sanitize` 之后它们是同一个三元组。
 
-**调度器不知道主机进程占用的端口。** `UsedPorts` 只来自 Pod 的声明。节点上的 sshd、kubelet（10250）、节点本地的 DNS 缓存等主机进程占用的端口，调度器一概不知。一个 `hostNetwork` Pod 声明了 `containerPort: 10250`，调度器照样会放行，结果是容器起不来。
+另外，init 容器（包括 sidecar）是逐个单独校验的（源码注释是 `init containers run one-by-one`），sidecar 和应用容器之间的 `hostPort` 重复也不会被 API 拦下。这样的 Pod 能被调度，到了节点上由容器运行时或 CNI 报错。
 
-**`hostPort` 不是真的在主机上 bind。** 对非 hostNetwork 的 Pod，`hostPort` 通常由 CNI 的 portmap 插件用 iptables/nftables DNAT 规则实现，主机上并没有进程监听这个端口。调度器的三元组模型是对这种 DNAT 语义的抽象：`0.0.0.0` 的规则匹配所有目的地址，所以和任何具体 IP 冲突。如果使用的 CNI 不支持 portmap，`hostPort` 会静默失效，而调度器依然认为端口被占用。
+**调度器不知道主机进程占用的端口。** `UsedPorts` 只来自 Pod 的声明。节点上的 sshd、kubelet（10250）、节点本地的 DNS 缓存等主机进程占用的端口，调度器一概不知。
 
-**端口表是集合，不是计数。** `HostPortInfo.Remove` 直接从集合里删掉三元组。正常调度下同一个三元组不可能在一个节点上出现两次，所以没有问题。
+由此带来的后果是：一个 `hostNetwork` Pod 声明了 `containerPort: 10250`，调度器照样会放行，结果是容器起不来。
 
-**kubelet 会再查一遍。** kubelet 准入的 `generalFilter` 复用了插件导出的 `Fits`：
+**`hostPort` 不是真的在主机上 bind。** 对非 hostNetwork 的 Pod，`hostPort` 通常由 CNI 的 portmap 插件用 iptables/nftables DNAT 规则实现，主机上并没有进程监听这个端口。
+
+调度器的三元组模型是对这种 DNAT 语义的抽象：`0.0.0.0` 的规则匹配所有目的地址，所以和任何具体 IP 冲突。如果使用的 CNI 不支持 portmap，`hostPort` 会静默失效，而调度器依然认为端口被占用。
+
+端口表是集合，不是计数。`HostPortInfo.Remove` 直接从集合里删掉三元组。正常调度下同一个三元组不可能在一个节点上出现两次，所以没有问题。
+
+kubelet 会再查一遍。kubelet 准入的 `generalFilter` 复用了插件导出的 `Fits`：
 
 ```go
 // pkg/kubelet/lifecycle/predicate.go
@@ -378,13 +419,15 @@ API 校验按字面拼字符串去重，`TCP//80`（hostIP 为空）和 `TCP/0.0
 
 直接写 `nodeName` 绕过调度器的 Pod 如果端口冲突，会被 kubelet 以 reason `NodePorts` 拒绝。
 
-**批量调度的签名只含端口号。** `SignPod` 用的 `HostPortsSigner` 只收集 `hostPort` 的数值，不含 `hostIP` 和协议。两个 Pod 只在 `hostIP` 上不同，会得到相同的签名片段。这不影响正确性：批量调度复用的只是上一个 Pod 的节点排名作为提示，被提示的节点仍然要重新跑一遍 Filter。
+批量调度的签名只含端口号。`SignPod` 用的 `HostPortsSigner` 只收集 `hostPort` 的数值，不含 `hostIP` 和协议。两个 Pod 只在 `hostIP` 上不同，会得到相同的签名片段。这不影响正确性：批量调度复用的只是上一个 Pod 的节点排名作为提示，被提示的节点仍然要重新跑一遍 Filter。
+
+这些情况大多不是插件的 bug，而是 `hostPort` 这个机制本身的代价。下一节换个角度：这个代价值不值得付。
 
 ## 六、发散：hostPort 的替代与取舍
 
 `hostPort` 让 Pod 与节点端口绑定，带来了调度上的硬约束：同一个节点最多跑一个实例，实际效果接近一个隐式的 Pod 反亲和。很多团队用 `hostPort` 部署 ingress 控制器或监控 agent，本意是「每个节点一个」，这时 DaemonSet 才是正确的工具，`hostPort` 只是端口暴露的手段。
 
-如果只是要从集群外访问服务，`NodePort` 类型的 Service（注意不是这个插件）由 kube-proxy 在所有节点上开放端口，不影响调度；`LoadBalancer` 和 Ingress 更进一步。只有在需要绕开 kube-proxy、保留客户端源 IP、或者必须让流量落在本节点的 Pod 上时，`hostPort`/`hostNetwork` 才值得它带来的调度约束。
+如果只是要从集群外访问服务，`NodePort` 类型的 Service（注意不是这个插件）由 kube-proxy 在所有节点上开放端口，不影响调度；`LoadBalancer` 和 Ingress 更进一步。**只有在需要绕开 kube-proxy、保留客户端源 IP、或者必须让流量落在本节点的 Pod 上时，`hostPort`/`hostNetwork` 才值得它带来的调度约束。**
 
 从调度器的角度看，`NodePorts` 是一个几乎零成本的插件：大部分 Pod 在 PreFilter 就 `Skip` 了；需要检查的 Pod，每个节点也只是几次 map 查找。它值得一读，是因为它用最少的代码展示了几个贯穿全系列的设计：状态放在 `NodeInfo` 还是 CycleState、失败码如何决定抢占、hint 如何用和 Filter 相同的语义精确判断「这个事件和我有没有关系」。
 

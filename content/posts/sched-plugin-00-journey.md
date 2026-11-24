@@ -32,6 +32,8 @@ description: "系列开篇。沿着 ScheduleOne 的源码走一遍：Pod 怎么�
 
 ## 一、出发之前：Profile 决定了这趟旅程有哪些站
 
+在 Pod 出现之前，调度器已经按 Profile 装配好了自己的插件链。这一节先看这份名单从哪来、里面都有谁，后面的每一站都在这份名单上。
+
 ### 1.1 插件链来自 Profile
 
 调度器启动时读取 `KubeSchedulerConfiguration`，每个 profile 对应一个 `schedulerName` 和一套插件配置。Pod 通过 `spec.schedulerName` 选择 profile，没写就是 `default-scheduler`。
@@ -107,6 +109,8 @@ func applyFeatureGates(config *v1.Plugins) {
 
 out-of-tree 插件不在这份列表里。scheduler-plugins 编译出的是另一个调度器二进制，它用 `app.WithPlugin` 把自己的插件工厂加进 Registry，再由用户在 profile 里显式启用。第 25 篇开始讲这一部分。
 
+到这里，谁在名单上已经清楚了。接下来按一个 Pod 的真实路径往下走，第一站是队列——在它被任何人打分之前，先得排上队。
+
 ## 二、第一站：调度队列
 
 ### 2.1 三个子队列
@@ -117,9 +121,18 @@ Pod 被 informer 发现后，进入调度队列 `PriorityQueue`。它内部有�
 - `backoffQ`：调度失败、正在退避的 Pod，退避时间从 1 秒起（`DefaultPodInitialBackoffDuration`），每失败一次翻倍，上限 10 秒；
 - `unschedulableEntities`：被插件判定为不可调度、正在等待某个集群事件的 Pod 和 PodGroup。旧版本里它叫 `unschedulablePods`，现在因为 PodGroup 也会在这里等待而改了名，很多资料仍沿用旧名字。
 
-进入 `activeQ` 之前先过 **PreEnqueue** 插件。任何一个 PreEnqueue 插件拒绝，Pod 就留在 `unschedulableEntities`，不会消耗调度周期。实现了 PreEnqueue 的 in-tree 插件有四个：`SchedulingGates` 在 Pod 的 `spec.schedulingGates` 非空时拦住它；`DynamicResources` 在 Pod 引用的 ResourceClaim 还不存在时拦住它；`DefaultPreemption` 在开启异步抢占（`SchedulerAsyncPreemption`）后，为这个 Pod 发起的抢占还没完成时拦住它；`GangScheduling` 在 Pod 所属的 PodGroup 还没创建、或者组内 Pod 数还没达到法定数量时拦住它。其中最直接、也最常被用到的是 `SchedulingGates`，第 01 篇从它开始。
+进入 `activeQ` 之前先过 **PreEnqueue** 插件。任何一个 PreEnqueue 插件拒绝，Pod 就留在 `unschedulableEntities`，不会消耗调度周期。in-tree 里实现了 PreEnqueue 的插件有四个：
 
-`activeQ` 的出队顺序由唯一的 **QueueSort** 插件决定。限制比「每个 profile 一个」更严：整个调度器进程只有一个调度队列，堆只能有一种比较函数，所以 `validateCommonQueueSort` 要求所有 profile 的 QueueSort 插件及其参数完全相同，队列直接用第一个 profile 的比较函数。默认的 `PrioritySort` 按优先级、再按入队时间排序（第 02 篇）。out-of-tree 的 `QOSSort`、`TopologicalSort`、`Coscheduling` 也都实现了 QueueSort，所以它们三者互斥，也不能和 `PrioritySort` 同时启用。
+- `SchedulingGates`：Pod 的 `spec.schedulingGates` 非空时拦住它；
+- `DynamicResources`：Pod 引用的 ResourceClaim 还不存在时拦住它；
+- `DefaultPreemption`：开启异步抢占（`SchedulerAsyncPreemption`）后，为这个 Pod 发起的抢占还没完成时拦住它；
+- `GangScheduling`：Pod 所属的 PodGroup 还没创建、或者组内 Pod 数还没达到法定数量时拦住它。
+
+其中最直接、也最常被用到的是 `SchedulingGates`，第 01 篇从它开始。
+
+`activeQ` 的出队顺序由唯一的 **QueueSort** 插件决定。限制比「每个 profile 一个」更严：整个调度器进程只有一个调度队列，堆只能有一种比较函数，所以 `validateCommonQueueSort` 要求所有 profile 的 QueueSort 插件及其参数完全相同，队列直接用第一个 profile 的比较函数。
+
+默认的 `PrioritySort` 按优先级、再按入队时间排序（第 02 篇）。out-of-tree 的 `QOSSort`、`TopologicalSort`、`Coscheduling` 也都实现了 QueueSort，所以它们三者互斥，也不能和 `PrioritySort` 同时启用。
 
 ### 2.2 出队的不一定是单个 Pod
 
@@ -148,7 +161,11 @@ func (sched *Scheduler) ScheduleOne(ctx context.Context) {
 
 ## 三、调度周期：串行地选出一个节点
 
+队列只管「谁先来」。被取出之后，Pod 进入调度周期，在这里决定落到哪个节点上。这一段是整篇文章的主干，也是后面所有插件真正工作的位置。
+
 ### 3.1 先拍快照
+
+调度周期的第一件事不是挑节点，而是固定一份视角。
 
 ```go
 // pkg/scheduler/schedule_one.go
@@ -182,11 +199,9 @@ func (sched *Scheduler) scheduleOnePod(ctx context.Context, podInfo *framework.Q
 
 这段代码里有三个后面每篇都会用到的东西。
 
-**CycleState**：每个调度周期新建一个，插件之间靠它传递数据。常见用法是 PreFilter 把计算好的结果写进去，Filter 和 Score 读出来。它是按 key 存取的键值表，值要实现 `Clone`，因为抢占模拟时需要复制一份状态在副本上试算。几乎每篇文章都会讲「这个插件在 CycleState 里存了什么」。
-
-**快照**：`schedulingCycle` 第一件事是 `sched.Cache.UpdateSnapshot`，把调度器缓存里的节点和 Pod 信息拷贝成一份快照。整个调度周期里插件看到的 `NodeInfo` 都来自这份快照，不会被并发的 informer 事件改动。
-
-**异步绑定**：调度周期成功后，最后一行用 `go` 启动绑定周期。调度周期是串行的，一次只处理一个 Pod，绑定周期是并发的。这样做的前提是 assume：在发起绑定之前，调度器已经在缓存里把 Pod 当作「已经在这个节点上」，下一个 Pod 的调度周期立刻就能看到这部分资源被占用了。
+- CycleState：每个调度周期新建一个，插件之间靠它传递数据。常见用法是 PreFilter 把计算好的结果写进去，Filter 和 Score 读出来。它是按 key 存取的键值表，值要实现 `Clone`，因为抢占模拟时需要复制一份状态在副本上试算。几乎每篇文章都会讲「这个插件在 CycleState 里存了什么」。
+- 快照：`schedulingCycle` 第一件事是 `sched.Cache.UpdateSnapshot`，把调度器缓存里的节点和 Pod 信息拷贝成一份快照。整个调度周期里插件看到的 `NodeInfo` 都来自这份快照，不会被并发的 informer 事件改动。
+- 异步绑定：调度周期成功后，最后一行用 `go` 启动绑定周期。调度周期是串行的，一次只处理一个 Pod，绑定周期是并发的。这样做的前提是 assume：在发起绑定之前，调度器已经在缓存里把 Pod 当作「已经在这个节点上」，下一个 Pod 的调度周期立刻就能看到这部分资源被占用了。
 
 ### 3.2 PreFilter 与 Filter：找到放得下的节点
 
@@ -221,10 +236,10 @@ func (a *SchedulingAlgorithm) findNodesThatFitPod(ctx context.Context, schedFram
 
 顺序是：
 
-1. **PreFilter**：每个插件对 Pod 做一次预计算，可以返回 `PreFilterResult` 把候选节点缩小到一个子集（`NodeName`、`NodeAffinity` 都这样做），也可以返回 `Skip` 表示「这个 Pod 和我无关，我的 Filter 也不用跑了」。
-2. **提名节点快速路径**：如果 Pod 之前触发过抢占，`status.nominatedNodeName` 里记着为它腾出空间的节点，先单独试这一个节点，通过就直接用它。
-3. **Filter**：在候选节点上并行执行，每个节点上的插件串行执行，一个插件失败，这个节点就出局。
-4. **Extender**：如果配置了 HTTP extender，再过一遍。
+1. PreFilter：每个插件对 Pod 做一次预计算，可以返回 `PreFilterResult` 把候选节点缩小到一个子集（`NodeName`、`NodeAffinity` 都这样做），也可以返回 `Skip` 表示「这个 Pod 和我无关，我的 Filter 也不用跑了」。
+2. 提名节点快速路径：如果 Pod 之前触发过抢占，`status.nominatedNodeName` 里记着为它腾出空间的节点，先单独试这一个节点，通过就直接用它。
+3. Filter：在候选节点上并行执行，每个节点上的插件串行执行，一个插件失败，这个节点就出局。
+4. Extender：如果配置了 HTTP extender，再过一遍。
 
 Filter 并不一定检查所有节点。`numFeasibleNodesToFind` 决定找到多少个可行节点就停：
 
@@ -248,7 +263,9 @@ func (a *SchedulingAlgorithm) numFeasibleNodesToFind(percentageOfNodesToScore *i
 }
 ```
 
-`minFeasibleNodesToFind` 是 100，`minFeasibleNodesPercentageToFind` 是 5，`percentageOfNodesToScore` 默认为 0，表示自适应。100 个节点以下的集群会检查全部节点；1000 个节点的集群，比例是 50 − 1000/125 = 42%，找到 420 个可行节点就停；5000 个节点的集群比例是 50 − 40 = 10%，找到 500 个就停。下一个 Pod 从上次停下的位置（`nextStartNodeIndex`）接着往后找，保证每个节点都有机会被看到。这意味着大集群里打分阶段看到的只是一部分节点，「全局最优」只是局部最优，后面讲打分插件时会反复遇到这个前提。
+`minFeasibleNodesToFind` 是 100，`minFeasibleNodesPercentageToFind` 是 5，`percentageOfNodesToScore` 默认为 0，表示自适应。100 个节点以下的集群会检查全部节点；1000 个节点的集群，比例是 50 − 1000/125 = 42%，找到 420 个可行节点就停；5000 个节点的集群比例是 50 − 40 = 10%，找到 500 个就停。下一个 Pod 从上次停下的位置（`nextStartNodeIndex`）接着往后找，保证每个节点都有机会被看到。
+
+这意味着大集群里打分阶段看到的只是一部分节点，「全局最优」只是局部最优，后面讲打分插件时会反复遇到这个前提。
 
 ### 3.3 Status code 决定了失败之后的路
 
@@ -264,7 +281,9 @@ func (a *SchedulingAlgorithm) numFeasibleNodesToFind(percentageOfNodesToScore *i
 | `Skip` | PreFilter/PreScore：和我无关 | 跳过同一插件后面的 Filter/Score |
 | `Pending` | 结果可用，但要等外部组件 | 重新入队时不受退避惩罚 |
 
-`Unschedulable` 和 `UnschedulableAndUnresolvable` 的区别贯穿整个系列。端口冲突、资源不足返回前者，因为赶走一个 Pod 就能腾出端口或资源；节点亲和不匹配、存储区域不对返回后者，因为赶走谁都改变不了节点的标签。每篇文章都会说明插件在什么情况下返回哪一种。
+`Unschedulable` 和 `UnschedulableAndUnresolvable` 的区别贯穿整个系列，因为**返回哪个 code，决定了抢占能不能解决它**。
+
+端口冲突、资源不足返回前者，因为赶走一个 Pod 就能腾出端口或资源；节点亲和不匹配、存储区域不对返回后者，因为赶走谁都改变不了节点的标签。每篇文章都会说明插件在什么情况下返回哪一种。
 
 ### 3.4 PostFilter：没有节点时的补救
 
@@ -282,13 +301,13 @@ func (a *SchedulingAlgorithm) numFeasibleNodesToFind(percentageOfNodesToScore *i
 		return ScheduleResult{nominatingInfo: nominatingInfo}, fwk.NewStatus(fwk.Unschedulable).WithError(err)
 ```
 
-注意返回值：即使抢占成功，这一次调度周期仍然以 `Unschedulable` 结束。抢占只是删除了受害者 Pod，并把节点名写进 Pod 的 `nominatedNodeName`，Pod 要等下一个周期才能真正放上去，那时就会走上面的「提名节点快速路径」。`DefaultPreemption` 在第 18 篇，scheduler-plugins 里改写抢占逻辑的三个插件在第 28、31、32 篇。
+注意返回值：**即使抢占成功，这一次调度周期仍然算失败**，返回 `Unschedulable`。抢占只是删除了受害者 Pod，并把节点名写进 Pod 的 `nominatedNodeName`，Pod 要等下一个周期才能真正放上去，那时就会走上面的「提名节点快速路径」。`DefaultPreemption` 在第 18 篇，scheduler-plugins 里改写抢占逻辑的三个插件在第 28、31、32 篇。
 
 ### 3.5 Score：在可行节点里挑一个
 
 可行节点只有一个时直接选它，不打分。多于一个时进入 `prioritizeNodes`：PreScore 做预计算，Score 对每个节点打分，NormalizeScore 把各插件的分数归一化到 0~100（`MaxNodeScore`），再乘以 profile 里的权重求和，取总分最高的节点。
 
-权重是理解打分的关键。默认 profile 里 `TaintToleration` 是 3，`NodeAffinity`、`PodTopologySpread`、`InterPodAffinity`、`DynamicResources` 是 2，`NodeResourcesFit`、`NodeResourcesBalancedAllocation`、`ImageLocality` 是 1。一个插件归一化后的满分差距乘上权重，才是它对最终结果的真实影响力。
+权重是理解打分的关键。默认 profile 里 `TaintToleration` 是 3，`NodeAffinity`、`PodTopologySpread`、`InterPodAffinity`、`DynamicResources` 是 2，`NodeResourcesFit`、`NodeResourcesBalancedAllocation`、`ImageLocality` 是 1。**一个插件归一化后的满分差距乘上权重，才是它对最终结果的真实影响力。**
 
 ### 3.6 Reserve 与 Permit：调度周期的最后两步
 
@@ -313,7 +332,11 @@ func (a *SchedulingAlgorithm) numFeasibleNodesToFind(percentageOfNodesToScore *i
 
 **Permit**：最后一道关卡，可以批准、拒绝或让 Pod 等待。等待的 Pod 已经占着资源，但不会进入绑定。成组调度最早就靠这个机制：一组 Pod 逐个通过调度周期，在 Permit 处等齐了再一起放行。scheduler-plugins 的 `Coscheduling` 用的就是这种方式（第 27 篇），v1.36 的 in-tree `GangScheduling` 也是 PreEnqueue 加 Permit 等待。master 上的 `GangScheduling` 已经换了做法：整组作为一个实体出队，在专门的 PodGroup 调度周期里一起试放，不再依赖 Permit 等待（第 21 篇）。
 
+走到这里，调度周期该做的都做完了：节点选好了，账记好了，Permit 也过了（或者正在等）。剩下的事交给另一个 goroutine。
+
 ## 四、绑定周期：异步地写回 API Server
+
+绑定周期由 3.1 节最后那个 `go` 启动，负责把调度结果真正写回 API Server。
 
 ```go
 // pkg/scheduler/schedule_one.go
@@ -351,6 +374,8 @@ func (a *SchedulingAlgorithm) numFeasibleNodesToFind(percentageOfNodesToScore *i
 
 源码注释里有一条重要的规则：Permit 之后的失败不会让 Pod 被视为「不可调度」，而是进入 `backoffQ` 重试。因为节点已经选好，失败原因是 API 调用之类的偶发问题，不是集群状态不满足。
 
+这一节走的是顺利路径。但调度周期失败时，Pod 不会留在原地：下一节看它被拒绝之后去了哪里，又是靠什么回到队列。
+
 ## 五、失败之后：谁把 Pod 叫回来
 
 调度周期失败，`handleSchedulingFailure` 记下是哪些插件拒绝了这个 Pod：
@@ -364,11 +389,15 @@ func (a *SchedulingAlgorithm) numFeasibleNodesToFind(percentageOfNodesToScore *i
 	}
 ```
 
-然后 `AddUnschedulablePodIfNotPresent` 决定 Pod 去哪里。它先检查这个 Pod 在被调度的这段时间里，集群有没有发生过拒绝它的插件所关心的事件（`determineSchedulingHintForInFlightPod`）：如果发生过，说明它失败所依据的状态可能已经过时，直接进 `backoffQ`；否则进 `unschedulableEntities` 等待。之后它什么时候回到 `activeQ`，取决于这些插件的 **`EventsToRegister`** 与 **QueueingHint**。
+然后 `AddUnschedulablePodIfNotPresent` 决定 Pod 去哪里。它先检查这个 Pod 在被调度的这段时间里，集群有没有发生过拒绝它的插件所关心的事件（`determineSchedulingHintForInFlightPod`）：如果发生过，说明它失败所依据的状态可能已经过时，直接进 `backoffQ`；否则进 `unschedulableEntities` 等待。
 
-每个插件声明自己关心哪些集群事件，比如 `NodeResourcesFit` 关心节点资源变化和 Pod 删除，`TaintToleration` 关心节点污点变化。事件到来时，队列只对那些「被这个插件拒绝过」的 Pod 调用插件的 hint 函数，hint 返回 `Queue` 才把 Pod 移出去，返回 `QueueSkip` 就继续等。比如一个节点只是更新了一个无关的 label，`NodeResourcesFit` 的 hint 会判断出可分配资源没有变大，返回 `QueueSkip`，被资源不足拒绝的 Pod 就不会白白重试。
+之后它什么时候回到 `activeQ`，取决于这些插件的 `EventsToRegister` 与 QueueingHint。每个插件声明自己关心哪些集群事件，比如 `NodeResourcesFit` 关心节点资源变化和 Pod 删除，`TaintToleration` 关心节点污点变化。
 
-这套机制决定了「Pod 一直 Pending，集群明明已经变了却不重新调度」这类问题的答案，所以本系列每篇都会讲插件注册了哪些事件、hint 怎么判断。兜底机制是 `DefaultPodMaxInUnschedulablePodsDuration`（5 分钟）：在 `unschedulableEntities` 里待满 5 分钟的 Pod 会被强制刷回队列，即使没有等到它关心的事件。
+事件到来时，队列只对那些「被这个插件拒绝过」的 Pod 调用插件的 hint 函数，hint 返回 `Queue` 才把 Pod 移出去，返回 `QueueSkip` 就继续等。比如一个节点只是更新了一个无关的 label，`NodeResourcesFit` 的 hint 会判断出可分配资源没有变大，返回 `QueueSkip`，被资源不足拒绝的 Pod 就不会白白重试。
+
+这套机制决定了「Pod 一直 Pending，集群明明已经变了却不重新调度」这类问题的答案，所以本系列每篇都会讲插件注册了哪些事件、hint 怎么判断。
+
+兜底机制是 `DefaultPodMaxInUnschedulablePodsDuration`（5 分钟）：在 `unschedulableEntities` 里待满 5 分钟的 Pod 会被强制刷回队列，即使没有等到它关心的事件。
 
 ## 六、几个容易忽略的新变化
 
@@ -377,6 +406,8 @@ func (a *SchedulingAlgorithm) numFeasibleNodesToFind(percentageOfNodesToScore *i
 - **PodGroup 调度周期**：除了单个 Pod，队列里还可能出来一个 PodGroup，走 `scheduleOnePodGroup`。在这种周期里，单个 Pod 的 PostFilter 不运行，改为整组结束后运行 PodGroup 级别的 PostFilter（`schedulingAlgorithm` 中 `state.IsPodGroupSchedulingCycle()` 的分支）。
 - **Opportunistic batching**：`OpportunisticBatching`（1.35 Beta，默认开启）让签名相同、连续出队的 Pod 复用上一个 Pod 的打分结果，`findNodesThatFitPod` 里的 `nodeHint` 就来自它，和提名节点走同一条快速路径。它要求 profile 里所有相关插件都能给 Pod 签名，任何一个插件拒签，这个 Pod 就不参与批量。默认配置下 `PodTopologySpread` 的系统默认约束总是非空，它会拒签所有 Pod，所以这个 gate 开着，默认 profile 里实际上却用不上，第 13 篇会讲到这一点。
 - **NominatedNodeName 的新用途**：`bindingCycle` 里，如果 PreBind 有实际工作要做或 Pod 要在 Permit 等待，调度器会提前把目标节点写进 `nominatedNodeName`，告诉 cluster autoscaler 之类的外部组件「这个 Pod 马上要绑到这个节点」。它不再只是抢占的副产品。
+
+这几点先记在这里，读后面的篇目时遇到对应代码，再回头对照。
 
 ## 七、阅读路线
 

@@ -45,6 +45,8 @@ LROC 的 README 把这两项称为 limit risk 和 load risk，按权重相加后
 
 ## 二、参数
 
+和上一篇一样，LROC 的参数在 `TrimaranSpec` 之外只多了两个字段。
+
 ```go
 // apis/config/types.go
 // LowRiskOverCommitmentArgs holds arguments used to configure LowRiskOverCommitment plugin.
@@ -102,6 +104,8 @@ func SetDefaults_LowRiskOverCommitmentArgs(args *LowRiskOverCommitmentArgs) {
 
 ## 三、PreScore 与 CycleState
 
+LROC 比前两个插件多一个 PreScore：一个 Pod 只会落到一个节点上，它的 request 和 limit 对每个节点都是同一份，没必要在 Score 里重复计算。于是这项准备工作放在 PreScore 里做一次，结果写进 CycleState。
+
 ```go
 // pkg/trimaran/lowriskovercommitment/lowriskovercommitment.go
 const (
@@ -155,6 +159,8 @@ PreScore 每个调度周期只执行一次：计算 Pod 的 request 和 limit（
 `Clone` 直接返回自身。这样做是安全的，因为数据写入后只读不改，抢占模拟时复制 CycleState 也不需要深拷贝。Score 读不到这个 key 时（比如 PreScore 被跳过），会现场重新计算一遍，不会报错。
 
 ## 四、Score 与 computeRank
+
+Score 本身很短：两个提前返回，剩下的交给 `computeRank`。
 
 ```go
 // pkg/trimaran/lowriskovercommitment/lowriskovercommitment.go
@@ -237,7 +243,11 @@ func (pl *LowRiskOverCommitment) computeRank(logger klog.Logger, metrics []watch
 
 ## 五、computeRisk：两部分风险
 
+`computeRank` 对 CPU 和内存各调用一次 `computeRisk`，这部分是整套模型的核心。它把风险拆成静态和动态两半，分别计算后加权。
+
 ### 5.1 riskLimit：limit 超出容量的比例
+
+先看只依赖 Pod spec 的那一半，代码只有一个分支。
 
 ```go
 // pkg/trimaran/lowriskovercommitment/lowriskovercommitment.go
@@ -257,6 +267,8 @@ riskLimit = (L − C) / (L − R)    当 L > C
 这个量只依赖 Pod spec，含义是**最坏情况下突发量的落空比例**。注意它用的是含本 Pod 的 R 和 L，衡量的是「放上去之后」的状态。
 
 ### 5.2 riskLoad：实际负载越过已分配 request 的概率
+
+另一半风险要看实测负载，代码长得多。先完整看一遍，再分步拆。
 
 ```go
 // pkg/trimaran/lowriskovercommitment/lowriskovercommitment.go
@@ -298,11 +310,11 @@ riskLimit = (L − C) / (L − R)    当 L > C
 
 分步来看。
 
-**第一步，μ 和 σ。** 用 `CreateResourceStats` 时传入的是**零 request**，所以 μ 就是节点实际平均用量占 Allocatable 的比例，不加本 Pod。σ 先乘以 `√smoothingWindowSize`。原因是：如果观测到的序列是对 n 个独立样本做滑动平均得到的，平均值的方差是原始方差的 1/n，标准差是 1/√n；乘以 √n 可以把标准差还原到原始尺度。Prometheus 的 `instance:node_cpu:ratio` 这类 recording rule 本身就是在若干分钟窗口上算出的速率，默认值 5 对应的就是这种平滑。
+第一步，μ 和 σ。用 `CreateResourceStats` 时传入的是零 request，所以 μ 就是节点实际平均用量占 Allocatable 的比例，不加本 Pod。σ 先乘以 `√smoothingWindowSize`。原因是：如果观测到的序列是对 n 个独立样本做滑动平均得到的，平均值的方差是原始方差的 1/n，标准差是 1/√n；乘以 √n 可以把标准差还原到原始尺度。Prometheus 的 `instance:node_cpu:ratio` 这类 recording rule 本身就是在若干分钟窗口上算出的速率，默认值 5 对应的就是这种平滑。
 
-**第二步，限制 σ 不超过 Beta 分布允许的最大值。** [0, 1] 上均值为 μ 的分布，方差最大是 μ(1 − μ)，此时概率质量全部集中在 0 和 1 两点。`GetMaxVariance` 返回这个上界，代码再乘以 0.99 后开方，作为 σ 的上限，保证下一步矩匹配一定有解（α、β > 0）。
+第二步，限制 σ 不超过 Beta 分布允许的最大值。[0, 1] 上均值为 μ 的分布，方差最大是 μ(1 − μ)，此时概率质量全部集中在 0 和 1 两点。`GetMaxVariance` 返回这个上界，代码再乘以 0.99 后开方，作为 σ 的上限，保证下一步矩匹配一定有解（α、β > 0）。
 
-**第三步，矩匹配出 Beta(α, β)：**
+第三步，矩匹配出 Beta(α, β)：
 
 ```go
 // pkg/trimaran/lowriskovercommitment/beta.go
@@ -330,7 +342,7 @@ func (b *BetaDistribution) MatchMoments(m1, m2 float64) bool {
 
 这正是代码里的 `temp`（即 ν）。ν > 0 等价于 σ² < μ(1−μ)，也就是第二步保证的条件。
 
-**第四步，计算 allocProb：**
+第四步，计算 allocProb：
 
 ```go
 // pkg/trimaran/lowriskovercommitment/beta.go
@@ -358,11 +370,11 @@ func ComputeProbability(mu, sigma, threshold float64) (float64, *BetaDistributio
 
 `DistributionFunction` 是 Beta 分布的累积分布函数，调用 gonum 的正则化不完全 Beta 函数 `mathext.RegIncBeta(α, β, x)`。阈值是 `R⁻ / C`，即**已有 Pod 的 request 之和占容量的比例**。allocProb = P(X ≤ R⁻/C)，是「已有 Pod 的实际用量没有超出它们的 request」的概率。
 
-为什么用这个阈值？新 Pod 被调度上来后，它的 request 是要被保证的。如果已有 Pod 的实际用量已经超过了它们自己的 request 总和，超出的那部分就是在借用「未分配」的容量，而新 Pod 的 request 正好要占用这部分容量。所以 1 − allocProb 就是「新 Pod 会和已有 Pod 的突发负载争抢」的概率。
+为什么用这个阈值？新 Pod 被调度上来后，它的 request 是要被保证的。如果已有 Pod 的实际用量已经超过了它们自己的 request 总和，超出的那部分就是在借用「未分配」的容量，而新 Pod 的 request 正好要占用这部分容量。所以**1 − allocProb 就是「新 Pod 会和已有 Pod 的突发负载争抢」的概率**。
 
 几个特殊情况：μ = 0 时直接认为概率为 1；σ = 0 时退化成确定值，μ ≤ 阈值取 1，否则取 0；矩匹配失败时返回 0（风险为 1）。
 
-**第五步，按 limit 做条件化。** 如果已有 Pod 的 limit 之和 L⁻ 小于容量，那么它们的用量不可能超过 L⁻/C（CPU 会被节流，内存会被 OOM kill）。这时实际用量的分布应该在 L⁻/C 处被截断：
+第五步，按 limit 做条件化。如果已有 Pod 的 limit 之和 L⁻ 小于容量，那么它们的用量不可能超过 L⁻/C（CPU 会被节流，内存会被 OOM kill）。这时实际用量的分布应该在 L⁻/C 处被截断：
 
 ```text
 P(X ≤ R⁻/C | X ≤ L⁻/C) = P(X ≤ R⁻/C) / P(X ≤ L⁻/C)      （R⁻ ≤ L⁻）
@@ -370,11 +382,13 @@ P(X ≤ R⁻/C | X ≤ L⁻/C) = P(X ≤ R⁻/C) / P(X ≤ L⁻/C)      （R⁻ 
 
 代码就是做了这个除法，然后截到 [0, 1]。L⁻ = 0 时（节点上只有 BestEffort Pod，或者没有 Pod），代码注释写的是「zero over zero」，直接令 allocProb = 1。
 
-**第六步**，`riskLoad = 1 − allocProb`。
+第六步，`riskLoad = 1 − allocProb`。
 
 {{< figure src="/images/posts/sched-plugins/39-lroc-beta-tail.svg" caption="节点 A 的 CPU：μ=0.40，σ 经 √5 放大后拟合出 Beta(11.6, 17.4)，越过 R⁻/C=0.5 的阴影部分就是 riskLoad；虚线是不放大 σ 的情形" >}}
 
 ### 5.3 合成
+
+两部分算完，按权重合成，再把 CPU 和内存两个结果取较差者。
 
 ```go
 // pkg/trimaran/lowriskovercommitment/lowriskovercommitment.go
@@ -411,20 +425,20 @@ score = round(100 × rank)
 
 - riskLimit：L = 4000，不大于 C = 4000，得 0。
 - riskLoad：μ = 0.40，σ = 0.04 × √5 = 0.0894，上限 √(0.99 × 0.24) = 0.487，不触发。ν = 0.24 / 0.008 − 1 = 29，α = 11.6，β = 17.4。阈值 R⁻/C = 2000/4000 = 0.5，P(X ≤ 0.5) = 0.8636。L⁻ = 3000 < C，触发条件化：P(X ≤ 0.75) ≈ 1.0000，allocProb 不变。riskLoad = 0.1364。
-- totalRisk = 0.5 × 0 + 0.5 × 0.1364 = **0.0682**
+- totalRisk = 0.5 × 0 + 0.5 × 0.1364 = 0.0682
 
 **节点 B 的 CPU：**
 
-- riskLimit：L = 7000 > 4000，(7000 − 4000) / (7000 − 2000) = **0.6**。
+- riskLimit：L = 7000 > 4000，(7000 − 4000) / (7000 − 2000) = 0.6。
 - riskLoad：μ = 0.30，σ = 0.03 × √5 = 0.0671，ν = 0.21 / 0.0045 − 1 = 45.67，α = 13.70，β = 31.97。阈值 1500/4000 = 0.375，P(X ≤ 0.375) = 0.8644。L⁻ = 6000 ≥ C，不做条件化。riskLoad = 0.1356。
-- totalRisk = 0.5 × 0.6 + 0.5 × 0.1356 = **0.3678**
+- totalRisk = 0.5 × 0.6 + 0.5 × 0.1356 = 0.3678
 
 **内存（两节点相同）：** L = 11Gi < 16Gi，riskLimit = 0。μ = 0.30，σ = 0.02 × √5 = 0.0447，Beta(31.2, 72.8)，阈值 8/16 = 0.5，P(X ≤ 0.5) 几乎为 1，riskLoad ≈ 0，totalRisk ≈ 0。
 
 **结果：**
 
-- A：rank = 1 − max(0.0682, 0) = 0.9318 → **93**
-- B：rank = 1 − max(0.3678, 0) = 0.6322 → **63**
+- A：rank = 1 − max(0.0682, 0) = 0.9318 → 93
+- B：rank = 1 − max(0.3678, 0) = 0.6322 → 63
 
 LROC 选 A。B 的负载更低、request 更少，但已有 Pod 的 limit 之和已经是容量的 1.5 倍（6000m 对 4000m），再放一个 limit 1 核的 Pod 后达到 1.75 倍，最坏情况下有 60% 的突发量没有着落。A 的负载更高，但 limit 没有超卖，唯一的风险来自「当前负载有 13.6% 的概率越过已分配 request」。
 
@@ -434,7 +448,9 @@ LROC 选 A。B 的负载更低、request 更少，但已有 Pod 的 limit 之和
 
 ## 七、边界情况与坑
 
-**缺少某种资源的指标时，该资源看起来更安全。** `CreateResourceStats` 返回 `ok == false` 时，riskLoad 保持初始值 0，totalRisk 只剩 `w × riskLimit`。比如 SignalFx 只配置了 CPU 指标时，内存风险最多只有 0.5 × riskLimit。而节点完全没有指标时，Score 直接返回 0 分。两种「缺数据」的处理方向相反。
+**缺少某种资源的指标时，该资源看起来更安全。** `CreateResourceStats` 返回 `ok == false` 时，riskLoad 保持初始值 0，totalRisk 只剩 `w × riskLimit`。比如 SignalFx 只配置了 CPU 指标时，内存风险最多只有 0.5 × riskLimit。
+
+而节点完全没有指标时，Score 直接返回 0 分。两种「缺数据」的处理方向相反。
 
 **metrics-server 下 σ = 0，riskLoad 只能是 0 或 1。** 只有 `Latest` 没有 `STD`，`ComputeProbability` 走 σ = 0 的分支：当前瞬时用量不超过 R⁻/C 时 riskLoad = 0，否则为 1。没有中间值，打分会在两档之间跳变。`smoothingWindowSize` 乘的是 0，也不起作用。
 
@@ -450,11 +466,15 @@ LROC 选 A。B 的负载更低、request 更少，但已有 Pod 的 limit 之和
 
 ## 八、发散
 
-**Beta 和正态分布的选择。** 上一篇的 LVRB 借用正态分布的 68–95–99.7 规则解释 margin，但利用率是有界的，均值接近 0 或 1 时，正态分布会给区间外分配不小的概率。Beta 分布天然定义在 [0, 1] 上，两个参数可以由均值和方差唯一确定，而且偏度会随均值自动变化：μ < 0.5 时右偏，尾部向高利用率延伸，这正是我们关心的方向。代价是需要计算不完全 Beta 函数。gonum 的 `RegIncBeta` 直接调用移植自 Cephes 的 `Incbet`（幂级数加连分式），单次调用是微秒级，每个节点、每种资源最多调用两次，开销不大。
+**Beta 和正态分布的选择。** 上一篇的 LVRB 借用正态分布的 68–95–99.7 规则解释 margin，但利用率是有界的，均值接近 0 或 1 时，正态分布会给区间外分配不小的概率。Beta 分布天然定义在 [0, 1] 上，两个参数可以由均值和方差唯一确定，而且偏度会随均值自动变化：μ < 0.5 时右偏，尾部向高利用率延伸，这正是我们关心的方向。
+
+代价是需要计算不完全 Beta 函数。gonum 的 `RegIncBeta` 直接调用移植自 Cephes 的 `Incbet`（幂级数加连分式），单次调用是微秒级，每个节点、每种资源最多调用两次，开销不大。
 
 **w 的选择因资源而异。** CPU 是可压缩资源，超卖的后果是节流和延迟升高；内存不可压缩，超卖的后果是 OOM kill 或驱逐。对内存来说，「limit 超出容量」这类静态风险更值得重视，因为一旦触发就是 Pod 被杀。所以可以考虑给内存更大的 `riskLimitWeights`（比如 0.7），CPU 保持 0.5 或更低。权重是按资源分别配置的，这在设计上就预留了这种差异。
 
-**和 KEP 217 的对照。** `kep/217-resource-limit-aware-scoring` 提出的是一个只看 limit 的打分插件：`RawScore = (allocatable − limit) × MaxNodeScore / allocatable`，再做 min–max 归一化。当前代码树里没有对应的插件。LROC 可以看作它的「负载感知」版本：riskLimit 对应静态的 limit 超卖程度，riskLoad 用实际负载判断这种超卖是否真的会被触发。一个 limit 严重超卖但 Pod 实际都很闲的节点，在 KEP 217 下会被避开，在 LROC 下则只被扣掉 w × riskLimit。
+**和 KEP 217 的对照。** `kep/217-resource-limit-aware-scoring` 提出的是一个只看 limit 的打分插件：`RawScore = (allocatable − limit) × MaxNodeScore / allocatable`，再做 min–max 归一化。当前代码树里没有对应的插件。
+
+LROC 可以看作它的「负载感知」版本：riskLimit 对应静态的 limit 超卖程度，riskLoad 用实际负载判断这种超卖是否真的会被触发。一个 limit 严重超卖但 Pod 实际都很闲的节点，在 KEP 217 下会被避开，在 LROC 下则只被扣掉 w × riskLimit。
 
 **为什么只用 R⁻ 而不用 R 做阈值。** 直觉上，「放上去之后」的 request 总和 R 才是新的保证线。但 μ 是不含新 Pod 的实测负载，阈值也必须是不含新 Pod 的 R⁻，两者口径才一致：比较的是「已有 Pod 的负载」和「已有 Pod 的保证量」。新 Pod 的影响已经通过 riskLimit 中的 R、L 体现了。
 

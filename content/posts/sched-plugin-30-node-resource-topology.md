@@ -15,7 +15,11 @@ description: "NodeResourceTopologyMatch 读取 NodeResourceTopology CRD，在调
 
 上一篇 [NetworkOverhead](/posts/sched-plugin-29-network-overhead/) 用 CRD 描述的网络代价给节点打分。本篇的 `NodeResourceTopologyMatch`（下文简称 NRT 插件）同样依赖一个 CRD，但它关心的不是节点之间，而是节点内部：一台机器上有几个 NUMA 节点、每个 NUMA 节点还剩多少 CPU、内存和设备。
 
-它挂在 PreFilter、Filter、Score、Reserve、PostBind 五个扩展点上，并实现了 `EnqueueExtensions`。和所有 scheduler-plugins 插件一样，它不在 kube-scheduler 的默认 Profile 里，需要用 scheduler-plugins 编译出的调度器二进制（`cmd/scheduler/main.go` 里通过 `app.WithPlugin(noderesourcetopology.Name, noderesourcetopology.New)` 注册）并在 Profile 中显式启用，没有 feature gate。本文基于 scheduler-plugins 提交 `cfeb3aa`（依赖 Kubernetes v1.36.4），涉及 kube-scheduler 框架的部分以同一版本为准。
+它挂在 PreFilter、Filter、Score、Reserve、PostBind 五个扩展点上，并实现了 `EnqueueExtensions`。
+
+和所有 scheduler-plugins 插件一样，它不在 kube-scheduler 的默认 Profile 里，需要用 scheduler-plugins 编译出的调度器二进制（`cmd/scheduler/main.go` 里通过 `app.WithPlugin(noderesourcetopology.Name, noderesourcetopology.New)` 注册）并在 Profile 中显式启用，没有 feature gate。
+
+本文基于 scheduler-plugins 提交 `cfeb3aa`（依赖 Kubernetes v1.36.4），涉及 kube-scheduler 框架的部分以同一版本为准。
 
 ## 一、问题：节点总量够，kubelet 却拒绝
 
@@ -36,13 +40,17 @@ kubelet 里的 Topology Manager 负责让一个 Pod 拿到的 CPU、内存、设
 
 ### 1.2 调度器为什么看不见
 
-kube-scheduler 的 `NodeResourcesFit` 只看 `Node.status.allocatable` 减去已分配的总量。一台双路服务器剩 16 个 CPU，可能是 NUMA 0 剩 6 个、NUMA 1 剩 10 个；剩一张 GPU，可能只挂在 NUMA 1 上。这些信息不在 Node 对象里，调度器无从判断一个「4 CPU + 16Gi 内存 + 1 GPU」的 Guaranteed Pod 能否在单个 NUMA 节点上放下。
+kube-scheduler 的 `NodeResourcesFit` 只看 `Node.status.allocatable` 减去已分配的总量。
+
+一台双路服务器剩 16 个 CPU，可能是 NUMA 0 剩 6 个、NUMA 1 剩 10 个；剩一张 GPU，可能只挂在 NUMA 1 上。这些信息不在 Node 对象里，调度器无从判断一个「4 CPU + 16Gi 内存 + 1 GPU」的 Guaranteed Pod 能否在单个 NUMA 节点上放下。
 
 NRT 插件的思路是：让节点上的代理把 NUMA 粒度的资源情况写进一个 CRD，调度器在 Filter 阶段用它把 kubelet 的准入逻辑预演一遍。
 
 ## 二、NodeResourceTopology CRD
 
 ### 2.1 数据模型
+
+要预演 kubelet 的准入，先得知道喂给调度器的数据长什么样。
 
 CRD 定义在依赖模块 `github.com/k8stopologyawareschedwg/noderesourcetopology-api`（本仓库用 v0.1.2），API 组 `topology.node.k8s.io`，版本 `v1alpha2`，集群级对象，名字等于节点名：
 
@@ -127,7 +135,9 @@ func createNUMANodeList(lh logr.Logger, zones topologyv1alpha2.ZoneList) NUMANod
 }
 ```
 
-`type` 不是 `Node` 的 zone、名字解析失败的 zone 都被静默跳过。插件自己的 `pkg/noderesourcetopology/README.md` 演示部分写的是 `numa-node-0`，按这段代码会被全部丢弃；`manifests/noderesourcetopology/worker-node-A.yaml` 里用的是 `node-0`，以后者为准。顺带一提，`maxNUMAId` 是 64，判断条件是 `> maxNUMAId`，ID 恰好为 64 时会越界访问长度为 64 的数组，好在现实中没有这么多 NUMA 节点。
+`type` 不是 `Node` 的 zone、名字解析失败的 zone 都被静默跳过。插件自己的 `pkg/noderesourcetopology/README.md` 演示部分写的是 `numa-node-0`，按这段代码会被全部丢弃；`manifests/noderesourcetopology/worker-node-A.yaml` 里用的是 `node-0`，以后者为准。
+
+顺带一提，`maxNUMAId` 是 64，判断条件是 `> maxNUMAId`，ID 恰好为 64 时会越界访问长度为 64 的数组，好在现实中没有这么多 NUMA 节点。
 
 第二，Topology Manager 的策略和作用域要从 NRT 里读：
 
@@ -144,11 +154,15 @@ func TopologyManagerFromNodeResourceTopology(lh logr.Logger, nodeTopology *topol
 }
 ```
 
-默认值是 `scope=container`、`policy=none`、`maxNUMANodes=8`，与 kubelet 一致。先读已废弃的 `topologyPolicies`（如 `SingleNUMANodeContainerLevel`），再用顶层 `attributes` 中的 `topologyManagerPolicy`、`topologyManagerScope`、`topologyManagerMaxNUMANodes` 覆盖。代理没有上报这些属性时，节点会被当成 `policy=none`，Filter 直接放行。这是部署时最常见的「插件装了却不起作用」的原因。
+默认值是 `scope=container`、`policy=none`、`maxNUMANodes=8`，与 kubelet 一致。先读已废弃的 `topologyPolicies`（如 `SingleNUMANodeContainerLevel`），再用顶层 `attributes` 中的 `topologyManagerPolicy`、`topologyManagerScope`、`topologyManagerMaxNUMANodes` 覆盖。
+
+代理没有上报这些属性时，节点会被当成 `policy=none`，Filter 直接放行。这是部署时最常见的「插件装了却不起作用」的原因。
 
 ## 三、插件结构与参数
 
 ### 3.1 结构体与工厂
+
+插件的字段不多，复杂度都藏在它持有的那一个缓存接口后面。
 
 ```go
 // pkg/noderesourcetopology/plugin.go
@@ -213,6 +227,8 @@ func initNodeTopologyInformer(ctx context.Context, lh logr.Logger,
 
 ## 四、PreFilter：只为抢占服务
 
+PreFilter 是这个插件里唯一不参与判定的扩展点。
+
 ```go
 // pkg/noderesourcetopology/prefilter.go
 const stateVictimPodsKey fwk.StateKey = "stateVictimPods"
@@ -242,11 +258,15 @@ func (tm *TopologyMatch) PreFilter(ctx context.Context, cycleState fwk.CycleStat
 
 PreFilter 不做任何判定，不缩小节点集合，也不返回 `Skip`。它存在的唯一理由是注释说的：实现 `PreFilterExtensions`，从而在抢占模拟时收到 `AddPod`/`RemovePod` 回调。
 
-DefaultPreemption 在某个节点上模拟「驱逐这些受害者后能否放下」时，会对每个受害者调用 `RemovePod`，插件把它压入 CycleState 里的受害者栈；回滚时调用 `AddPod`，从栈里弹出。`Clone` 做深拷贝，是因为抢占会为每个候选节点克隆一份 CycleState 并发模拟，各节点的受害者集合不能互相污染。抢占关闭时，三个方法都直接返回，CycleState 里没有这个 key。
+DefaultPreemption 在某个节点上模拟「驱逐这些受害者后能否放下」时，会对每个受害者调用 `RemovePod`，插件把它压入 CycleState 里的受害者栈；回滚时调用 `AddPod`，从栈里弹出。
+
+`Clone` 做深拷贝，是因为抢占会为每个候选节点克隆一份 CycleState 并发模拟，各节点的受害者集合不能互相污染。抢占关闭时，三个方法都直接返回，CycleState 里没有这个 key。
 
 ## 五、Filter：模拟 single-numa-node
 
 ### 5.1 入口
+
+Filter 先做几轮早退，把与 NUMA 对齐无关的 Pod 和节点挡掉，再进入真正的判定。
 
 ```go
 // pkg/noderesourcetopology/filter.go
@@ -370,7 +390,9 @@ func resourcesAvailableInAnyNUMANodes(lh logr.Logger, info *filterInfo, resource
 }
 ```
 
-这里用的 `bitmask` 包直接来自 kubelet（`k8s.io/kubernetes/pkg/kubelet/cm/topologymanager/bitmask`），和 Topology Manager 合并 hint 时用的是同一个数据结构。算法本身很直白：一开始假设所有 zone 都可行，每处理一种资源就把「放不下」的 zone 位清掉，位图一旦为空立刻失败。最终选中的 zone 是剩余位中编号最小的那个，对应 kubelet 在多个等宽可行 hint 中偏好低编号的行为（`IsNarrowerThan` 在位数相同时比较 `IsLessThan`）。
+这里用的 `bitmask` 包直接来自 kubelet（`k8s.io/kubernetes/pkg/kubelet/cm/topologymanager/bitmask`），和 Topology Manager 合并 hint 时用的是同一个数据结构。
+
+算法本身很直白：一开始假设所有 zone 都可行，每处理一种资源就把「放不下」的 zone 位清掉，位图一旦为空立刻失败。最终选中的 zone 是剩余位中编号最小的那个，对应 kubelet 在多个等宽可行 hint 中偏好低编号的行为（`IsNarrowerThan` 在位数相同时比较 `IsLessThan`）。
 
 资源分三类处理，对应两个辅助函数：
 
@@ -403,6 +425,8 @@ func isResourceSetSuitable(qos corev1.PodQOSClass, resource corev1.ResourceName,
 - 非 Guaranteed Pod 的 CPU、内存、hugepages 在任何 zone 都算「合适」。kubelet 的 CPU Manager 和 Memory Manager 只给 Guaranteed Pod 做独占分配，Burstable Pod 的这些资源不参与对齐，所以对 Burstable Pod 插件实际只检查设备。
 
 ### 5.3 container 作用域：逐容器扣减
+
+`container` 作用域把每个容器单独判定，判定完再从 zone 里扣掉。
 
 ```go
 // pkg/noderesourcetopology/filter.go
@@ -444,9 +468,13 @@ func singleNUMAContainerLevelHandler(lh logr.Logger, pod *v1.Pod, info *filterIn
 
 这段完全对应 kubelet `scope_container.go` 的行为：先 init 容器、后 app 容器逐个准入，每个 app 容器选定 zone 后扣减，后面的容器看到的是扣减后的余量。扣减作用在本次 Filter 新建的 `NUMANodeList` 上（`createNUMANodeList` 每次重新生成），不会污染缓存。
 
-失败原因有三种：`cannot align init container`、`cannot align sidecar container`（`GetInitContainerKind` 根据 `restartPolicy: Always` 区分）、`cannot align container`。这里有一个和 kubelet 不完全一致的地方：sidecar 容器（可重启的 init 容器）会一直运行，kubelet 会把它的独占资源保留到 Pod 结束，而这里对所有 init 容器都不扣减，带独占资源的 sidecar 可能让后续 app 容器的判定偏乐观。
+失败原因有三种：`cannot align init container`、`cannot align sidecar container`（`GetInitContainerKind` 根据 `restartPolicy: Always` 区分）、`cannot align container`。
+
+这里有一个和 kubelet 不完全一致的地方：sidecar 容器（可重启的 init 容器）会一直运行，kubelet 会把它的独占资源保留到 Pod 结束，而这里对所有 init 容器都不扣减，带独占资源的 sidecar 可能让后续 app 容器的判定偏乐观。
 
 ### 5.4 pod 作用域：一次性判定
+
+`pod` 作用域不问每个容器落在哪，只问整个 Pod 能不能挤进同一组 zone。
 
 ```go
 // pkg/noderesourcetopology/filter.go
@@ -463,11 +491,15 @@ func singleNUMAPodLevelHandler(lh logr.Logger, pod *v1.Pod, info *filterInfo) *f
 }
 ```
 
-`GetPodEffectiveRequest`（`pkg/util/resource.go`）对 app 容器求和、对 init 容器取最大值，两者再取较大者，最后加上 `Overhead`。上图下半部分是同一个 Pod 在两种作用域下的不同结论：两个各要 4 CPU 的容器，在 6+5 的余量下 container 作用域能放，pod 作用域放不下。这也说明了为什么作用域必须从 NRT 读，而不能由插件假设。
+`GetPodEffectiveRequest`（`pkg/util/resource.go`）对 app 容器求和、对 init 容器取最大值，两者再取较大者，最后加上 `Overhead`。
+
+上图下半部分是同一个 Pod 在两种作用域下的不同结论：两个各要 4 CPU 的容器，在 6+5 的余量下 container 作用域能放，pod 作用域放不下。这也说明了为什么作用域必须从 NRT 读，而不能由插件假设。
 
 ## 六、Score：四种策略与「取最小」
 
 ### 6.1 入口与前提
+
+Score 只对一类 Pod 有意义，入口处的过滤比 Filter 更干脆。
 
 ```go
 // pkg/noderesourcetopology/score.go
@@ -502,7 +534,9 @@ func (tm *TopologyMatch) ScoreExtensions() fwk.ScoreExtensions {
 }
 ```
 
-非 Guaranteed Pod 所有节点 100 分，插件对它不起作用。没有 NRT 的节点、策略不匹配的节点都是 0 分。和 Filter 对比一下：没有 NRT 的节点在 Filter 里被放行，在 Score 里被压到最低，对 Guaranteed Pod 来说，有 NRT 的节点会被优先选择。
+非 Guaranteed Pod 所有节点 100 分，插件对它不起作用。没有 NRT 的节点、策略不匹配的节点都是 0 分。
+
+和 Filter 对比一下：没有 NRT 的节点在 Filter 里被放行，在 Score 里被压到最低，对 Guaranteed Pod 来说，有 NRT 的节点会被优先选择。
 
 插件没有 `NormalizeScore`，各策略直接产出 `[0, 100]` 的分数。权重由 Profile 配置决定，没写 `weight` 时框架的 `getValidScoreWeights` 按 1 处理。
 
@@ -556,7 +590,14 @@ func leastAllocatedScore(requested, numaCapacity resource.Quantity) int64 {
 
 {{< figure src="/images/posts/sched-plugins/30-nrt-score.svg" caption="同一个 Guaranteed Pod 在两个节点上三种策略的打分：每个 zone 单独算分，节点分取非零 zone 分的最小值（点击查看大图）" link="/images/posts/sched-plugins/30-nrt-score.svg" >}}
 
-以 `LeastAllocated` 为例，A 的 node-0：CPU `(8−4)×100/8 = 50`，内存 `(32−8)×100/32 = 75`，权重各 1，`(50+75)/2 = 62`（整数除法）；node-1 两项都是 75。节点 A 取 min(62, 75) = 62。B 的 node-0 恰好装满，两项都是 0，被当作「放不下」跳过；node-1 是 `(86+87)/2 = 86`。B 以 86 胜出。
+以 `LeastAllocated` 为例，逐个 zone 算：
+
+1. A / node-0：CPU `(8−4)×100/8 = 50`，内存 `(32−8)×100/32 = 75`，权重各 1，`(50+75)/2 = 62`（整数除法）；
+2. A / node-1：两项都是 75，得 75；
+3. B / node-0：恰好装满，两项都是 0，被当作「放不下」跳过；
+4. B / node-1：`(86+87)/2 = 86`。
+
+节点分取非零 zone 的最小值：A 得 min(62, 75) = 62，B 得 86，B 胜出。
 
 这个「取最小」的设计意图是保守：节点分反映最差的那个可行 zone。但它和 kubelet 的实际选择脱节：
 
@@ -602,7 +643,13 @@ func normalizeScore(numaNodesCount int, isMinAvgDistance bool, highestNUMAID int
 
 从 1 个 zone 开始枚举组合（`gonum` 的 `combin.Combinations`），找到能放下的最小组合数；同样组合数下，再用 zone 的 `costs`（即 ACPI SLIT 距离）计算组合内的平均距离，等于所有同规模组合中的最小平均距离时额外加半档分。
 
-算例：`topologyManagerMaxNUMANodes` 没上报时取默认 8，每档 `100/8 = 12` 分。一个 zone 能放下的 Pod 得 `100 − 12 + 6 = 94`（单个 zone 的「平均距离」就是自身距离，所有单 zone 组合都相等，必然拿到加分）；需要两个 zone 时得 `100 − 24 = 76`，若这两个 zone 恰好是距离最近的一对则为 82；放不下时 0 分。container 作用域取所有容器中需要 zone 数最多的那个，而距离加分要求每个容器都是最优距离。
+算例：`topologyManagerMaxNUMANodes` 没上报时取默认 8，每档 `100/8 = 12` 分。
+
+- 一个 zone 能放下：`100 − 12 + 6 = 94`。单个 zone 的「平均距离」就是自身距离，所有单 zone 组合都相等，必然拿到加分；
+- 需要两个 zone：`100 − 24 = 76`；若这两个 zone 恰好是距离最近的一对，则为 82；
+- 放不下：0 分。
+
+container 作用域取所有容器中需要 zone 数最多的那个，而距离加分要求每个容器都是最优距离。
 
 枚举组合的复杂度是 2 的 zone 数次方量级，但现实中节点通常只有 2 到 8 个 NUMA 节点，开销可以接受。
 
@@ -610,9 +657,13 @@ func normalizeScore(numaNodesCount int, isMinAvgDistance bool, highestNUMAID int
 
 ### 7.1 落后从哪里来
 
-NRT 是一个最终一致的分布式视图。一个 Pod 从被调度到反映在 NRT 中，要经过：调度器 Bind → kubelet 收到 Pod → Topology Manager 准入并分配 CPU/内存/设备 → 代理通过 podresources API 观察到变化 → 代理更新 NRT → 调度器读到新 NRT。代理的上报周期通常是 10 到 60 秒（缓存设计文档 `cache/docs/NUMA-aware-scheduler-side-reserve-plugin.md` 的说法）。在这个窗口里，调度器看到的 zone 余量都是旧的。
+NRT 是一个最终一致的分布式视图。一个 Pod 从被调度到反映在 NRT 中，要经过：调度器 Bind → kubelet 收到 Pod → Topology Manager 准入并分配 CPU/内存/设备 → 代理通过 podresources API 观察到变化 → 代理更新 NRT → 调度器读到新 NRT。
 
-批量创建 Pod 时问题最明显：十个 Guaranteed Pod 在同一秒内进入调度，都看到 NUMA 0 剩 6 个 CPU，都被放到同一个节点，kubelet 准入第一个之后，后面的依次 `TopologyAffinityError`。in-tree 调度器通过 assume 机制在内存里扣减节点总量，规避了这个问题；但 NUMA 粒度的扣减做不到同样精确，因为调度器不知道 kubelet 会选哪个 zone。设计文档给出的原则是：**宁可让 Pod 多等一会儿，也不要产生 TopologyAffinityError**。
+代理的上报周期通常是 10 到 60 秒（缓存设计文档 `cache/docs/NUMA-aware-scheduler-side-reserve-plugin.md` 的说法）。在这个窗口里，调度器看到的 zone 余量都是旧的。
+
+批量创建 Pod 时问题最明显：十个 Guaranteed Pod 在同一秒内进入调度，都看到 NUMA 0 剩 6 个 CPU，都被放到同一个节点，kubelet 准入第一个之后，后面的依次 `TopologyAffinityError`。
+
+in-tree 调度器通过 assume 机制在内存里扣减节点总量，规避了这个问题；但 NUMA 粒度的扣减做不到同样精确，因为调度器不知道 kubelet 会选哪个 zone。设计文档给出的原则是：**宁可让 Pod 多等一会儿，也不要产生 TopologyAffinityError**。
 
 ### 7.2 三种实现
 
@@ -624,9 +675,13 @@ NRT 是一个最终一致的分布式视图。一个 Pod 从被调度到反映�
 | `DiscardReserved` | `discardReservedNodes: true` | 同上 | 节点有未完成的预留时，`GetCachedNRTCopy` 返回 `Fresh=false`，节点被拒绝，直到 PostBind 或 Unreserve 清除 |
 | `OverReserve` | `cacheResyncPeriodSeconds > 0` | 读内存快照，再悲观扣减 | 记录预留量，从**所有** zone 扣减 |
 
-Passthrough 有一个容易被忽视的性能问题：前面提到的 `client` 是直连 API Server 的客户端，`GetCachedNRTCopy` 每次都发一个 GET 请求。Filter 和 Score 各调用一次，一个 Pod 的调度周期里，每个被评估的节点就是两次 API 请求。大集群里这会给 API Server 带来可观的压力，同时拖慢调度周期本身。
+Passthrough 有一个容易被忽视的性能问题：前面提到的 `client` 是直连 API Server 的客户端，`GetCachedNRTCopy` 每次都发一个 GET 请求。
 
-DiscardReserved 只覆盖「Reserve 到 PostBind」这一小段，也就是绑定还没完成的时间。PostBind 之后预留就被清掉了，此时 NRT 依然没有反映这个 Pod，所以它只能防住同一节点上的并发绑定，防不住上报延迟。源码注释也承认，在代理不工作、网络慢等情况下，它退化成 Passthrough。
+Filter 和 Score 各调用一次，一个 Pod 的调度周期里，每个被评估的节点就是两次 API 请求。大集群里这会给 API Server 带来可观的压力，同时拖慢调度周期本身。
+
+DiscardReserved 只覆盖「Reserve 到 PostBind」这一小段，也就是绑定还没完成的时间。PostBind 之后预留就被清掉了，此时 NRT 依然没有反映这个 Pod，所以它只能防住同一节点上的并发绑定，防不住上报延迟。
+
+源码注释也承认，在代理不工作、网络慢等情况下，它退化成 Passthrough。
 
 ### 7.3 OverReserve 的工作方式
 
@@ -680,7 +735,9 @@ func (rs *resourceStore) UpdateNRT(nrt *topologyv1alpha2.NodeResourceTopology, l
 }
 ```
 
-这就是 Over-Reserve 名字的由来：一个 4 核 Pod 在双 NUMA 节点上会让两个 zone 各少 4 核，账面上「占用」了 8 核。随着预留累积，节点在缓存眼里越来越满，最终某个 Pod 被 Filter 拒绝，`NodeMaybeOverReserved` 把节点计入 `nodesMaybeOverreserved`。缓存不区分「真的满了」和「被悲观扣满了」，交给重同步去判断。
+这就是 Over-Reserve 名字的由来：一个 4 核 Pod 在双 NUMA 节点上会让两个 zone 各少 4 核，账面上「占用」了 8 核。随着预留累积，节点在缓存眼里越来越满，最终某个 Pod 被 Filter 拒绝，`NodeMaybeOverReserved` 把节点计入 `nodesMaybeOverreserved`。
+
+缓存不区分「真的满了」和「被悲观扣满了」，交给重同步去判断。
 
 预留只在 `UnreserveNodeResources` 和 Flush 时删除。Pod 结束、被删除都不会减少预留，节点只会单调地变「满」，直到 Flush。
 
@@ -714,9 +771,13 @@ func checkPodFingerprintForNode(lh logr.Logger, objs []podData, nodeName, pfpExp
 }
 ```
 
-两个指纹相等，说明代理生成这份 NRT 时看到的 Pod 集合，和调度器此刻知道的 Pod 集合一致，NRT 已经「追上」了调度器的认知，这时用它替换快照、清空预留才安全。这个门控就是整个缓存设计的关键：它把「NRT 新不新」这个无法直接判断的问题，转换成了「两边的 Pod 集合是否相同」。
+两个指纹相等，说明代理生成这份 NRT 时看到的 Pod 集合，和调度器此刻知道的 Pod 集合一致，NRT 已经「追上」了调度器的认知，这时用它替换快照、清空预留才安全。
 
-`resyncMethod` 决定指纹的口径：`All` 计入所有 Pod；`OnlyExclusiveResources` 只计入持有独占资源的 Pod（整数核的 Guaranteed CPU、Guaranteed 的内存/hugepages、NRT 中出现的设备）；默认 `Autodetect` 读 NRT 属性 `nodeTopologyPodsFingerprintMethod`，值为 `with-exclusive-resources` 时用后者，否则用前者。两边口径必须一致，否则指纹永远对不上，节点永远无法 Flush。
+这个门控就是整个缓存设计的关键：它把「NRT 新不新」这个无法直接判断的问题，转换成了「两边的 Pod 集合是否相同」。
+
+`resyncMethod` 决定指纹的口径：`All` 计入所有 Pod；`OnlyExclusiveResources` 只计入持有独占资源的 Pod（整数核的 Guaranteed CPU、Guaranteed 的内存/hugepages、NRT 中出现的设备）；默认 `Autodetect` 读 NRT 属性 `nodeTopologyPodsFingerprintMethod`，值为 `with-exclusive-resources` 时用后者，否则用前者。
+
+两边口径必须一致，否则指纹永远对不上，节点永远无法 Flush。
 
 `FlushNodes` 替换快照后，删除该节点的预留和三个计数器，并把 `generation` 加一。
 
@@ -744,7 +805,9 @@ func IsForeignPod(pod *corev1.Pod, nrtResources sets.Set[corev1.ResourceName]) b
 
 `schedProfileNames` 是包级全局变量，每个启用了该插件的 Profile 在 `New` 时注册自己的名字。Pod informer 的 Add、Update、Delete 事件中只要出现了外来 Pod，就调用 `NodeHasForeignPods`。被标记的节点在 `GetCachedNRTCopy` 里返回 `nil` 和 `Fresh=false`：Filter 拒绝、Score 记 0，直到重同步通过指纹门控。
 
-默认 `foreignPodsDetect: All` 意味着 DaemonSet 的 Pod（由默认调度器或直接指定 `nodeName` 创建）也算外来 Pod。每次 DaemonSet 滚动，相关节点都会短暂对 NRT 插件「不可用」。如果集群里外来 Pod 只会是 BestEffort/Burstable，可以改成 `OnlyExclusiveResources`，只对持有独占资源的外来 Pod 作出反应。
+默认 `foreignPodsDetect: All` 意味着 DaemonSet 的 Pod（由默认调度器或直接指定 `nodeName` 创建）也算外来 Pod。每次 DaemonSet 滚动，相关节点都会短暂对 NRT 插件「不可用」。
+
+如果集群里外来 Pod 只会是 BestEffort/Burstable，可以改成 `OnlyExclusiveResources`，只对持有独占资源的外来 Pod 作出反应。
 
 ### 7.6 Pod informer 的两种模式
 
@@ -753,11 +816,15 @@ func IsForeignPod(pod *corev1.Pod, nrtResources sets.Set[corev1.ResourceName]) b
 - `Shared`：复用调度器的 Pod informer，加一个 `spec.nodeName` 索引，只保留 `Running` 的 Pod；
 - `Dedicated`（默认）：新建一个独立的 Pod informer，保留所有已绑定、非 `Pending` 的 Pod。
 
-区别在于 Pod 集合的口径。代理计算指纹时看到的是 kubelet 已经知道的 Pod，调度器侧需要尽量用同样的集合。调度器自带的 informer 会过滤掉某些终态 Pod，独立 informer 多一条到 API Server 的 watch 连接，但口径更可控（相关讨论见代码注释引用的 scheduler-plugins#599）。
+区别在于 Pod 集合的口径。代理计算指纹时看到的是 kubelet 已经知道的 Pod，调度器侧需要尽量用同样的集合。
+
+调度器自带的 informer 会过滤掉某些终态 Pod，独立 informer 多一条到 API Server 的 watch 连接，但口径更可控（相关讨论见代码注释引用的 scheduler-plugins#599）。
 
 ### 7.7 NRT watcher 与一个空缺
 
-`resyncScope` 为 `All`（代码默认）时，`NewOverReserve` 会启动 `Watcher` 监听 NRT 对象，只关心 Topology Manager 配置的变化：对比新旧对象的 `nodeconfig.TopologyManager`，不同就发出 `WatchReasonAttrChanged`，重同步时这些节点走 `nullGate`，不比指纹直接 Flush。这样节点改了 kubelet 配置后，调度器不需要重启就能用上新策略。通道满了的事件会暂存在 `pending` 中，每 2 秒重试一次，同一节点只保留最新一条。
+`resyncScope` 为 `All`（代码默认）时，`NewOverReserve` 会启动 `Watcher` 监听 NRT 对象，只关心 Topology Manager 配置的变化：对比新旧对象的 `nodeconfig.TopologyManager`，不同就发出 `WatchReasonAttrChanged`，重同步时这些节点走 `nullGate`，不比指纹直接 Flush。
+
+这样节点改了 kubelet 配置后，调度器不需要重启就能用上新策略。通道满了的事件会暂存在 `pending` 中，每 2 秒重试一次，同一节点只保留最新一条。
 
 watcher 对从未见过的 NRT 会发出 `WatchReasonNewlyAdded`，但 `processNRTEvent` 只处理 `WatchReasonAttrChanged`，其余原因只记一条 `unsupported NRT event` 日志：
 
@@ -774,7 +841,11 @@ func (ov *OverReserve) processNRTEvent(nrtEv NRTEvent, lh logr.Logger) int {
 }
 ```
 
-结合前面的代码可以推出一个后果：调度器启动之后才出现 NRT 的节点（扩容的新节点），不在快照里，`GetCachedNRTCopy` 返回 `nil`，Filter 放行；它被拒绝的机会不存在，自然也不会被标脏，`ReserveNodeResources` 和 `NodeHasForeignPods` 都会因为 `!ov.nrts.Contains(nodeName)` 直接返回。在 OverReserve 模式下，这类节点对 NUMA 对齐不设防，直到调度器重启重新 List。弹性伸缩频繁的集群需要留意这一点。
+结合前面的代码可以推出一个后果：调度器启动之后才出现 NRT 的节点（扩容的新节点），不在快照里，`GetCachedNRTCopy` 返回 `nil`，Filter 放行。
+
+它被拒绝的机会不存在，自然也不会被标脏，`ReserveNodeResources` 和 `NodeHasForeignPods` 都会因为 `!ov.nrts.Contains(nodeName)` 直接返回。
+
+在 OverReserve 模式下，这类节点对 NUMA 对齐不设防，直到调度器重启重新 List。弹性伸缩频繁的集群需要留意这一点。
 
 ## 八、抢占模拟
 
@@ -799,9 +870,13 @@ func (ov *OverReserve) processNRTEvent(nrtEv NRTEvent, lh logr.Logger) int {
 	}
 ```
 
-要把受害者的资源「还」给 NRT，必须知道每个受害者容器被 kubelet 放在哪个 zone。这个信息来自代理在 NRT 中额外编码的 NUMA 放置数据（`numaplacement` 库：顶层属性存元数据，每个 zone 的属性存一个向量），缓存在 Flush 时保存节点的 Pod 列表，首次查询时惰性解码出「容器 → NUMA ID」映射。`GetNRTPostPodsEviction` 只归还受害者中独占资源的部分（跳过普通 init 容器，保留 sidecar），按 NUMA 累加回 `Available`，任何一项超过 `Allocatable` 就整体放弃。
+要把受害者的资源「还」给 NRT，必须知道每个受害者容器被 kubelet 放在哪个 zone。这个信息来自代理在 NRT 中额外编码的 NUMA 放置数据（`numaplacement` 库：顶层属性存元数据，每个 zone 的属性存一个向量），缓存在 Flush 时保存节点的 Pod 列表，首次查询时惰性解码出「容器 → NUMA ID」映射。
 
-这套机制有三个前提：只有 OverReserve 实现了 `GetCachedNUMAPlacementInfo`，Passthrough 和 DiscardReserved 返回 nil；代理必须上报放置数据；只解码 `single-numa-node` 策略的节点。任何一个不满足，Filter 就退化为不考虑受害者的普通判定。抢占关闭时更简单：`RemovePod` 什么都不做，模拟驱逐后 NRT 不变，被 NRT 拒绝的节点永远不会成为抢占候选。
+`GetNRTPostPodsEviction` 只归还受害者中独占资源的部分（跳过普通 init 容器，保留 sidecar），按 NUMA 累加回 `Available`，任何一项超过 `Allocatable` 就整体放弃。
+
+这套机制有三个前提：只有 OverReserve 实现了 `GetCachedNUMAPlacementInfo`，Passthrough 和 DiscardReserved 返回 nil；代理必须上报放置数据；只解码 `single-numa-node` 策略的节点。
+
+任何一个不满足，Filter 就退化为不考虑受害者的普通判定。抢占关闭时更简单：`RemovePod` 什么都不做，模拟驱逐后 NRT 不变，被 NRT 拒绝的节点永远不会成为抢占候选。
 
 ## 九、Reserve、PostBind 与重新入队
 
@@ -834,9 +909,13 @@ func (tm *TopologyMatch) EventsToRegister(_ context.Context) ([]fwk.ClusterEvent
 }
 ```
 
-`noderesourcetopologies.v1alpha2.topology.node.k8s.io` 这种「资源.版本.组」格式的名字会让 kube-scheduler 用 dynamic informer 监听这个 CRD（`eventhandlers.go` 里点号数量不少于 2 的 GVK 走 `dynInformerFactory`）。三个事件都没有提供 QueueingHint 函数，框架使用 `defaultQueueingHintFn`，一律返回 `Queue`。
+`noderesourcetopologies.v1alpha2.topology.node.k8s.io` 这种「资源.版本.组」格式的名字会让 kube-scheduler 用 dynamic informer 监听这个 CRD（`eventhandlers.go` 里点号数量不少于 2 的 GVK 走 `dynInformerFactory`）。
 
-实际效果：代理通常周期性地更新 NRT，每一次 Update 都会把所有被 NRT 插件拒绝的 Pod 移回活跃队列，不管更新的是哪个节点、资源有没有变化。在 OverReserve 模式下，这些重试多半是无效的，因为快照要等重同步通过指纹门控才会变；一个被拒的 Pod 真正能被放下，往往要等到下一个 Resync 周期之后的某次 NRT 更新。
+三个事件都没有提供 QueueingHint 函数，框架使用 `defaultQueueingHintFn`，一律返回 `Queue`。
+
+实际效果：代理通常周期性地更新 NRT，每一次 Update 都会把所有被 NRT 插件拒绝的 Pod 移回活跃队列，不管更新的是哪个节点、资源有没有变化。
+
+在 OverReserve 模式下，这些重试多半是无效的，因为快照要等重同步通过指纹门控才会变；一个被拒的 Pod 真正能被放下，往往要等到下一个 Resync 周期之后的某次 NRT 更新。
 
 ## 十、生产中的坑
 
@@ -854,13 +933,21 @@ func (tm *TopologyMatch) EventsToRegister(_ context.Context) ([]fwk.ClusterEvent
 
 ## 十一、发散
 
-**为什么不直接 import kubelet 的准入代码？** 缓存设计文档讨论过：即使运行完全相同的代码，调度器和 kubelet 也是一个分布式系统，调度器看到的状态永远可能落后，「预测」kubelet 的行为在原理上做不到百分之百。插件选择的是「模拟 + 保守纠偏」：Filter 只模拟最严格也最常用的 `single-numa-node`，缓存用悲观扣减保证只会误拒、不会误放。这与 in-tree 调度器的 assume 机制精神一致，只是粒度做不到 zone 级的精确。
+**为什么不直接 import kubelet 的准入代码？** 缓存设计文档讨论过：即使运行完全相同的代码，调度器和 kubelet 也是一个分布式系统，调度器看到的状态永远可能落后，「预测」kubelet 的行为在原理上做不到百分之百。
 
-**和 DRA 的关系**。Dynamic Resource Allocation（见 [DynamicResources](/posts/sched-plugin-15-dynamic-resources/)）让设备驱动以 `ResourceSlice` 的形式发布设备及其属性，调度器在调度阶段就确定分配哪个设备，kubelet 只执行，不再「事后裁决」。如果 CPU、内存也最终通过 DRA 或类似机制表达 NUMA 拓扑，调度器就能成为分配的决定者，NRT 这类「上报 + 模拟」的模式会失去存在的必要。在那之前，NRT 插件仍是用 Topology Manager 跑延迟敏感负载时最直接的选择。
+插件选择的是「模拟 + 保守纠偏」：Filter 只模拟最严格也最常用的 `single-numa-node`，缓存用悲观扣减保证只会误拒、不会误放。这与 in-tree 调度器的 assume 机制精神一致，只是粒度做不到 zone 级的精确。
 
-**和 NodeResourcesFit 的分工**。NRT 插件不检查节点总量，它假设 `NodeResourcesFit` 已经过滤了总量不足的节点。两者都会运行，Filter 链上 NRT 插件通常排在 in-tree 插件之后。打分上两者也会叠加：in-tree 的 `NodeResourcesFit` 默认 `LeastAllocated` 会偏好总量空闲的节点，NRT 的 `LeastAllocated` 偏好最差 zone 也空闲的节点，方向基本一致。
+**和 DRA 的关系**。Dynamic Resource Allocation（见 [DynamicResources](/posts/sched-plugin-15-dynamic-resources/)）让设备驱动以 `ResourceSlice` 的形式发布设备及其属性，调度器在调度阶段就确定分配哪个设备，kubelet 只执行，不再「事后裁决」。
 
-**一个 Profile 一个插件实例**。`schedProfileNames` 是全局变量，多 Profile 场景下每个 Profile 都会创建自己的缓存实例和独立 Pod informer（`Dedicated` 模式），各自持有一份全量 NRT 快照、各自运行一个 Resync goroutine。两个 Profile 之间互不认为对方是外来调度器，但也互不知道对方的预留。
+如果 CPU、内存也最终通过 DRA 或类似机制表达 NUMA 拓扑，调度器就能成为分配的决定者，NRT 这类「上报 + 模拟」的模式会失去存在的必要。在那之前，NRT 插件仍是用 Topology Manager 跑延迟敏感负载时最直接的选择。
+
+**和 NodeResourcesFit 的分工**。NRT 插件不检查节点总量，它假设 `NodeResourcesFit` 已经过滤了总量不足的节点。两者都会运行，Filter 链上 NRT 插件通常排在 in-tree 插件之后。
+
+打分上两者也会叠加：in-tree 的 `NodeResourcesFit` 默认 `LeastAllocated` 会偏好总量空闲的节点，NRT 的 `LeastAllocated` 偏好最差 zone 也空闲的节点，方向基本一致。
+
+**一个 Profile 一个插件实例**。`schedProfileNames` 是全局变量，多 Profile 场景下每个 Profile 都会创建自己的缓存实例和独立 Pod informer（`Dedicated` 模式），各自持有一份全量 NRT 快照、各自运行一个 Resync goroutine。
+
+两个 Profile 之间互不认为对方是外来调度器，但也互不知道对方的预留。
 
 ## 小结
 

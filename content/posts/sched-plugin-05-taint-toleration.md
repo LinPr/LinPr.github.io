@@ -13,7 +13,9 @@ description: "TaintToleration 是默认 Profile 里权重最高的打分插件�
 
 {{< figure src="/images/posts/sched-plugins/callstack/05.svg" link="/images/posts/sched-plugins/callstack/05.svg" caption="TaintToleration 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
 
-[上一篇](/posts/sched-plugin-04-node-unschedulable/)看到，`kubectl cordon` 最终会被 node-lifecycle-controller 镜像成一个 `NoSchedule` 污点，由 `TaintToleration` 插件接手。这个插件是默认 Profile 里第一个同时有 Filter 和 Score 的插件：在 `MultiPoint` 列表里排第五，挂在 PreFilter、Filter、PreScore、Score 四个扩展点上，打分权重是 3，在所有默认插件里最高。默认启用，没有插件参数。本文基于 Kubernetes master 提交 `aabdf5a2`。
+[上一篇](/posts/sched-plugin-04-node-unschedulable/)看到，`kubectl cordon` 最终会被 node-lifecycle-controller 镜像成一个 `NoSchedule` 污点，由 `TaintToleration` 插件接手。这个插件是默认 Profile 里第一个同时有 Filter 和 Score 的插件：在 `MultiPoint` 列表里排第五，挂在 PreFilter、Filter、PreScore、Score 四个扩展点上，打分权重是 3，在所有默认插件里最高。
+
+默认启用，没有插件参数。本文基于 Kubernetes master 提交 `aabdf5a2`。
 
 ## 一、污点的三种效果
 
@@ -47,7 +49,7 @@ spec:
     effect: NoSchedule
 ```
 
-`TaintToleration` 插件处理的是表格的第二列。第三列不归调度器管，第六节会讲它由谁负责。
+**`TaintToleration` 只处理表格的第二列**，第三列不归调度器管，第六节会讲它由谁负责。
 
 ## 二、容忍怎么匹配一个污点
 
@@ -85,12 +87,14 @@ func (t *Toleration) ToleratesTaint(logger klog.Logger, taint *Taint, enableComp
 
 四条规则，按顺序：
 
-1. **effect**：toleration 的 effect 为空表示匹配所有 effect，否则必须相等。
-2. **key**：toleration 的 key 为空表示匹配所有 key（API 校验要求此时 operator 必须是 `Exists`），否则必须相等。
-3. **operator**：空或 `Equal` 比较 value；`Exists` 不看 value。
-4. **`Lt`/`Gt`**：把两边的 value 解析成 int64 做数值比较。`Gt` 的含义是「污点的值大于容忍的值」时容忍，`Lt` 相反。解析失败（不是十进制整数）一律视为不容忍。这是 `TaintTolerationComparisonOperators` 引入的新能力（1.35 Alpha，默认关闭），gate 关闭时 API Server 拒绝创建带 `Lt`/`Gt` 的 Pod，调度器也把它们当作不匹配。它的用途是表达「SLA 等级不低于某个值的节点」这类数值阈值，测试里的用例就是用一个数值型的 SLA 污点。
+1. effect：toleration 的 effect 为空表示匹配所有 effect，否则必须相等。
+2. key：toleration 的 key 为空表示匹配所有 key（API 校验要求此时 operator 必须是 `Exists`），否则必须相等。
+3. operator：空或 `Equal` 比较 value；`Exists` 不看 value。
+4. `Lt`/`Gt`：把两边的 value 解析成 int64 做数值比较。`Gt` 的含义是「污点的值大于容忍的值」时容忍，`Lt` 相反。解析失败（不是十进制整数）一律视为不容忍。
 
-`tolerationSeconds` 不参与匹配，调度器完全忽略它。API 校验要求只有 `effect: NoExecute` 的容忍才能设置 `tolerationSeconds`，它是给驱逐用的（第六节）。
+第四条是 `TaintTolerationComparisonOperators` 引入的新能力（1.35 Alpha，默认关闭），gate 关闭时 API Server 拒绝创建带 `Lt`/`Gt` 的 Pod，调度器也把它们当作不匹配。它的用途是表达「SLA 等级不低于某个值的节点」这类数值阈值，测试里的用例就是用一个数值型的 SLA 污点。
+
+**`tolerationSeconds` 不参与匹配，调度器完全忽略它。** API 校验要求只有 `effect: NoExecute` 的容忍才能设置 `tolerationSeconds`，它是给驱逐用的（第六节）。
 
 `TolerationsTolerateTaint` 是在容忍列表上的「任一匹配」：
 
@@ -107,6 +111,8 @@ func TolerationsTolerateTaint(logger klog.Logger, tolerations []v1.Toleration, t
 ```
 
 ## 三、插件结构与 Filter
+
+匹配规则只有这四条。回到插件本身，看它怎么拿这套规则做过滤。
 
 ```go
 // pkg/scheduler/framework/plugins/tainttoleration/taint_toleration.go
@@ -185,11 +191,19 @@ func FindMatchingUntoleratedTaint(logger klog.Logger, taints []v1.Taint, tolerat
 
 **`NoSchedule` 和 `NoExecute` 在调度时没有区别。** 两者都会淘汰节点，且失败码相同。区别只在 Pod 已经运行之后。
 
-**失败原因字符串和常量不一致。** Filter 返回的是字面量 `node(s) had untolerated taint(s)`，而导出的常量 `ErrReasonNotMatch` 是 `node(s) had taints that the pod didn't tolerate`。在整个代码库里，这个常量只被 kubelet 使用（`pkg/kubelet/lifecycle/predicate.go` 的准入检查和 `kubelet.go` 里的已知拒绝原因列表）。所以用 `didn't tolerate` 去搜调度器事件是搜不到的，调度器的事件里是 `untolerated taint(s)`；后者出现在 kubelet 拒绝 Pod 的消息里。
+**失败原因字符串和常量不一致。** Filter 返回的是字面量 `node(s) had untolerated taint(s)`，而导出的常量 `ErrReasonNotMatch` 是 `node(s) had taints that the pod didn't tolerate`。在整个代码库里，这个常量只被 kubelet 使用（`pkg/kubelet/lifecycle/predicate.go` 的准入检查和 `kubelet.go` 里的已知拒绝原因列表）。
+
+所以用 `didn't tolerate` 去搜调度器事件是搜不到的，调度器的事件里是 `untolerated taint(s)`；后者出现在 kubelet 拒绝 Pod 的消息里。
+
+Filter 到这里就完了，它只做淘汰。同一个插件在打分阶段处理的，是另一类完全不同的污点。
 
 ## 四、PreScore 与 Score：数软污点
 
+Filter 只认硬污点，`PreferNoSchedule` 在它眼里不存在。这个 effect 的约束力只体现在分数上，所以插件要在打分阶段重新扫一遍节点。
+
 ### 4.1 PreScore：先挑出有用的容忍
+
+PreScore 先把 Pod 的容忍裁剪一次，之后的每个节点 Score 就少做几次比较。
 
 ```go
 // pkg/scheduler/framework/plugins/tainttoleration/taint_toleration.go
@@ -226,13 +240,15 @@ func (pl *TaintToleration) PreScore(ctx context.Context, cycleState fwk.CycleSta
 }
 ```
 
-CycleState 的 key 是 `PreScoreTaintToleration`，值是 Pod 容忍里 effect 为空或 `PreferNoSchedule` 的子集。effect 为 `NoSchedule` 的容忍反正匹配不上 `PreferNoSchedule` 污点（规则 1），提前剔除只是为了让每个节点的 Score 少做几次比较：PreScore 每个调度周期跑一次，Score 每个可行节点跑一次。
+CycleState 的 key 是 `PreScoreTaintToleration`，值是 Pod 容忍里 effect 为空或 `PreferNoSchedule` 的子集。**effect 为 `NoSchedule` 的容忍反正匹配不上 `PreferNoSchedule` 污点（规则 1），提前剔除只是为了让每个节点的 Score 少做几次比较**：PreScore 每个调度周期跑一次，Score 每个可行节点跑一次。
 
 `Clone` 直接返回自身，不做拷贝。CycleState 在抢占模拟时会被克隆，共享同一份数据安全的前提是 PreScore 写入之后再也没人修改它。这个切片只依赖 Pod 本身，不依赖节点上的 Pod，确实是不变的。
 
-PreScore 从不返回 `Skip`。即使 Pod 没有任何相关容忍、集群里也没有任何 `PreferNoSchedule` 污点，Score 仍会在每个可行节点上跑一遍，只是每次都得 0。
+**PreScore 从不返回 `Skip`。** 即使 Pod 没有任何相关容忍、集群里也没有任何 `PreferNoSchedule` 污点，Score 仍会在每个可行节点上跑一遍，只是每次都得 0。
 
 ### 4.2 Score 与 NormalizeScore
+
+Score 只数一种东西：这个节点上有几个不被容忍的 `PreferNoSchedule` 污点。
 
 ```go
 // pkg/scheduler/framework/plugins/tainttoleration/taint_toleration.go
@@ -299,7 +315,7 @@ func DefaultNormalizeScore(maxPriority int64, reverse bool, scores fwk.NodeScore
 }
 ```
 
-公式是 `100 − 100 × raw / max(raw)`，整数除法向下取整。框架随后乘以权重 3。
+**公式是 `100 − 100 × raw / max(raw)`，整数除法向下取整。** 框架随后乘以权重 3。
 
 {{< figure src="/images/posts/sched-plugins/05-taint-score-and-roles.svg" link="/images/posts/sched-plugins/05-taint-score-and-roles.svg" caption="左：四个可行节点的软污点打分算例；右：NoSchedule、PreferNoSchedule、NoExecute 在调度器、kubelet、taint-eviction-controller 之间的分工（点击查看大图）" >}}
 
@@ -316,15 +332,23 @@ func DefaultNormalizeScore(maxPriority int64, reverse bool, scores fwk.NodeScore
 
 ### 4.3 归一化的两个反直觉之处
 
-**它不是 min-max 归一化。** 分母是最大值，下界固定为 0。所有可行节点都有 1 个不被容忍的软污点时，`max = 1`，每个节点都是 `100 − 100 = 0` 分；所有节点都没有软污点时，走 `maxCount == 0` 分支，每个节点都是 100 分。两种情况节点之间都没有差别，插件对选择没有影响，这是正确的；但在 V(10) 日志 `Plugin scored node for pod` 里查看各插件的加权分时，会看到同样的「没有差别」对应着 0 分和 300 分两种绝对值，不要据此判断节点好坏。
+**它不是 min-max 归一化。** 分母是最大值，下界固定为 0。所有可行节点都有 1 个不被容忍的软污点时，`max = 1`，每个节点都是 `100 − 100 = 0` 分；所有节点都没有软污点时，走 `maxCount == 0` 分支，每个节点都是 100 分。
+
+这两种情况下节点之间都没有差别，插件对选择没有影响，这是正确的。但在 V(10) 日志 `Plugin scored node for pod` 里查看各插件的加权分时，会看到同样的「没有差别」对应着 0 分和 300 分两种绝对值，不要据此判断节点好坏。
 
 **分数是相对的，只在本次可行节点里比较。** `max` 只在通过 Filter 的节点里取，而大集群中 Filter 会因为 `percentageOfNodesToScore` 提前停止（第 00 篇讲过），所以同一个节点在两个调度周期里可能因为同批候选不同而得到不同的分数。
 
 ### 4.4 权重 3 意味着什么
 
-默认 Profile 里，`NodeResourcesFit` 和 `NodeResourcesBalancedAllocation` 的权重都是 1，满分各 100；`TaintToleration` 一项的满分差距就是 300。只要候选节点之间的软污点个数有差异，它对最终排序的影响通常压过资源打分。这符合 `PreferNoSchedule` 的意图：「除非没有别的选择，否则别来」。如果把它当成一个很弱的偏好来用，比如给半个集群都打上软污点、希望只是「轻微倾向」另一半，实际效果会比预想的强得多。
+默认 Profile 里，`NodeResourcesFit` 和 `NodeResourcesBalancedAllocation` 的权重都是 1，满分各 100；`TaintToleration` 一项的满分差距就是 300。**只要候选节点之间的软污点个数有差异，它对最终排序的影响通常压过资源打分。** 这符合 `PreferNoSchedule` 的意图：「除非没有别的选择，否则别来」。
+
+如果把它当成一个很弱的偏好来用，比如给半个集群都打上软污点、希望只是「轻微倾向」另一半，实际效果会比预想的强得多。
+
+打分部分到这里结束。接下来是事件：被硬污点拒绝的 Pod 什么时候能回来。
 
 ## 五、QueueingHint
+
+插件的 hint 判断方式由事件类型决定，先看它订阅了什么。
 
 ```go
 // pkg/scheduler/framework/plugins/tainttoleration/taint_toleration.go
@@ -357,13 +381,16 @@ func (pl *TaintToleration) isSchedulableAfterNodeChange(logger klog.Logger, pod 
 }
 ```
 
-节点事件的 hint 用的是和 Filter 完全相同的判断，只不过分别在旧节点和新节点上各跑一次：只有「之前这个 Pod 过不去，现在过得去」才返回 `Queue`。新增节点时没有旧节点，`wasUntolerated` 默认为 `true`，于是新节点只要对这个 Pod 没有不被容忍的硬污点就唤醒它。
+节点事件复用了 Filter 的判断，只是分别作用在旧节点和新节点上。**只有当这个 Pod 之前过不去、现在过得去时，才返回 `Queue`。**
 
-和上一篇的 `NodeUnschedulable` 对比，这个 hint 是**针对具体 Pod** 的：它拿 Pod 的容忍去比较。一个节点删掉了 `dedicated=gpu:NoSchedule`，只会唤醒那些因为这个污点被拒绝、并且没有别的不被容忍污点的 Pod；对本来就容忍 GPU 污点的 Pod，`wasUntolerated` 为假，返回 `QueueSkip`。
+由此可以推出两种情况：
 
-只看硬污点：`PreferNoSchedule` 的变化不会让任何 Pod 从「不可调度」变成「可调度」，所以 hint 根本不考虑它。
+1. 新增节点时没有旧节点，`wasUntolerated` 默认为 `true`，所以只要新节点没有它不容忍的硬污点就会唤醒；
+2. 判断只看硬污点，`PreferNoSchedule` 的变化不会让任何 Pod 从不可调度变成可调度。
 
-hint 只判断事件中的这一个节点。它不知道 Pod 当初是被哪个节点拒绝的，也不知道这个节点是否还有资源。一个节点去掉污点，就会唤醒所有对它「之前不行、现在行」的 Pod，即使这些 Pod 实际上会因为资源不足在下一个周期里再次失败。这是 QueueingHint 的一般取舍：hint 只负责排除明显无关的事件，不负责预测调度结果。
+和上一篇的 `NodeUnschedulable` 对比，这个 hint 针对的是具体 Pod：它拿 Pod 的容忍去比较。一个节点删掉了 `dedicated=gpu:NoSchedule`，只会唤醒那些因为这个污点被拒绝、并且没有别的不被容忍污点的 Pod；对本来就容忍 GPU 污点的 Pod，`wasUntolerated` 为假，返回 `QueueSkip`。
+
+hint 只判断事件中的这一个节点。它不知道 Pod 当初是被哪个节点拒绝的，也不知道这个节点是否还有资源。一个节点去掉污点，就会唤醒所有对它「之前不行、现在行」的 Pod，即使这些 Pod 实际上会因为资源不足在下一个周期里再次失败。这是 QueueingHint 的一般取舍：**hint 只负责排除明显无关的事件，不负责预测调度结果。**
 
 Pod 容忍变化的 hint 无条件返回 `Queue`：
 
@@ -377,6 +404,8 @@ func (pl *TaintToleration) isSchedulableAfterTargetPodTolerationChange(logger kl
 ```
 
 `NodeUnschedulable` 在同样的事件上会检查新容忍是否覆盖 unschedulable 污点，而这里不检查。原因是 `TaintToleration` 关心的污点集合是开放的，要判断新容忍是否有用，得知道 Pod 当初被哪些节点的哪些污点拒绝，而这些信息没有保存在 Pod 上。容忍只能追加、不能修改或删除，这种更新本来就少见，直接唤醒的代价很小。
+
+到此，调度器一侧的污点逻辑就完整了：Filter 看硬污点，Score 数软污点，hint 判断事件。但 `NoExecute` 还有一半工作不在这里。
 
 ## 六、NoExecute：调度器只管一半
 
@@ -400,7 +429,7 @@ func (pl *TaintToleration) isSchedulableAfterTargetPodTolerationChange(logger kl
 	}
 ```
 
-只看 `NoExecute`，而且跳过静态 Pod。逻辑很直接：`NoSchedule` 是调度层面的约定，Pod 既然没有经过调度器，就不受它约束；`NoExecute` 是「不容忍就不能在这里运行」，kubelet 不接纳这样的 Pod，否则它刚启动就会被驱逐。静态 Pod 由节点本地的清单文件管理，通常是控制面组件，不能因为节点被打了污点就拒绝启动。
+只看 `NoExecute`，而且跳过静态 Pod。**`NoSchedule` 是调度层面的约定，Pod 既然没有经过调度器，就不受它约束**；`NoExecute` 是「不容忍就不能在这里运行」，kubelet 不接纳这样的 Pod，否则它刚启动就会被驱逐。静态 Pod 由节点本地的清单文件管理，通常是控制面组件，不能因为节点被打了污点就拒绝启动。
 
 ### 6.2 taint-eviction-controller
 
@@ -445,15 +474,25 @@ func getNoExecuteTaints(taints []v1.Taint) []v1.Taint {
 	tc.taintEvictionQueue.AddWork(ctx, NewWorkArgs(podNamespacedName.Name, podNamespacedName.Namespace), startTime, triggerTime)
 ```
 
-有不被容忍的 `NoExecute` 污点就立即删除；全部被容忍时，取所有用到的容忍里最小的 `tolerationSeconds` 作为宽限期，到期删除；没有任何容忍设置 `tolerationSeconds`，就永久容忍。`tolerationSeconds` 小于等于 0 视为立即删除。
+驱逐时机由三种情况决定：
 
-`DefaultTolerationSeconds` 准入插件（默认启用）会给没有相关容忍的 Pod 加上 `node.kubernetes.io/not-ready:NoExecute` 和 `node.kubernetes.io/unreachable:NoExecute` 两条容忍，各 300 秒。所以节点失联后，普通 Pod 大约 5 分钟才被驱逐；DaemonSet 的 Pod 带的是不设 `tolerationSeconds` 的同名容忍（上一篇的 `AddOrUpdateDaemonPodTolerations`），永远不会因为节点失联被驱逐。
+1. 有不被容忍的 `NoExecute` 污点，立即删除；
+2. 全部被容忍时，取所有用到的容忍里最小的 `tolerationSeconds` 作为宽限期，到期删除；
+3. 没有任何容忍设置 `tolerationSeconds`，永久容忍。
+
+`tolerationSeconds` 小于等于 0 视为立即删除。
+
+`DefaultTolerationSeconds` 准入插件（默认启用）会给没有相关容忍的 Pod 加上 `node.kubernetes.io/not-ready:NoExecute` 和 `node.kubernetes.io/unreachable:NoExecute` 两条容忍，各 300 秒。
+
+所以**节点失联后，普通 Pod 大约 5 分钟才被驱逐**；DaemonSet 的 Pod 带的是不设 `tolerationSeconds` 的同名容忍（上一篇的 `AddOrUpdateDaemonPodTolerations`），永远不会因为节点失联被驱逐。
 
 ### 6.3 一个推论：not-ready 为什么有两个污点
 
 node-lifecycle-controller 在节点 `Ready=False` 时会打两个同名污点：`doNoScheduleTaintingPass` 打 `node.kubernetes.io/not-ready:NoSchedule`，`doNoExecuteTaintingPass` 打 `node.kubernetes.io/not-ready:NoExecute`。
 
-结合上面的分工就能理解为什么需要两个。每个 Pod 默认都容忍 `not-ready:NoExecute`（300 秒）。如果只有 `NoExecute` 版本，调度器的 Filter 会认为这些 Pod 容忍 not-ready 节点，新 Pod 就可能被调度到一个已经失联的节点上，再在 5 分钟后被驱逐。`NoSchedule` 版本不在默认容忍之内，它让调度器在 Filter 阶段直接排除 not-ready 节点，`NoExecute` 版本只负责已经在上面的 Pod 的宽限期。调度器不看 `tolerationSeconds`，这里正是靠两个 effect 把「能否调度」和「能运行多久」分开表达。
+结合上面的分工就能理解为什么需要两个。每个 Pod 默认都容忍 `not-ready:NoExecute`（300 秒）。如果只有 `NoExecute` 版本，调度器的 Filter 会认为这些 Pod 容忍 not-ready 节点，新 Pod 就可能被调度到一个已经失联的节点上，再在 5 分钟后被驱逐。
+
+`NoSchedule` 版本不在默认容忍之内，它让调度器在 Filter 阶段直接排除 not-ready 节点，`NoExecute` 版本只负责已经在上面的 Pod 的宽限期。**调度器不看 `tolerationSeconds`，这里正是靠两个 effect 把「能否调度」和「能运行多久」分开表达。**
 
 新节点还有一个和上一篇 cordon 类似的异步窗口：节点对象刚创建时 node-lifecycle-controller 还没来得及打 `not-ready:NoSchedule`，调度器可能把 Pod 放到一个还没准备好的节点上。这个窗口是由 API Server 的 `TaintNodesByCondition` 准入插件（`plugin/pkg/admission/nodetaint`，默认启用）在创建 Node 时同步补上这个污点来关闭的：
 
@@ -469,9 +508,11 @@ node-lifecycle-controller 在节点 `Ready=False` 时会打两个同名污点：
 
 同一类问题，cordon 靠调度器多一个插件直接读 spec，新节点靠准入同步写污点，两种解法都是为了不依赖控制器的异步补写。
 
+机制讲完了，下面几种情况经常被读错。
+
 ## 七、边界情况与常见误解
 
-**污点只排斥，不吸引。** 上面的 GPU 例子里，Pod 容忍了 `dedicated=gpu`，只说明它**可以**去 GPU 节点，不说明它**会**去。想让它只去 GPU 节点，还要加节点亲和或 `nodeSelector`，那是[下一篇](/posts/sched-plugin-06-node-affinity/)的 `NodeAffinity`。专用节点的标准做法是「污点挡住别人 + 亲和拉来自己」两件套。
+**污点只排斥，不吸引。** 上面的 GPU 例子里，Pod 容忍了 `dedicated=gpu`，只说明它「可以」去 GPU 节点，不说明它「会」去。想让它只去 GPU 节点，还要加节点亲和或 `nodeSelector`，那是[下一篇](/posts/sched-plugin-06-node-affinity/)的 `NodeAffinity`。专用节点的标准做法是「污点挡住别人 + 亲和拉来自己」两件套。
 
 **`operator: Exists` 且 key 为空的容忍容忍一切。** 包括 `NoExecute`，包括 unschedulable。一些系统组件这样写是为了在任何节点上都能运行，业务 Pod 这样写会让 cordon、not-ready、专用节点全部失效。
 
@@ -487,7 +528,9 @@ node-lifecycle-controller 在节点 `Ready=False` 时会打两个同名污点：
 
 **动态资源的设备污点走了同一条路。** DRA 引入了 `DRADeviceTaints`，设备也可以有污点，ResourceClaim 里可以写容忍，kube-controller-manager 里对应地多了一个 `device-taint-eviction-controller`。模式与节点污点完全一致：调度器负责「能不能分配」，控制器负责「已分配的要不要回收」。第 15 篇讲 `DynamicResources` 时会看到对应代码。
 
-**生产配置建议。** 给节点打 `PreferNoSchedule` 前，先算一下权重 3 带来的影响（4.4 节）；需要表达一个连续的「节点质量」时，`TaintTolerationComparisonOperators` 的 `Gt`/`Lt` 比打一堆离散的污点更合适，但它目前是 Alpha，API Server、调度器、kubelet、controller-manager 的 gate 要一起打开，否则不同组件对同一个容忍的判断会不一致：调度器认为不匹配，API Server 甚至不允许创建。
+**生产配置建议。** 给节点打 `PreferNoSchedule` 前，先算一下权重 3 带来的影响（4.4 节）。
+
+需要表达一个连续的「节点质量」时，`TaintTolerationComparisonOperators` 的 `Gt`/`Lt` 比打一堆离散的污点更合适，但它目前是 Alpha，API Server、调度器、kubelet、controller-manager 的 gate 要一起打开，否则不同组件对同一个容忍的判断会不一致：调度器认为不匹配，API Server 甚至不允许创建。
 
 ## 九、小结
 

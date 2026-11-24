@@ -1,0 +1,35 @@
+/* =========================================================
+   正文里的重点语句
+   Markdown 的 **加粗** 在正文中加一层标记笔式的底色，
+   让扫读时能直接看到结论句；代码块、标题、表格表头不受影响。
+   ========================================================= */
+
+.post-content strong,
+.post-content b {
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.post-content p strong,
+.post-content li strong,
+.post-content td strong,
+.post-content blockquote strong {
+    background: linear-gradient(transparent 60%, rgba(255, 176, 32, 0.38) 60%);
+    padding: 0 0.08em;
+    border-radius: 2px;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+}
+
+:root[data-theme="dark"] .post-content p strong,
+:root[data-theme="dark"] .post-content li strong,
+:root[data-theme="dark"] .post-content td strong,
+:root[data-theme="dark"] .post-content blockquote strong {
+    background: linear-gradient(transparent 60%, rgba(255, 176, 32, 0.26) 60%);
+}
+
+/* 链接里的加粗不加底色，避免和链接的下划线叠加 */
+.post-content a strong {
+    background: none;
+    padding: 0;
+}

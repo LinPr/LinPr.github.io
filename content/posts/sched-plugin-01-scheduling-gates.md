@@ -15,7 +15,9 @@ description: "SchedulingGates 是默认 Profile 里第一个插件，只实现 P
 
 [上一篇](/posts/sched-plugin-00-journey/)画了一张总地图：Pod 被 informer 发现后进入调度队列 `PriorityQueue`，经过 PreEnqueue 才能进入 `activeQ`，出队后跑一个调度周期，失败了再由 QueueingHint 决定什么时候回来。这一篇从地图的最左端开始，读默认 Profile 里排在第一位的插件 `SchedulingGates`。
 
-它在 `default_plugins.go` 的 `MultiPoint` 列表里排第一，默认启用，不受任何 feature gate 控制（对应的 `PodSchedulingReadiness` 已经 GA 并从 `kube_features.go` 中移除）。它只实现了两个接口：`PreEnqueuePlugin` 和 `EnqueueExtensions`，没有 Filter，没有 Score，也不参与调度周期。本文基于 Kubernetes master 提交 `aabdf5a2`。
+它在 `default_plugins.go` 的 `MultiPoint` 列表里排第一，默认启用，不受任何 feature gate 控制（对应的 `PodSchedulingReadiness` 已经 GA 并从 `kube_features.go` 中移除）。
+
+它只实现了两个接口：`PreEnqueuePlugin` 和 `EnqueueExtensions`，没有 Filter，没有 Score，也不参与调度周期。本文基于 Kubernetes master 提交 `aabdf5a2`。
 
 ## 一、它解决什么问题
 
@@ -43,9 +45,13 @@ spec:
     image: busybox
 ```
 
-只要列表非空，调度器就不会尝试调度它。`kubectl get pod` 看到的状态是 `SchedulingGated`。两个外部控制器各自完成工作后，各自删掉自己那一项；列表删空，Pod 才开始排队。
+**只要列表非空，调度器就不会尝试调度它。** `kubectl get pod` 看到的状态是 `SchedulingGated`。两个外部控制器各自完成工作后，各自删掉自己那一项；列表删空，Pod 才开始排队。
+
+调度器里承载这个语义的只有一个二十行的 PreEnqueue 插件，先看它本身。
 
 ## 二、插件本身：20 行代码
+
+插件只做一件事：看到 gate 就拒绝。全部代码一次可以读完。
 
 ```go
 // pkg/scheduler/framework/plugins/schedulinggates/scheduling_gates.go
@@ -85,18 +91,20 @@ func (pl *SchedulingGates) isSchedulableAfterUpdateTargetPodSchedulingGatesElimi
 }
 ```
 
-插件是空结构体，没有参数，没有状态，`New` 忽略了所有入参。逻辑只有一句：gate 非空就返回 `UnschedulableAndUnresolvable`，消息里列出所有 gate 名。
+插件是空结构体，没有参数，没有状态，`New` 忽略了所有入参。**逻辑只有一句：gate 非空就返回 `UnschedulableAndUnresolvable`，消息里列出所有 gate 名。**
 
 两处值得说明：
 
-- **状态码选 `UnschedulableAndUnresolvable`**。对 PreEnqueue 来说，任何非 Success 的状态效果都一样：Pod 不进 `activeQ`。这里没有抢占的问题，因为 Pod 根本走不到 PostFilter。选这个 code 只是在语义上表达「调度器自己解决不了，要等外部」。
-- **QueueingHint 无条件返回 `Queue`**。它只注册了一个事件 `TargetPod/UpdatePodSchedulingGatesEliminated`，而这个事件本身已经足够精确（见第四节），hint 函数没必要再做判断。
+- 状态码选 `UnschedulableAndUnresolvable`。对 PreEnqueue 来说，任何非 Success 的状态效果都一样：Pod 不进 `activeQ`。这里没有抢占的问题，因为 Pod 根本走不到 PostFilter。选这个 code 只是在语义上表达「调度器自己解决不了，要等外部」。
+- QueueingHint 无条件返回 `Queue`。它只注册了一个事件 `TargetPod/UpdatePodSchedulingGatesEliminated`，而这个事件本身已经足够精确（见第四节），hint 函数没必要再做判断。
 
 真正让这个插件起作用的是它在队列里的位置，下面看队列这一侧。
 
 ## 三、PreEnqueue 在队列里的位置
 
 {{< figure src="/images/posts/sched-plugins/01-queue-preenqueue.svg" link="/images/posts/sched-plugins/01-queue-preenqueue.svg" caption="PreEnqueue 是进入 activeQ（以及开启 SchedulerPopFromBackoffQ 时进入 backoffQ）之前的闸门，被拒绝的实体以 gated 状态留在 unschedulableEntities（点击查看大图）" >}}
+
+队列这一侧要回答两个问题：闸门架在哪些路径上，被拦下的实体又停在哪里。
 
 ### 3.1 三个子队列
 
@@ -131,11 +139,13 @@ type unschedulableEntities struct {
 }
 ```
 
-被 PreEnqueue 拦下的实体和调度失败的实体住在同一个 map 里，只是指标分开统计：前者计入 `scheduler_pending_pods{queue="gated"}`，后者计入 `queue="unschedulable"`。排查「Pod 为什么没被调度」时，先看这两个指标就能分清是没排上队还是排上了但调度失败。
+**被 PreEnqueue 拦下的实体和调度失败的实体住在同一个 map 里，只是指标分开统计**：前者计入 `scheduler_pending_pods{queue="gated"}`，后者计入 `queue="unschedulable"`。排查「Pod 为什么没被调度」时，先看这两个指标就能分清是没排上队还是排上了但调度失败。
+
+三个子队列的分工清楚了，下一个问题是实体从哪条路径被放进 `activeQ`。
 
 ### 3.2 两个入口都会过闸门
 
-把实体放进 `activeQ` 的唯一入口是 `moveToActiveQ`，它先跑 PreEnqueue：
+既然 gated 实体停在 `unschedulableEntities`，闸门就必须架在实体进入 `activeQ` 的唯一入口上。这个入口是 `moveToActiveQ`，它先跑 PreEnqueue：
 
 ```go
 // pkg/scheduler/backend/queue/scheduling_queue.go
@@ -166,7 +176,9 @@ func (p *PriorityQueue) moveToActiveQ(logger klog.Logger, entity framework.Queue
 }
 ```
 
-`SchedulerPopFromBackoffQ`（1.33 Beta，默认开启）打开后，`activeQ` 空闲时调度器会直接从 `backoffQ` 里 Pop。这样 `backoffQ` 里的实体也可能被直接调度，所以闸门必须前移：`moveToBackoffQ` 在入队时就跑 PreEnqueue，被拒绝的同样放回 `unschedulableEntities`；之后从 `backoffQ` 移到 `activeQ` 时（`movesFromBackoffQ=true`）就不再重复跑。
+`SchedulerPopFromBackoffQ`（1.33 Beta，默认开启）打开后，`activeQ` 空闲时调度器会直接从 `backoffQ` 里 Pop，这样 `backoffQ` 里的实体也可能被直接调度。
+
+闸门因此必须前移：`moveToBackoffQ` 在入队时就跑 PreEnqueue，被拒绝的同样放回 `unschedulableEntities`；之后从 `backoffQ` 移到 `activeQ` 时（`movesFromBackoffQ=true`）就不再重复跑。
 
 ```go
 // pkg/scheduler/backend/queue/scheduling_queue.go
@@ -190,9 +202,11 @@ func (p *PriorityQueue) moveToBackoffQ(logger klog.Logger, entity framework.Queu
 }
 ```
 
-结论是：无论 Pod 从哪个方向往「可以被 Pop 的地方」走，都要先过 PreEnqueue。这也解释了 PreEnqueue 插件的一个约束：它会在队列锁内被频繁调用，必须是 O(1) 的纯检查，不能发 API 请求。`SchedulingGates` 只看一个切片长度，符合这个要求。
+**无论实体从哪个方向往「可以被 Pop 的地方」走，都要先过 PreEnqueue。** 这也解释了 PreEnqueue 插件的一个约束：它会在队列锁内被频繁调用，必须是 O(1) 的纯检查，不能发 API 请求。`SchedulingGates` 只看一个切片长度，符合这个要求。
 
 ### 3.3 闸门内部：gating 插件先跑，其余顺序不固定
+
+两个入口调的是同一套检查，而这套检查面对的是一个插件集合。什么时候问哪个插件，决定了上一次的拦截结果能不能被复用。
 
 ```go
 // pkg/scheduler/backend/queue/scheduling_queue.go
@@ -237,9 +251,13 @@ func (p *PriorityQueue) runPreEnqueuePluginsForPod(ctx context.Context, pInfo *f
 
 `GatingPlugin` 非空就是「gated」的定义（`QueuedPodInfo.Gated()` 只判断这个字段）；`GatingPluginEvents` 是这个插件在 `EventsToRegister` 里声明的事件，对 `SchedulingGates` 来说只有一个 `TargetPod/UpdatePodSchedulingGatesEliminated`。
 
-默认 Profile 里其实有三个插件实现了 PreEnqueue：`SchedulingGates`、`DynamicResources`（Pod 引用的 ResourceClaim 还不存在时拦住）、`DefaultPreemption`（开启 `SchedulerAsyncPreemption` 后，Pod 的异步抢占还在进行时拦住）。`GenericWorkload` 开启后还会加上 `GangScheduling`。它们共用这套机制，只是拦截条件不同。
+默认 Profile 里其实有三个插件实现了 PreEnqueue：`SchedulingGates`、`DynamicResources`（Pod 引用的 ResourceClaim 还不存在时拦住）、`DefaultPreemption`（开启 `SchedulerAsyncPreemption` 后，Pod 的异步抢占还在进行时拦住）。`GenericWorkload` 开启后还会加上 `GangScheduling`。
+
+它们共用这套机制，只是拦截条件不同。闸门架在哪、谁先跑，到这里都清楚了。剩下的是被拦住的实体怎么被放回来。
 
 ## 四、gated 的 Pod 怎么回来
+
+这一节把 ungate 到重新可调度的路径走一遍：先看哪些事件能唤醒它，再看这个事件怎么产生、退避怎么算，最后看两个容易忽略的角落。
 
 ### 4.1 只有一种事件能唤醒它
 
@@ -264,11 +282,11 @@ func (p *PriorityQueue) moveEntitiesToActiveOrBackoffQueue(logger klog.Logger, e
 }
 ```
 
-gated 实体只对 `GatingPluginEvents` 里的事件和通配事件有反应。节点变化、别的 Pod 删除，一律跳过，连 hint 函数都不调。
+**gated 实体只对 `GatingPluginEvents` 里的事件和通配事件有反应**：节点变化、别的 Pod 删除，一律跳过，连 hint 函数都不调。
 
 ### 4.2 「全部删光」才产生事件
 
-`UpdatePodSchedulingGatesEliminated` 由 Pod 更新时的事件提取函数产生：
+`UpdatePodSchedulingGatesEliminated` 来自 Pod 更新时的事件提取函数：
 
 ```go
 // pkg/scheduler/framework/events.go
@@ -282,7 +300,9 @@ func extractPodSchedulingGateEliminatedChange(newPod *v1.Pod, oldPod *v1.Pod) fw
 }
 ```
 
-条件是旧 Pod 有 gate、新 Pod 一个都没有。两个 gate 删掉一个，不产生这个事件；如果这次更新也没有触发其他提取函数，产生的是通用的 `TargetPod/Update`。而 `MatchClusterEvents` 要求 `incomingEvent.ActionType <= ce.ActionType`，`Update` 是所有更新位的并集，大于 `UpdatePodSchedulingGatesEliminated`，所以匹配不上，Pod 继续留在原地。这正是「hint 无条件返回 `Queue`」敢这么写的原因：能走到 hint 的事件，一定是 gate 已经删光了。
+提取条件很严：旧 Pod 有 gate、新 Pod 一个都没有。两个 gate 删掉一个，不产生这个事件；如果这次更新也没有触发其他提取函数，产生的是通用的 `TargetPod/Update`。
+
+后者也匹配不上。`MatchClusterEvents` 要求 `incomingEvent.ActionType <= ce.ActionType`，`Update` 是所有更新位的并集，大于 `UpdatePodSchedulingGatesEliminated`，所以 Pod 继续留在原地。**这正是「hint 无条件返回 `Queue`」敢这么写的原因：能走到 hint 的事件，一定是 gate 已经删光了。**
 
 完整的唤醒路径在 `PriorityQueue.Update` 里：Pod 在 `unschedulableEntities` 中，就对每个提取出来的事件调用 `isEntityWorthRequeuing`，`SchedulingGates` 在 `UnschedulablePlugins` 里、事件匹配、hint 返回 `Queue`，策略是 `queueAfterBackoff`；然后 `requeueEntityWithQueueingStrategy` 检查退避：
 
@@ -301,21 +321,29 @@ func extractPodSchedulingGateEliminatedChange(newPod *v1.Pod, oldPod *v1.Pod) fw
 	}
 ```
 
-被 gate 住的 Pod 从未进过调度周期，`UnschedulableCount` 为 0，没有退避，直接走 `moveToActiveQ`。PreEnqueue 再跑一遍，`SchedulingGates` 放行，Pod 进入 `activeQ`。从 gate 删光到 Pod 可以被 Pop，中间没有任何人为延迟。
+被 gate 住的 Pod 从未进过调度周期，`UnschedulableCount` 为 0，没有退避，直接走 `moveToActiveQ`。PreEnqueue 再跑一遍，`SchedulingGates` 放行，Pod 进入 `activeQ`。
+
+**从 gate 删光到 Pod 可以被 Pop，中间没有任何人为延迟。**
 
 ### 4.3 兜底刷新不会把它放出来
 
-队列每 30 秒执行一次 `flushUnschedulableEntitiesLeftover`，把在 `unschedulableEntities` 里待超过 5 分钟的实体以通配事件 `UnschedulableTimeout` 重新评估。通配事件不会被 4.1 的短路跳过，所以 gated 的 Pod 大约每 5 分钟会被拿出来重跑一次 PreEnqueue，`moveToActiveQ` 发现它仍然 gated，原样放回。这个兜底是为了防止插件的 QueueingHint 写错导致 Pod 卡死，对 `SchedulingGates` 来说没有实际作用，只是一次很便宜的空转。
+上面的路径依赖事件和 hint 都正确。万一插件把 hint 写错、事件没产生，队列还有一层定时兜底：每 30 秒执行一次 `flushUnschedulableEntitiesLeftover`，把在 `unschedulableEntities` 里待超过 5 分钟的实体以通配事件 `UnschedulableTimeout` 重新评估。
+
+通配事件不会被 4.1 的短路跳过，所以 gated 的 Pod 大约每 5 分钟会被拿出来重跑一次 PreEnqueue，`moveToActiveQ` 发现它仍然 gated，原样放回。这个兜底是为了防止插件的 QueueingHint 写错导致 Pod 卡死；对 `SchedulingGates` 来说，**它没有实际作用，只是一次很便宜的空转**。
 
 ### 4.4 一个副作用：排队时间从创建时算起
 
-`QueuedPodInfo.Timestamp` 在 Pod 第一次加入队列时（`newQueuedPodInfo`）设置，只在调度失败回队（`AddUnschedulablePodIfNotPresent`）时刷新。gated 的 Pod 没有失败过，ungate 时走的 `entity.Update(newPod)` 只替换 Pod 对象，不动 `QueueingParams`。所以一个被 gate 了一小时的 Pod，ungate 后的 `Timestamp` 仍是一小时前。下一篇会讲到 `PrioritySort` 在同优先级内按 `Timestamp` 排序，这意味着它会排在这一小时内新建的同优先级 Pod 前面。对队列系统来说这通常是期望的行为：先提交的作业先调度。
+`QueuedPodInfo.Timestamp` 只在两个时刻赋值：Pod 第一次加入队列时（`newQueuedPodInfo`），和调度失败回队时（`AddUnschedulablePodIfNotPresent`）。gated 的 Pod 没有失败过，ungate 时走的 `entity.Update(newPod)` 只替换 Pod 对象，不动 `QueueingParams`。
+
+**所以一个被 gate 了一小时的 Pod，ungate 后的 `Timestamp` 仍是一小时前。** 下一篇会讲到 `PrioritySort` 在同优先级内按 `Timestamp` 排序，这意味着它会排在这一小时内新建的同优先级 Pod 前面。对队列系统来说这通常是期望的行为：先提交的作业先调度。
 
 ## 五、API Server 一侧：只能删，不能加
 
-`schedulingGates` 的语义能成立，靠的是 API Server 的校验，而不是调度器。
+前面几节都在调度器内部：闸门在哪、事件怎么来。`schedulingGates` 的语义能成立，还靠 API Server 一侧的校验，而不是调度器。
 
 ### 5.1 只能在创建时设置
+
+gate 只能删不能加，这条规则由更新时的校验保证：
 
 ```go
 // pkg/apis/core/validation/validation.go
@@ -342,7 +370,7 @@ func validateOnlyDeletedSchedulingGates(newGates, oldGates []core.PodSchedulingG
 }
 ```
 
-更新时出现旧列表里没有的名字就拒绝。这保证了 gate 是单向的：Pod 一旦开始调度，就不可能被重新 gate 回去，调度器不需要处理「调度到一半被 gate」的情况。创建时还有两条约束：gate 名必须是合法的 qualified name 且不能重复（`validateSchedulingGates`）；`spec.nodeName` 和 `schedulingGates` 不能同时设置：
+更新时出现旧列表里没有的名字就拒绝。**这保证了 gate 是单向的：Pod 一旦开始调度，就不可能被重新 gate 回去**，调度器不需要处理「调度到一半被 gate」的情况。创建时还有两条约束：gate 名必须是合法的 qualified name 且不能重复（`validateSchedulingGates`）；`spec.nodeName` 和 `schedulingGates` 不能同时设置：
 
 ```go
 // pkg/apis/core/validation/validation.go
@@ -378,13 +406,20 @@ var updatablePodSpecFields = []string{
 }
 ```
 
-判断条件是 `podIsGated := len(oldPod.Spec.SchedulingGates) > 0`，看的是**旧对象**。所以可以在同一次更新里补上 `nodeSelector` 并删掉最后一个 gate。规则是「只能收紧」：`nodeSelector` 只能新增键；`requiredDuringSchedulingIgnoredDuringExecution` 原来为空时可以随便设，原来非空时不能增删 term，每个 term 里只能追加 requirement（`validateNodeAffinityMutation`）。只能收紧的原因是，外部控制器可能基于原来的约束做过决策（比如按可选节点预留了配额），放宽约束会让那些决策失效。
+判断条件是 `podIsGated := len(oldPod.Spec.SchedulingGates) > 0`，看的是旧对象，所以可以在同一次更新里补上 `nodeSelector` 并删掉最后一个 gate。
+
+**规则是「只能收紧」**，具体有两条：
+
+- `nodeSelector` 只能新增键；
+- `requiredDuringSchedulingIgnoredDuringExecution` 原来为空时可以随便设，原来非空时不能增删 term，每个 term 里只能追加 requirement（`validateNodeAffinityMutation`）。
+
+只能收紧的原因是，外部控制器可能基于原来的约束做过决策（比如按可选节点预留了配额），放宽约束会让那些决策失效。
 
 `podAffinity`/`podAntiAffinity` 不在白名单里。源码注释给出的原因是 `matchLabelKeys`/`mismatchLabelKeys` 会在创建时被展开进 `labelSelector`，允许修改就要处理展开结果和后续人为修改之间的冲突。
 
 ### 5.3 SchedulingGated 状态是谁写的
 
-`kubectl get pod` 显示的 `SchedulingGated` 不是调度器写的。调度器从未处理过这个 Pod，自然不会更新它的状态。条件是 API Server 在创建时加上的：
+**`kubectl get pod` 显示的 `SchedulingGated` 不是调度器写的。** 调度器从未处理过这个 Pod，自然不会更新它的状态。条件是 API Server 在创建时加上的：
 
 ```go
 // pkg/registry/core/pod/strategy.go
@@ -403,6 +438,8 @@ func applySchedulingGatedCondition(pod *api.Pod) {
 ```
 
 kubectl 的打印逻辑看到 `PodScheduled` 条件的 reason 是 `SchedulingGated`，就把 STATUS 列显示成它。gate 删光之后，这个条件要等调度器第一次处理该 Pod 时才会被覆盖（调度失败写成 `Unschedulable`，成功则绑定）。
+
+字段语义、校验规则和状态展示到这里都交代完了。接下来是几个不按正路走的组合。
 
 ## 六、边界情况
 
@@ -429,6 +466,8 @@ kubectl 的打印逻辑看到 `PodScheduled` 条件的 reason 是 `SchedulingGat
 
 **gate 名字没有任何语义。** 调度器只看列表长度，不解析名字。约定俗成用带域名前缀的名字（如 `example.com/quota-check`），是为了让不同控制器各管各的、不误删别人的 gate。
 
+这些边界情况的共同点是：gate 的语义完全落在队列这一侧，调度周期里没有任何一处代码认识它。下一节对比的正是这两种实现方式。
+
 ## 七、发散：为什么做成 PreEnqueue，而不是 Filter
 
 一个外部控制器想「暂时不让 Pod 调度」，最直观的实现是写一个 Filter 插件，条件不满足就对所有节点返回失败。对比两者的成本：
@@ -440,9 +479,9 @@ kubectl 的打印逻辑看到 `PodScheduled` 条件的 reason 是 `SchedulingGat
 | 退避 | 每失败一次翻倍，ungate 后可能还要等最长 10 秒 | 从未失败，ungate 后立即入队 |
 | 受哪些事件唤醒 | 插件关心的所有事件 | 只有 gate 删光 |
 
-调度器的吞吐上限由串行的调度周期决定。大批量提交作业的场景下，几千个暂时不该调度的 Pod 如果每隔几秒就来占一次调度周期，会明显拖慢真正可以调度的 Pod。PreEnqueue 把这部分成本降到了接近零。
+**调度器的吞吐上限由串行的调度周期决定。** 大批量提交作业的场景下，几千个暂时不该调度的 Pod 如果每隔几秒就来占一次调度周期，会明显拖慢真正可以调度的 Pod。PreEnqueue 把这部分成本降到了接近零。
 
-另一个对比对象是 `schedulerName`。把 Pod 的 `schedulerName` 设成一个不存在的调度器，同样能让默认调度器不处理它，但 `schedulerName` 创建后不可修改，没法「放行」，只能删掉重建；而且这样的 Pod 不会被任何调度器的指标统计到。gate 是可撤销的，同时让 Pod 在调度器的队列里有一个可观测的位置。
+另一个对比对象是 `schedulerName`。把 Pod 的 `schedulerName` 设成一个不存在的调度器，同样能让默认调度器不处理它。但那是一个创建后不可修改的字段，没法「放行」，只能删掉重建；而且这样的 Pod 不会被任何调度器的指标统计到。**gate 是可撤销的，同时让 Pod 在调度器的队列里有一个可观测的位置。**
 
 从机制上看，`SchedulingGates` 也是 PreEnqueue 扩展点的第一个使用者。这个扩展点后来被 `DynamicResources`、异步抢占、成组调度复用，做的都是同一件事：在条件明显不满足时，别让 Pod 去占用串行的调度周期。
 

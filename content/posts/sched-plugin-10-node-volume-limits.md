@@ -15,9 +15,13 @@ description: "云盘能挂到一台机器上的数量有硬上限，NodeVolumeLi
 
 上一篇 [VolumeRestrictions](/posts/sched-plugin-09-volume-restrictions/) 检查的是「同一块盘能不能被两个 Pod 用」。接下来的问题是：这个节点还能不能再挂一块盘。
 
-AWS 上一台 Nitro 实例能挂的 EBS 卷数量有限，GCE、Azure 也都有类似的上限。超过之后 attach 会失败，Pod 卡在 `ContainerCreating`。`NodeVolumeLimits` 把这个上限前移到调度阶段。本文基于 Kubernetes master 提交 `aabdf5a2`。它在默认 Profile 的 MultiPoint 列表里紧跟 `VolumeRestrictions`，默认启用，实现了 PreFilter、Filter、`EnqueueExtensions`、`SignPlugin`，没有 Score，没有 Args。插件的启用不受 feature gate 控制，但其中一段逻辑受 `VolumeLimitScaling`（1.37 beta，默认开启）控制。
+AWS 上一台 Nitro 实例能挂的 EBS 卷数量有限，GCE、Azure 也都有类似的上限。超过之后 attach 会失败，Pod 卡在 `ContainerCreating`。`NodeVolumeLimits` 把这个上限前移到调度阶段。
+
+本文基于 Kubernetes master 提交 `aabdf5a2`。它在默认 Profile 的 MultiPoint 列表里紧跟 `VolumeRestrictions`，默认启用，实现了 PreFilter、Filter、`EnqueueExtensions`、`SignPlugin`，没有 Score，没有 Args。插件的启用不受 feature gate 控制，但其中一段逻辑受 `VolumeLimitScaling`（1.37 beta，默认开启）控制。
 
 ## 一、名字的来历：插件叫 NodeVolumeLimits，结构体叫 CSILimits
+
+插件注册名是 `NodeVolumeLimits`，结构体却叫 `CSILimits`，常量名是 `CSIName`。这组名字是历史留下的，结构体本身则交代了它依赖的全部数据源：
 
 ```go
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
@@ -41,13 +45,17 @@ type CSILimits struct {
 const CSIName = names.NodeVolumeLimits
 ```
 
-`nodevolumelimits` 包里曾经并存过好几个插件：`EBSLimits`、`GCEPDLimits`、`AzureDiskLimits`、`CinderLimits` 分别按 in-tree 卷类型计数，`NodeVolumeLimits`（即 `CSILimits`）只管 CSI 卷。随着 CSI 迁移完成，in-tree 卷在节点上实际都由 CSI 驱动挂载，按类型分开数既重复又不准，那几个插件陆续被删掉，只剩下这一个。结构体名和常量名 `CSIName` 是那个年代留下的。代码里还有一句注释「If the volume is not migratable, it will be count in non_csi filter」，所说的 non-CSI filter 已经不存在了：不能迁移的 in-tree 卷现在根本不计数。
+`nodevolumelimits` 包里曾经并存过好几个插件：`EBSLimits`、`GCEPDLimits`、`AzureDiskLimits`、`CinderLimits` 分别按 in-tree 卷类型计数，`NodeVolumeLimits`（即 `CSILimits`）只管 CSI 卷。随着 CSI 迁移完成，in-tree 卷在节点上实际都由 CSI 驱动挂载，按类型分开数既重复又不准，那几个插件陆续被删掉，只剩下这一个。
+
+结构体名和常量名 `CSIName` 是那个年代留下的。代码里还有一句注释「If the volume is not migratable, it will be count in non_csi filter」，所说的 non-CSI filter 已经不存在了：不能迁移的 in-tree 卷现在根本不计数。
 
 字段里有三处与众不同：
 
 - `csiManager` 不是自己建的 lister，而是 `handle.SharedCSIManager()`。它在 `pkg/scheduler/framework_init.go` 里用 CSINode lister 构造，通过 `frameworkruntime.WithSharedCSIManager` 注入，接口定义在 fwk 包的 `CSIManager`，供所有插件共享 CSINode 视图。
 - `vaIndexer` 是给 VolumeAttachment informer 加的按 `spec.nodeName` 的索引，键名 `va.spec.nodename`。Filter 每个节点都要查「挂在这个节点上的 VA」，没有索引就得每次全量遍历。
 - `randomVolumeIDPrefix` 在 `NewCSI` 里用 `rand.String(32)` 生成，用于给还没绑定 PV 的 PVC 造一个假的 volumeHandle，后面细说。
+
+数据源齐了，接下来看它们之中哪个决定了上限。
 
 ## 二、上限从哪里来
 
@@ -69,7 +77,9 @@ func getVolumeLimits(csiNode *storagev1.CSINode) map[string]int64 {
 }
 ```
 
-这个值由 kubelet 写入。驱动通过 node-driver-registrar 注册时，kubelet 调用驱动的 `NodeGetInfo`，把响应里的 `max_volumes_per_node` 交给 `nodeInfoManager.InstallCSIDriver`，写进本节点 CSINode 对应驱动的 `allocatable.count`（`pkg/volume/csi/csi_plugin.go`）。驱动返回 0 表示不限制，此时 `allocatable` 不设，`getVolumeLimits` 结果里就没有这个驱动。注册流程本身可以参考 [CSI 工作流程](/posts/k8s-csi-workflow/) 一文的「注册」一节。
+这个值由 kubelet 写入。驱动通过 node-driver-registrar 注册时，kubelet 调用驱动的 `NodeGetInfo`，把响应里的 `max_volumes_per_node` 交给 `nodeInfoManager.InstallCSIDriver`，写进本节点 CSINode 对应驱动的 `allocatable.count`（`pkg/volume/csi/csi_plugin.go`）。
+
+驱动返回 0 表示不限制，此时 `allocatable` 不设，`getVolumeLimits` 结果里就没有这个驱动。注册流程本身可以参考 [CSI 工作流程](/posts/k8s-csi-workflow/) 一文的「注册」一节。
 
 一个典型的 CSINode：
 
@@ -91,9 +101,15 @@ spec:
 
 更早的版本把上限放在 `Node.status.allocatable` 里，资源名形如 `attachable-volumes-aws-ebs`、`attachable-volumes-csi-<driver>`，也曾允许用环境变量覆盖。现在调度器完全不读 Node 上的这些字段，只认 CSINode。
 
-`allocatable.count` 原本是不可变的。`MutableCSINodeAllocatableCount` 在 1.36 GA 并锁定开启之后，CSIDriver 可以设置 `nodeAllocatableUpdatePeriodSeconds`，kubelet 会按周期重新调用 `NodeGetInfo` 刷新上限，并在 attach 返回 `ResourceExhausted` 时立即刷新（`pkg/volume/csi/csi_node_updater.go`）。这解决了「节点上被别的系统挂了卷，实际可用槽位比上报的少」的问题，也解释了为什么后面 QueueingHint 要专门比较 CSINode 前后的 count。
+`allocatable.count` 原本是不可变的。`MutableCSINodeAllocatableCount` 在 1.36 GA 并锁定开启之后，CSIDriver 可以设置 `nodeAllocatableUpdatePeriodSeconds`，kubelet 会按周期重新调用 `NodeGetInfo` 刷新上限，并在 attach 返回 `ResourceExhausted` 时立即刷新（`pkg/volume/csi/csi_node_updater.go`）。
+
+这解决了「节点上被别的系统挂了卷，实际可用槽位比上报的少」的问题，也解释了为什么后面 QueueingHint 要专门比较 CSINode 前后的 count。
+
+上限有了，接下来看插件怎么判断一个 Pod 要不要参与计数。
 
 ## 三、PreFilter：只判断要不要 Skip
+
+PreFilter 不计算任何数量，它只回答一个问题：这个 Pod 有没有需要计数的卷。
 
 ```go
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
@@ -111,13 +127,19 @@ func (pl *CSILimits) PreFilter(ctx context.Context, _ fwk.CycleState, pod *v1.Po
 }
 ```
 
-只有三种卷会被计数：PVC、generic ephemeral 卷、可迁移的 in-tree 内联卷（`IsInlineMigratable` 由 csi-translation-lib 判断，比如内联的 `awsElasticBlockStore`）。ConfigMap、Secret、emptyDir 这类不占挂载槽位的卷，或者 Pod 根本没有卷，PreFilter 就返回 `Skip`，Filter 不会被调用。
+只有三种卷会被计数：PVC、generic ephemeral 卷、可迁移的 in-tree 内联卷（`IsInlineMigratable` 由 csi-translation-lib 判断，比如内联的 `awsElasticBlockStore`）。
+
+ConfigMap、Secret、emptyDir 这类不占挂载槽位的卷，或者 Pod 根本没有卷，PreFilter 就返回 `Skip`，Filter 不会被调用。
 
 PreFilter 不写 CycleState，`PreFilterExtensions` 返回 nil。所有计算都放在 Filter 里按节点现算，原因后面讲。
+
+没有被 Skip 的 Pod 就进入 Filter，那里才开始真正数卷。
 
 ## 四、Filter：把所有卷换算成同一种身份再数
 
 ### 4.1 主流程
+
+Filter 一次做完三件事：统计新 Pod 的卷、统计节点上已有 Pod 和 VolumeAttachment 的卷、按驱动与上限比较。代码略长，先通读一遍。
 
 ```go
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
@@ -235,6 +257,8 @@ func (pl *CSILimits) Filter(ctx context.Context, _ fwk.CycleState, pod *v1.Pod, 
 
 ### 4.3 filterAttachableVolumes：三种卷的入口
 
+三类卷在同一个函数里分叉，`switch` 只负责把它们各自换成 PVC 名或者直接处理：
+
 ```go
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
 		switch {
@@ -272,7 +296,9 @@ func (pl *CSILimits) Filter(ctx context.Context, _ fwk.CycleState, pod *v1.Pod, 
 		}
 ```
 
-新 Pod 和已有 Pod 的容错不对称。新 Pod 的 PVC 查不到，错误用 `%w` 包装后上抛，Filter 用 `apierrors.IsNotFound` 识别出来（`IsNotFound` 走 `errors.As`，能穿透包装），返回 `UnschedulableAndUnresolvable`；已有 Pod 的 PVC 查不到只是跳过不计。已有 Pod 已经在节点上，它的 PVC 被删了也不该阻止新 Pod 调度，宁可少算。
+新 Pod 和已有 Pod 的容错不对称。新 Pod 的 PVC 查不到，错误用 `%w` 包装后上抛，Filter 用 `apierrors.IsNotFound` 识别出来（`IsNotFound` 走 `errors.As`，能穿透包装），返回 `UnschedulableAndUnresolvable`；已有 Pod 的 PVC 查不到只是跳过不计。
+
+已有 Pod 已经在节点上，它的 PVC 被删了也不该阻止新 Pod 调度，宁可少算。
 
 generic ephemeral 卷生成的 PVC 名是 `<pod名>-<卷名>`，还要用 `ephemeral.VolumeIsForPod` 校验 PVC 的 owner 确实是这个 Pod，防止同名的无关 PVC 被误用。
 
@@ -321,7 +347,11 @@ func (pl *CSILimits) getCSIDriverInfo(logger klog.Logger, csiNode *storagev1.CSI
 
 **已绑定的 CSI PV**：直接取 `spec.csi.driver` 和 `spec.csi.volumeHandle`。
 
-**已绑定的 in-tree PV**：比如 `spec.awsElasticBlockStore.volumeID: aws://us-east-1a/vol-0abc`。先确认可迁移，再用 csi-translation-lib 翻译。翻译不只是改字段名，EBS 的 `KubernetesVolumeIDToEBSVolumeID` 会把 `aws://us-east-1a/vol-0abc` 这种 URL 形式规整成 `vol-0abc`，驱动名换成 `ebs.csi.aws.com`。这样同一块盘无论以 in-tree PV、内联卷还是原生 CSI PV 出现，算出来的键都是 `ebs.csi.aws.com/vol-0abc`，去重才成立。
+**已绑定的 in-tree PV**：比如 `spec.awsElasticBlockStore.volumeID: aws://us-east-1a/vol-0abc`。先确认可迁移，再用 csi-translation-lib 翻译。
+
+翻译不只是改字段名，EBS 的 `KubernetesVolumeIDToEBSVolumeID` 会把 `aws://us-east-1a/vol-0abc` 这种 URL 形式规整成 `vol-0abc`，驱动名换成 `ebs.csi.aws.com`。
+
+这样同一块盘无论以 in-tree PV、内联卷还是原生 CSI PV 出现，算出来的键都是 `ebs.csi.aws.com/vol-0abc`，去重才成立。
 
 **未绑定的 PVC**：典型场景是 `WaitForFirstConsumer` 的 PVC，要等调度器选定节点后才会供给。此时没有 PV，只能看 StorageClass：
 
@@ -358,6 +388,8 @@ StorageClass 名为空或查不到时直接返回空，不计数。注释给出�
 
 ### 4.5 isCSIMigrationOn：比 VolumeBinding 宽松
 
+判断迁移是否开启，这里用的是一张写死的白名单：
+
 ```go
 // pkg/scheduler/framework/plugins/nodevolumelimits/utils.go
 func isCSIMigrationOn(csiNode *storagev1.CSINode, pluginName string) bool {
@@ -384,11 +416,15 @@ func isCSIMigrationOn(csiNode *storagev1.CSINode, pluginName string) bool {
 }
 ```
 
-各插件的迁移 feature gate 早已 GA 并移除，这里写死了五个块存储插件，只要节点有 CSINode 就认为迁移已开启。而下一篇 `VolumeBinding` 的同名逻辑 `isPluginMigratedToCSIOnNode` 还会检查 CSINode 上的 `storage.alpha.kubernetes.io/migrated-plugins` 注解是否包含该插件。两边判断标准不一致，在 CSINode 存在但注解未包含某插件的节点上，NodeVolumeLimits 会把 in-tree 卷按 CSI 计数，而 VolumeBinding 不会翻译它的拓扑。实际集群里 kubelet 会在启动时写好这个注解，两者结果通常一致。
+各插件的迁移 feature gate 早已 GA 并移除，这里写死了五个块存储插件，只要节点有 CSINode 就认为迁移已开启。而下一篇 `VolumeBinding` 的同名逻辑 `isPluginMigratedToCSIOnNode` 还会检查 CSINode 上的 `storage.alpha.kubernetes.io/migrated-plugins` 注解是否包含该插件。
+
+两边判断标准不一致，在 CSINode 存在但注解未包含某插件的节点上，NodeVolumeLimits 会把 in-tree 卷按 CSI 计数，而 VolumeBinding 不会翻译它的拓扑。实际集群里 kubelet 会在启动时写好这个注解，两者结果通常一致。
 
 还有一个隐含前提：CSINode 不存在时（节点刚加入、kubelet 还没创建），所有 in-tree 卷都不计数，`getVolumeLimits` 也拿不到任何上限，Filter 直接通过。注释里的 TODO 说等 CSINode 默认创建之后要改成报错，这个 TODO 已经存在了很多个版本。
 
 ### 4.6 VolumeAttachment 的计数
+
+Pod 之外还有一类占用者：已经创建、还没删除的 VolumeAttachment。
 
 ```go
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
@@ -418,7 +454,11 @@ func (pl *CSILimits) getNodeVolumeAttachmentInfo(logger klog.Logger, nodeName st
 
 VA 只覆盖「指向原生 CSI PV」的那部分：内联卷的 VA（`source.inlineVolumeSpec`）和 in-tree PV 的 VA 都被跳过，它们只能靠 Pod 那一路计数。只有 `attachRequired: true` 的驱动才会产生 VA，NFS 这类不需要 attach 的驱动不受这一路影响。
 
+数量数完了，还有一道不数数量、只查驱动是否就位的门槛。
+
 ## 五、VolumeLimitScaling：驱动没装好就别来
+
+这段逻辑检查的是驱动在不在节点上，而不是卷挂了几块：
 
 ```go
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
@@ -438,7 +478,9 @@ VA 只覆盖「指向原生 CSI PV」的那部分：内联卷的 VA（`source.in
 
 `checkCSIDriverOnNode` 先查 CSIDriver 对象：不存在（可能不是 CSI 驱动）或 `spec.preventPodSchedulingIfMissing` 未设为 true，都视为「已安装」放行；驱动明确 opt-in 时，才要求节点的 CSINode 里有这个驱动。
 
-这解决的是节点刚启动的窗口期：DaemonSet 形式的 CSI node 插件还没跑起来，CSINode 里没有这个驱动，也就没有上限，老逻辑会直接放行，Pod 调度上去之后挂载失败。对 cluster-autoscaler 也很重要：它在模拟新节点时调用调度器插件，有了这条检查，模拟节点必须同时模拟出 CSINode，否则模拟结论会和实际不符。API 注释里专门提醒了这一点。
+这解决的是节点刚启动的窗口期：DaemonSet 形式的 CSI node 插件还没跑起来，CSINode 里没有这个驱动，也就没有上限，老逻辑会直接放行，Pod 调度上去之后挂载失败。
+
+对 cluster-autoscaler 也很重要：它在模拟新节点时调用调度器插件，有了这条检查，模拟节点必须同时模拟出 CSINode，否则模拟结论会和实际不符。API 注释里专门提醒了这一点。
 
 两个值得注意的细节：
 
@@ -446,6 +488,8 @@ VA 只覆盖「指向原生 CSI PV」的那部分：内联卷的 VA（`source.in
 - 检查发生在 `getVolumeLimits` 之前，所以即使驱动没有声明上限，也会被这条拦住。
 
 ## 六、EventsToRegister 与 QueueingHint
+
+前面出现过的失败码各不相同，对应的可解条件也不同，所以插件一次订阅了五类事件：
 
 ```go
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
@@ -464,37 +508,55 @@ func (pl *CSILimits) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWith
 
 逐个看 hint 的判断：
 
-- **CSINode 新增**：无条件 `Queue`。
-- **CSINode 更新**：把新旧对象里每个驱动的 `allocatable.count` 做成 map 比较，任何驱动的上限**变大**才 `Queue`。不存在或没有 count 的按 0 算。配合 `MutableCSINodeAllocatableCount`，kubelet 周期刷新上限时只有增加才会唤醒 Pod。
-- **已调度 Pod 删除**：被删 Pod 没有卷，或者既没有 `nodeName` 也没有 `nominatedNodeName`，返回 `QueueSkip`；只要它有 PVC、ephemeral 卷或可迁移内联卷之一就 `Queue`。不检查驱动是否相同。
-- **PVC 新增**：对应新 Pod 的 PVC 找不到的情况，名字和命名空间都匹配才 `Queue`。
-- **VA 删除**：Pod 只要有任何一个 PVC 卷就 `Queue`；对可迁移内联卷，翻译后比较驱动名与 VA 的 `attacher`。
+- CSINode 新增：无条件 `Queue`。
+- CSINode 更新：把新旧对象里每个驱动的 `allocatable.count` 做成 map 比较，任何驱动的上限**变大**才 `Queue`。不存在或没有 count 的按 0 算。配合 `MutableCSINodeAllocatableCount`，kubelet 周期刷新上限时只有增加才会唤醒 Pod。
+- 已调度 Pod 删除：被删 Pod 没有卷，或者既没有 `nodeName` 也没有 `nominatedNodeName`，返回 `QueueSkip`；只要它有 PVC、ephemeral 卷或可迁移内联卷之一就 `Queue`。不检查驱动是否相同。
+- PVC 新增：对应新 Pod 的 PVC 找不到的情况，名字和命名空间都匹配才 `Queue`。
+- VA 删除：Pod 只要有任何一个 PVC 卷就 `Queue`；对可迁移内联卷，翻译后比较驱动名与 VA 的 `attacher`。
 
-CSINode 更新的 hint 有一个缝隙。在 `VolumeLimitScaling` 下被「驱动未安装」拒绝的 Pod，等的是驱动注册到 CSINode。kubelet 启动时就会创建 CSINode（此时可能没有任何驱动），驱动注册是一次 Update。如果这个驱动不上报 `max_volumes_per_node`，新旧 count 都按 0 算，hint 返回 `QueueSkip`，Pod 不会被立刻唤醒，只能等不可调度队列的周期刷新（`DefaultPodMaxInUnschedulablePodsDuration`，5 分钟）或其它事件。驱动上报了上限则 0 → N，正常唤醒。
+CSINode 更新的 hint 有一个缝隙。在 `VolumeLimitScaling` 下被「驱动未安装」拒绝的 Pod，等的是驱动注册到 CSINode。kubelet 启动时就会创建 CSINode（此时可能没有任何驱动），驱动注册是一次 Update。
 
-还要注意 Pod 删除和 VA 删除这两个事件的时间差。Pod 被删时卷往往还没 detach，VA 还在，这时被唤醒的 Pod 重新跑 Filter 还是会失败（VA 一路照样计数），真正腾出槽位的是之后的 VA Delete 事件。两个事件都注册，是为了覆盖「没有 VA 的驱动」和「有 VA 的驱动」两种情况。
+如果这个驱动不上报 `max_volumes_per_node`，新旧 count 都按 0 算，hint 返回 `QueueSkip`，Pod 不会被立刻唤醒，只能等不可调度队列的周期刷新（`DefaultPodMaxInUnschedulablePodsDuration`，5 分钟）或其它事件。驱动上报了上限则 0 → N，正常唤醒。
+
+还要注意 Pod 删除和 VA 删除这两个事件的时间差。Pod 被删时卷往往还没 detach，VA 还在，这时被唤醒的 Pod 重新跑 Filter 还是会失败（VA 一路照样计数），真正腾出槽位的是之后的 VA Delete 事件。
+
+两个事件都注册，是为了覆盖「没有 VA 的驱动」和「有 VA 的驱动」两种情况。
 
 ## 七、边界与坑
 
-**抢占几乎帮不上忙。** 插件没有 `PreFilterExtensions`，抢占模拟依赖 Filter 从 `nodeInfo.GetPods()` 现算：移除受害者后，它的卷从 `attachedVolumes` 里消失。但 VA 那一路查的是 informer 里的真实 VA，模拟不会动它。受害者的卷只要有 VA，就会在第 3 步以「不在 `attachedVolumes` 中」的身份重新计入，计数纹丝不动。所以对需要 attach 的驱动（有上限的块存储基本都是），因卷数量超限而失败的 Pod 走抢占通常找不到候选。这从语义上也说得通：Pod 删除后卷还要经过 unmount、detach 才真正释放槽位，调度器不该假设驱逐立即见效。
+**抢占几乎帮不上忙。** 插件没有 `PreFilterExtensions`，抢占模拟依赖 Filter 从 `nodeInfo.GetPods()` 现算：移除受害者后，它的卷从 `attachedVolumes` 里消失。
 
-**新 Pod 自己的卷已经 attach 在节点上时会多算一次。** 第 2 步只用已有 Pod 的卷去重 `newVolumes`，不用 VA 去重。如果新 Pod 要用的卷此刻在节点上有 VA、但没有任何 Pod 在用（比如同一个 StatefulSet Pod 删除后立即在原节点重建，旧卷还没 detach），这块盘会在 VA 一路和新 Pod 一路各算一次。上限卡得很紧的节点上，这会造成短暂的误拒，等 VA 删除后自然恢复。
+但 VA 那一路查的是 informer 里的真实 VA，模拟不会动它。受害者的卷只要有 VA，就会在第 3 步以「不在 `attachedVolumes` 中」的身份重新计入，计数纹丝不动。所以对需要 attach 的驱动（有上限的块存储基本都是），因卷数量超限而失败的 Pod 走抢占通常找不到候选。
 
-**只按驱动维度比较。** `newVolumeCount` 里没有出现在 `nodeVolumeLimits` 中的驱动（没有上报上限）不做检查。一个 Pod 同时用两个驱动的卷，任意一个驱动超限就失败。
+这从语义上也说得通：Pod 删除后卷还要经过 unmount、detach 才真正释放槽位，调度器不该假设驱逐立即见效。
 
-**Filter 的开销与节点上的 Pod 数成正比。** 每个节点都要遍历全部已有 Pod 的全部卷，逐个查 PVC、PV，必要时做 in-tree 翻译，再查一遍 VA。没有 PreFilter 缓存，抢占模拟时每个候选节点还要再算一遍。它选择不缓存，是因为结果依赖节点上的 Pod 集合，缓存就必须实现 `AddPod`/`RemovePod` 并处理 VA，复杂度不划算。VA 按节点建索引是为了把最重的那部分降下来。
+新 Pod 自己的卷已经 attach 在节点上时会多算一次。第 2 步只用已有 Pod 的卷去重 `newVolumes`，不用 VA 去重。
+
+如果新 Pod 要用的卷此刻在节点上有 VA、但没有任何 Pod 在用（比如同一个 StatefulSet Pod 删除后立即在原节点重建，旧卷还没 detach），这块盘会在 VA 一路和新 Pod 一路各算一次。上限卡得很紧的节点上，这会造成短暂的误拒，等 VA 删除后自然恢复。
+
+只按驱动维度比较。`newVolumeCount` 里没有出现在 `nodeVolumeLimits` 中的驱动（没有上报上限）不做检查。一个 Pod 同时用两个驱动的卷，任意一个驱动超限就失败。
+
+**Filter 的开销与节点上的 Pod 数成正比。** 每个节点都要遍历全部已有 Pod 的全部卷，逐个查 PVC、PV，必要时做 in-tree 翻译，再查一遍 VA。
+
+没有 PreFilter 缓存，抢占模拟时每个候选节点还要再算一遍。它选择不缓存，是因为结果依赖节点上的 Pod 集合，缓存就必须实现 `AddPod`/`RemovePod` 并处理 VA，复杂度不划算。VA 按节点建索引是为了把最重的那部分降下来。
+
+这几条边界都指向同一个事实：调度器看到的卷和节点上真实挂着的卷并不总是一致。下一节把这个差距放到三个组件之间看。
 
 ## 八、发散：调度器、kubelet、attach/detach 控制器的三方对账
 
 卷数量限制牵涉三个组件，各自看到的「已挂载卷」并不一样：
 
-- **kubelet** 通过 `NodeGetInfo` 知道驱动的硬上限，写进 CSINode；
-- **attach/detach 控制器**（kube-controller-manager 里）为每个需要 attach 的卷创建 VolumeAttachment，external-attacher 看到 VA 后调用驱动的 `ControllerPublishVolume`；
-- **调度器**在 Pod 落到节点之前，用「Pod 上的卷 ∪ VA」估算已用量。
+- kubelet 通过 `NodeGetInfo` 知道驱动的硬上限，写进 CSINode；
+- attach/detach 控制器（kube-controller-manager 里）为每个需要 attach 的卷创建 VolumeAttachment，external-attacher 看到 VA 后调用驱动的 `ControllerPublishVolume`；
+- 调度器在 Pod 落到节点之前，用「Pod 上的卷 ∪ VA」估算已用量。
 
-VA 计数是后来补上的。早期只数 Pod，Pod 删除而卷未 detach 的窗口里调度器会少算，新 Pod 被放上去之后 attach 失败，报的是驱动侧的 `ResourceExhausted` 或云厂商 API 的错误，Pod 卡在 `ContainerCreating`，而且不会被重新调度，因为调度已经结束了。补上 VA 之后，调度器的视图更接近「实例上真实被占用的槽位」。
+VA 计数是后来补上的。早期只数 Pod，Pod 删除而卷未 detach 的窗口里调度器会少算，新 Pod 被放上去之后 attach 失败，报的是驱动侧的 `ResourceExhausted` 或云厂商 API 的错误，Pod 卡在 `ContainerCreating`，而且不会被重新调度，因为调度已经结束了。
 
-即便如此，三方之间仍然可能对不上：云厂商还会把系统盘、网卡（某些实例类型的网卡和 EBS 共享 PCIe 槽位）算进同一个上限，而驱动上报的 `max_volumes_per_node` 只是一个静态估计。`MutableCSINodeAllocatableCount` 的周期刷新和 `ResourceExhausted` 触发刷新，就是为了让 kubelet 能把真实可用数修正回 CSINode。生产上建议：
+补上 VA 之后，调度器的视图更接近「实例上真实被占用的槽位」。
+
+即便如此，三方之间仍然可能对不上：云厂商还会把系统盘、网卡（某些实例类型的网卡和 EBS 共享 PCIe 槽位）算进同一个上限，而驱动上报的 `max_volumes_per_node` 只是一个静态估计。
+
+`MutableCSINodeAllocatableCount` 的周期刷新和 `ResourceExhausted` 触发刷新，就是为了让 kubelet 能把真实可用数修正回 CSINode。生产上建议：
 
 - 块存储 CSI 驱动开启 `nodeAllocatableUpdatePeriodSeconds`，让上限随实例实际情况调整；
 - 依赖 cluster-autoscaler 的集群，确认 autoscaler 版本能模拟 CSINode，再开启驱动的 `preventPodSchedulingIfMissing`；

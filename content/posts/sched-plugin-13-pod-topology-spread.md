@@ -60,13 +60,15 @@ spec:
 
 两条约束分别走两条路：`whenUnsatisfiable: DoNotSchedule` 的约束只在 PreFilter/Filter 中使用，节点不满足就被过滤掉；`ScheduleAnyway` 的约束只在 PreScore/Score 中使用，不满足也能调度，只是分数低。插件内部用同一个函数 `filterTopologySpreadConstraints` 按 `whenUnsatisfiable` 把约束分拣成两组，两组之间没有任何交叉。
 
-`PodTopologySpread` 的核心概念是 **skew**：某个拓扑域（一个 zone、一个节点……）里匹配 selector 的 Pod 数，减去所有合格域中的最小值。Filter 要求「把新 Pod 放进去之后」的 skew 不超过 `maxSkew`。整篇文章基本就是在回答三个问题：哪些 Pod 被计数，哪些域算「合格域」，最小值怎么取。
+`PodTopologySpread` 的核心概念是 skew：某个拓扑域（一个 zone、一个节点……）里匹配 selector 的 Pod 数，减去所有合格域中的最小值。Filter 要求「把新 Pod 放进去之后」的 skew 不超过 `maxSkew`。
+
+整篇文章基本就是在回答三个问题：哪些 Pod 被计数，哪些域算「合格域」，最小值怎么取。要回答它们，得先看一条约束进入插件之后被解析成什么。
 
 ## 二、约束的内部表示与解析
 
 ### 2.1 `topologySpreadConstraint`
 
-API 里的 `v1.TopologySpreadConstraint` 不直接参与计算。插件先把它转换成内部结构，顺带把 `labelSelector` 解析成 `labels.Selector`，把可选字段填上默认值：
+约束进入插件后先做一次解析。API 里的 `v1.TopologySpreadConstraint` 不直接参与计算，插件把它转换成内部结构，顺带把 `labelSelector` 解析成 `labels.Selector`，给可选字段填上默认值：
 
 ```go
 // pkg/scheduler/framework/plugins/podtopologyspread/common.go
@@ -127,7 +129,7 @@ func (pl *PodTopologySpread) filterTopologySpreadConstraints(constraints []v1.To
 
 - `minDomains` 缺省按 1 处理。1 的效果等于「不限制」，但它顺带处理了一个边界：一个合格域都没有时，最小值会被当作 0（见第四节）。API 校验要求 `minDomains` 只能和 `DoNotSchedule` 搭配。
 - `nodeAffinityPolicy` 缺省是 `Honor`：Pod 自己的 nodeSelector/required nodeAffinity 选不中的节点，不参与统计。
-- `nodeTaintsPolicy` 缺省是 `Ignore`：节点有污点照样统计。两个默认值方向相反，这是为了兼容这两个字段出现之前的行为——老版本只按 nodeAffinity 过滤节点，从不看污点。
+- `nodeTaintsPolicy` 缺省是 `Ignore`：节点有污点照样统计。**两个默认值的方向正好相反。** 这是为了兼容这两个字段出现之前的行为——老版本只按 nodeAffinity 过滤节点，从不看污点。
 
 ### 2.2 `matchLabelKeys`：在调度器和 apiserver 两边各合并一次
 
@@ -148,7 +150,7 @@ func mutateTopologySpreadConstraints(pod *api.Pod) {
 }
 ```
 
-两边都合并，selector 里会出现一条重复的等值条件，「与」运算下没有副作用。apiserver 侧合并的意义在于让 `labelSelector` 自身完整：其它读 Pod spec 的组件（比如 descheduler、cluster-autoscaler 的模拟器）不需要理解 `matchLabelKeys` 也能得到正确的 selector。
+两边都合并，selector 里会出现一条重复的等值条件，但在「与」运算下没有副作用。apiserver 侧合并的意义在于让 `labelSelector` 自身完整：**其它读 Pod spec 的组件不需要理解 `matchLabelKeys`，也能得到正确的 selector**。这类组件包括 descheduler、cluster-autoscaler 的模拟器。
 
 ### 2.3 默认约束：System 与 List
 
@@ -176,7 +178,7 @@ func (pl *PodTopologySpread) getConstraints(pod *v1.Pod) ([]topologySpreadConstr
 }
 ```
 
-显式约束和默认约束是**二选一**的，只要 Pod 写了一条约束，默认约束就完全不生效。默认约束来自插件参数 `PodTopologySpreadArgs`：
+**显式约束和默认约束是二选一的**：只要 Pod 写了一条约束，默认约束就完全不生效。默认约束来自插件参数 `PodTopologySpreadArgs`：
 
 ```go
 // pkg/scheduler/apis/config/types_pluginargs.go
@@ -236,13 +238,17 @@ func (pl *PodTopologySpread) buildDefaultConstraints(p *v1.Pod, action v1.Unsati
 }
 ```
 
-`helper.DefaultSelector` 把选中这个 Pod 的所有 Service 的 selector 合并，再加上控制器（RC、ReplicaSet、StatefulSet）的 selector。推导结果为空——比如一个不属于任何 Service、也没有控制器的裸 Pod——默认约束就不生效。这也是 `New` 在默认约束非空时必须拿到 `SharedInformerFactory` 并建立四个 lister 的原因。注意这里只认 RC、ReplicaSet、StatefulSet 三种 owner，DaemonSet、Job 创建的 Pod 只能靠 Service 推导出 selector。
+`helper.DefaultSelector` 把选中这个 Pod 的所有 Service 的 selector 合并，再加上控制器（RC、ReplicaSet、StatefulSet）的 selector。推导结果为空——比如一个不属于任何 Service、也没有控制器的裸 Pod——默认约束就不生效。
+
+这也是 `New` 在默认约束非空时必须拿到 `SharedInformerFactory` 并建立四个 lister 的原因。注意这里只认 RC、ReplicaSet、StatefulSet 三种 owner，DaemonSet、Job 创建的 Pod 只能靠 Service 推导出 selector。
+
+约束的形态到这里就固定了：已经按 `whenUnsatisfiable` 分好组，selector 已经解析，默认值也填好了。下一节开始用它们去数 Pod。
 
 ## 三、PreFilter：一次遍历，按约束计数
 
 ### 3.1 `preFilterState`
 
-PreFilter 的产物是写进 CycleState 的 `preFilterState`：
+PreFilter 要做的事只有一件：把集群现有的 Pod 按拓扑域数清楚，供 Filter 反复查表。数出来的结果写进 CycleState 的 `preFilterState`：
 
 ```go
 // pkg/scheduler/framework/plugins/podtopologyspread/filtering.go
@@ -262,9 +268,11 @@ type preFilterState struct {
 
 `TpValueToMatchNum[i]` 是第 i 条约束的「拓扑值 → 匹配 Pod 数」表。较早的实现用一张以 `topologyPair{key, value}` 为键的大表（字段名 `TpPairToMatchNum`）把所有约束混在一起，现在按约束下标拆成切片：每条约束一张小 map，键只需要拓扑值。两条约束用同一个 `topologyKey` 但 selector 不同的情况，也就不会互相串号。
 
-`CriticalPaths[i]` 只记两条「关键路径」，即匹配数最小的两个域。Filter 要的只是最小值，没必要每次扫全部域；之所以多记一条，是为了 `AddPod`/`RemovePod` 增量更新时最小值所在的域被加一后，仍能找到新的最小值。
+`CriticalPaths[i]` 只记两条「关键路径」，即匹配数最小的两个域。**Filter 要的只是最小值，没必要每次扫全部域。** 之所以多记一条，是为了 `AddPod`/`RemovePod` 增量更新时最小值所在的域被加一后，仍能找到新的最小值。
 
 ### 3.2 `calPreFilterState`
+
+`calPreFilterState` 是 PreFilter 的主体。它并行扫一遍节点，把每个节点上按约束分好的计数收进 `tpCountsByNode`，再串行合并、求出每条约束的两个最小域。
 
 ```go
 // pkg/scheduler/framework/plugins/podtopologyspread/filtering.go
@@ -322,9 +330,9 @@ type preFilterState struct {
 这段代码决定了统计口径，有四个细节：
 
 1. **遍历的是全部节点**。`allNodes` 是 `RunPreFilterPlugins` 从快照里取出的完整节点列表，不是「通过了前面 Filter 的节点」。PreFilter 在所有 Filter 之前运行，此时还不知道哪些节点会被 `TaintToleration`、`NodeResourcesFit` 等插件淘汰。
-2. **节点必须带齐所有约束的 `topologyKey`**。缺任何一个标签，这个节点对所有约束都不计数。
+2. 节点必须带齐所有约束的 `topologyKey`。缺任何一个标签，这个节点对所有约束都不计数。
 3. **计数为 0 也会产生一个域**。只要节点通过了标签检查和包含策略，`tpCounts` 就会追加一条记录，哪怕 `count` 为 0。一个没有任何匹配 Pod 的 zone 也是「合格域」，它会把最小值拉到 0。
-4. **只数同 namespace、未在删除中的 Pod**：
+4. 只数同 namespace、未在删除中的 Pod：
 
 ```go
 // pkg/scheduler/framework/plugins/podtopologyspread/common.go
@@ -351,6 +359,8 @@ func countPodsMatchSelector(podInfos []fwk.PodInfo, selector labels.Selector, ns
 PreFilter 最后的分支很简单：没有任何 `DoNotSchedule` 约束（显式或默认）时返回 `Skip`，Filter 整个被跳过；否则写入状态。默认 System 模式下，没有显式约束的 Pod 在 PreFilter 阶段就会 `Skip`，因为两条系统约束都是 `ScheduleAnyway`。
 
 ### 3.3 `criticalPaths` 的增量更新
+
+`criticalPaths` 只有两个槽位。新增一个域、或某个已经登记过的域计数变了，`update` 要在一次比较里决定这两个槽位要不要换人：
 
 ```go
 // pkg/scheduler/framework/plugins/podtopologyspread/filtering.go
@@ -385,9 +395,18 @@ func (p *criticalPaths) update(tpVal string, num int) {
 }
 ```
 
-只记两条路径能成立，依赖代码注释里写明的两个前提：抢占只驱逐**同一个节点**上的 Pod（每次只有一个域的计数在变）；每个候选节点的抢占模拟都在**独立的 state 副本**上进行。在这两个前提下，「最小值所在的域加一」时，与第二小的域交换就能得到正确的新最小值。如果抢占算法改成「跨多个节点驱逐」，这个结构就要重新审视——注释里的 CAVEAT 正是在提醒这一点。值得留意的是，当前 `DefaultPreemption` 的受害者已经是 `DomainVictim`，以 PodGroup 为单位时一个受害者可能跨多个节点，`SelectVictimsOnNode` 会对远端节点上的 Pod 也调用 `RunPreFilterExtensionRemovePod`/`AddPod`；注释中的前提 1 写于这一能力出现之前。
+只记两条路径能成立，依赖代码注释里写明的两个前提：
+
+1. 抢占只驱逐同一个节点上的 Pod，每次只有一个域的计数在变；
+2. 每个候选节点的抢占模拟都在独立的 state 副本上进行。
+
+在这两个前提下，「最小值所在的域加一」时，与第二小的域交换就能得到正确的新最小值。**如果抢占算法改成跨多个节点驱逐，这个结构就要重新审视**——注释里的 CAVEAT 正是在提醒这一点。
+
+值得留意的是，当前 `DefaultPreemption` 的受害者已经是 `DomainVictim`，以 PodGroup 为单位时一个受害者可能跨多个节点，`SelectVictimsOnNode` 会对远端节点上的 Pod 也调用 `RunPreFilterExtensionRemovePod`/`AddPod`；注释中的前提 1 写于这一能力出现之前。
 
 ### 3.4 `Clone`
+
+PreFilter 的结果会被复制：抢占要为每个候选节点各跑一次模拟，nominated Pod 的处理也是在副本上做的。`Clone` 决定哪些字段共享、哪些必须深拷贝：
 
 ```go
 // pkg/scheduler/framework/plugins/podtopologyspread/filtering.go
@@ -415,9 +434,13 @@ func (s *preFilterState) Clone() fwk.StateData {
 
 {{< figure src="/images/posts/sched-plugins/13-pts-filter-skew.svg" caption="PreFilter 在全部节点上计数，写出每条约束的 TpValueToMatchNum 和两条关键路径；Filter 对每个节点只查表计算 skew（点击查看大图）" link="/images/posts/sched-plugins/13-pts-filter-skew.svg" >}}
 
+到这里 PreFilter 结束：每条约束都有了一张「拓扑值 → 匹配数」表，外带两个最小域，剩下的工作只是查表。
+
 ## 四、Filter：skew 判定
 
 ### 4.1 判定公式
+
+Filter 对每个候选节点跑一次，读的全是 PreFilter 留下的状态，不再遍历节点上的 Pod。判定只有一条不等式：
 
 ```go
 // pkg/scheduler/framework/plugins/podtopologyspread/filtering.go
@@ -452,10 +475,10 @@ func (s *preFilterState) Clone() fwk.StateData {
 	}
 ```
 
-公式是 `skew = 该域现有匹配数 + 新 Pod 是否匹配自己的 selector − 全局最小值`。几个推论：
+公式是 `skew = 该域现有匹配数 + 新 Pod 是否匹配自己的 selector − 全局最小值`。三个推论：
 
-- 判定的是**放上去之后**的状态，所以加上 `selfMatchNum`。如果新 Pod 的标签不满足它自己约束里的 selector（这种写法通常是配置错误），`selfMatchNum` 为 0，约束退化成「不要放到已经比最少的域多出 maxSkew 个以上的域」。
-- 「全局最小值」**不加新 Pod**。当所有域计数相同时，放到任何一个域 skew 都是 1，`maxSkew: 1` 刚好允许。
+- **判定的是放上去之后的状态**，所以加上 `selfMatchNum`。如果新 Pod 的标签不满足它自己约束里的 selector（这种写法通常是配置错误），`selfMatchNum` 为 0，约束退化成「不要放到已经比最少的域多出 maxSkew 个以上的域」。
+- 「全局最小值」不加新 Pod。当所有域计数相同时，放到任何一个域 skew 都是 1，`maxSkew: 1` 刚好允许。
 - 节点所在的域如果没被统计进 `TpValueToMatchNum`（比如它被包含策略排除了），`matchNum` 读出来是 0。
 
 两种失败的 Status code 不同，原因字符串也不同：
@@ -465,9 +488,11 @@ func (s *preFilterState) Clone() fwk.StateData {
 | 节点缺少约束要求的拓扑标签 | `UnschedulableAndUnresolvable` | `node(s) didn't match pod topology spread constraints (missing required label)` |
 | skew 超过 `maxSkew` | `Unschedulable` | `node(s) didn't match pod topology spread constraints` |
 
-缺标签靠驱逐 Pod 补不上，所以是不可解决；skew 超限则可能通过驱逐该域内匹配的 Pod 降下来，所以留给 `DefaultPreemption` 去尝试。
+**缺标签靠驱逐 Pod 补不上，所以是不可解决；skew 超限则可能通过驱逐该域内匹配的 Pod 降下来。** 后一种情况留给 `DefaultPreemption` 去尝试。
 
 ### 4.2 `minDomains` 与全局最小值
+
+skew 里的「全局最小值」不是直接取 `CriticalPaths[0]`，中间还隔着 `minDomains` 一道修正：
 
 ```go
 // pkg/scheduler/framework/plugins/podtopologyspread/filtering.go
@@ -487,7 +512,9 @@ func (s *preFilterState) minMatchNum(constraintID int, minDomains int32) (int, e
 }
 ```
 
-`domainsNum` 是这条约束的 map 长度，即合格域的个数。合格域少于 `minDomains` 时，最小值按 0 处理，相当于假装还存在一个空域。这让 `maxSkew` 变成了每个域的容量上限：`maxSkew: 1, minDomains: 3` 时，在只有两个 zone 的集群里每个 zone 最多放 1 个副本，第 3 个副本 Pending。
+`domainsNum` 是这条约束的 map 长度，即合格域的个数。**合格域少于 `minDomains` 时，最小值按 0 处理**，相当于假装还存在一个空域。
+
+这改变了 `maxSkew` 的语义：它成了每个域的容量上限。`maxSkew: 1, minDomains: 3` 时，在只有两个 zone 的集群里每个 zone 最多放 1 个副本，第 3 个副本 Pending。
 
 这个 Pending 是有意为之。cluster-autoscaler 会为 Pending 的 Pod 模拟扩容，在新 zone 扩出节点后，域数达到 3，新 zone 计数为 0，副本就被引导过去。没有 `minDomains` 时，调度器只会在现有的两个 zone 之间均分，永远不会触发跨 zone 扩容。
 
@@ -524,6 +551,8 @@ func (tsc *topologySpreadConstraint) matchNodeInclusionPolicies(logger klog.Logg
 
 `NodeInclusionPolicyInPodTopologySpread` 在 1.33 已经 GA 且锁定开启，代码里 `!pl.enableNodeInclusionPolicyInPodTopologySpread` 的分支（直接用 `requiredNodeAffinity.Match` 过滤）只是保留的旧行为，实际不会再走到。
 
+至此 Filter 这条线走完：PreFilter 数数，Filter 查表判定。剩下的是它的补充——当有 Pod 被拿走或放回时，那张计数表怎么跟着变。
+
 ## 五、AddPod / RemovePod：给抢占和 nominated Pod 用
 
 `PreFilterExtensions` 返回插件自身，`AddPod` 和 `RemovePod` 都落到 `updateWithPod`，只是 `delta` 分别为 +1 和 -1：
@@ -559,15 +588,19 @@ func (pl *PodTopologySpread) updateWithPod(logger klog.Logger, s *preFilterState
 }
 ```
 
-它和 `calPreFilterState` 用的是同一套口径：namespace 必须相同，节点必须带齐标签、通过包含策略，被增减的 Pod 必须匹配 selector。两处口径一旦不一致，抢占模拟的结论就会和真实调度不符。
+它和 `calPreFilterState` 用的是同一套口径：namespace 必须相同，节点必须带齐标签、通过包含策略，被增减的 Pod 必须匹配 selector。**两处口径一旦不一致，抢占模拟的结论就会和真实调度不符。**
 
 调用方有两类。一是 `RunFilterPluginsWithNominatedPods`：节点上有优先级不低于当前 Pod 的 nominated Pod 时，框架在 state 副本上逐个 `AddPod`，让它们在计数里「占位」，再跑一遍 Filter。二是 `DefaultPreemption` 的 `SelectVictimsOnNode`：先把所有低优先级 Pod `RemovePod`，看抢占者能否放下，再按优先级从高到低逐个 `AddPod` 回去，尽量少驱逐。skew 超限之所以是 `Unschedulable`，前提就是这里能正确模拟「驱逐某个域里的匹配 Pod 后 skew 下降」。
 
 还有一点：`RunPreFilterExtensionAddPod` 会跳过在 PreFilter 返回 `Skip` 的插件。没有 `DoNotSchedule` 约束的 Pod，`PodTopologySpread` 在抢占和 nominated 处理中完全不参与，这是正确的——它本来就没有硬约束。
 
+硬约束这条线到此完整了。同一套计数逻辑还要服务软约束，但软约束的入口不在 Filter，而在 PreScore 和 Score。
+
 ## 六、PreScore 与 Score：对数权重
 
 ### 6.1 `preScoreState`
+
+打分阶段另有一份状态 `preScoreState`。它不需要关键路径，却多了两样东西：缺标签节点的名单，和每条约束的归一化权重。
 
 ```go
 // pkg/scheduler/framework/plugins/podtopologyspread/scoring.go
@@ -595,7 +628,7 @@ Score 阶段的状态不会被 `AddPod`/`RemovePod` 修改，`Clone` 直接返�
 
 ### 6.2 两轮遍历：域来自候选节点，计数来自全部节点
 
-`initPreScoreState` 先遍历 **Filter 之后剩下的候选节点**，把它们所在的域登记进 `TopologyValueToPodCounts`，同时数出每条约束有多少个域：
+`initPreScoreState` 先遍历 Filter 之后剩下的候选节点，把它们所在的域登记进 `TopologyValueToPodCounts`，同时数出每条约束有多少个域：
 
 ```go
 // pkg/scheduler/framework/plugins/podtopologyspread/scoring.go
@@ -630,7 +663,7 @@ Score 阶段的状态不会被 `AddPod`/`RemovePod` 修改，`Clone` 直接返�
 	}
 ```
 
-然后 `PreScore` 再遍历**全部节点**，只给已登记的域累加计数（`tpCount == nil` 的域直接跳过）。这样，一个没有候选节点的 zone 里的 Pod 不会被白白统计，而候选节点所在 zone 里那些不可行节点上的 Pod 仍然会被计入。
+然后 `PreScore` 再遍历全部节点，只给已登记的域累加计数（`tpCount == nil` 的域直接跳过）。**域的范围由候选节点决定，计数的范围仍是全部节点。** 这样，一个没有候选节点的 zone 里的 Pod 不会被白白统计，而候选节点所在 zone 里那些不可行节点上的 Pod 仍然会被计入。
 
 `kubernetes.io/hostname` 约束有专门的优化：每个节点自成一个域，没有必要在 PreScore 建一张节点数大小的 map，计数推迟到 Score 中直接数这个节点上的 Pod。
 
@@ -647,6 +680,8 @@ Score 阶段的状态不会被 `AddPod`/`RemovePod` 修改，`Clone` 直接返�
 显式约束或 List 模式下，缺标签的节点进入 `IgnoredNodes`，最后得 0 分；只有 System 模式放宽了要求，没有 zone 标签的节点（单 zone 的自建集群很常见）仍然可以参与 hostname 维度的打散。
 
 ### 6.3 打分公式
+
+Score 对每个候选节点算一次：把节点所在的每个域代入同一个函数，再求和。
 
 ```go
 // pkg/scheduler/framework/plugins/podtopologyspread/scoring.go
@@ -676,9 +711,11 @@ func scoreForCount(cnt int64, maxSkew int32, tpWeight float64) float64 {
 }
 ```
 
-原始分是各约束「域内匹配数 × 权重 + (maxSkew − 1)」之和，**越小越好**。权重 `ln(域数 + 2)` 随域数缓慢增长，注释给出的区间是 1.09 到 8.52（对应 1 个到 5000 个域）。它的用意是：hostname 约束有几百个域，zone 约束只有三五个域，单个节点上多一个 Pod 的「不均衡程度」要比单个 zone 多一个 Pod 更显著，对数权重让域多的约束在总分里占更大比重，同时又不至于线性放大到压倒一切。
+原始分是各约束「域内匹配数 × 权重 + (maxSkew − 1)」之和，越小越好。权重 `ln(域数 + 2)` 随域数缓慢增长，注释给出的区间是 1.09 到 8.52（对应 1 个到 5000 个域）。它的用意是：hostname 约束有几百个域，zone 约束只有三五个域，单个节点上多一个 Pod 的「不均衡程度」要比单个 zone 多一个 Pod 更显著，对数权重让域多的约束在总分里占更大比重，同时又不至于线性放大到压倒一切。
 
 ### 6.4 `NormalizeScore`
+
+框架的约定是分数越高越好，而这里的原始分越小越好，`NormalizeScore` 负责翻转并归一到 0~100：
 
 ```go
 // pkg/scheduler/framework/plugins/podtopologyspread/scoring.go
@@ -698,13 +735,25 @@ func scoreForCount(cnt int64, maxSkew int32, tpWeight float64) float64 {
 
 `IgnoredNodes` 中的节点先被标成哨兵值 `-1`（`invalidScore`），不参与求最小/最大值，最后置 0。其余节点用 `100 × (max + min − s) / max` 翻转方向，全部为整数运算。
 
-这个公式**不是 min-max 归一化**：原始分最高（最不均衡）的节点得到的是 `100 × min / max`，而不是 0。分母是 `maxScore` 而非 `max − min`，意味着所有节点原始分加上同一个常数后，归一化结果会整体向 100 靠拢、差距缩小。`scoreForCount` 里的 `maxSkew − 1` 正是这样一个常数：`maxSkew` 越大，打分对偏差越宽容。软约束的 `maxSkew` 不是「容许多少偏差」的硬阈值，而是调节打分敏感度的旋钮。
+这个公式不是 min-max 归一化：原始分最高（最不均衡）的节点得到的是 `100 × min / max`，而不是 0。分母是 `maxScore` 而非 `max − min`，意味着所有节点原始分加上同一个常数后，归一化结果会整体向 100 靠拢、差距缩小。`scoreForCount` 里的 `maxSkew − 1` 正是这样一个常数：**`maxSkew` 越大，打分对偏差越宽容。** 软约束的 `maxSkew` 不是「容许多少偏差」的硬阈值，而是调节打分敏感度的旋钮。
 
-下面用系统默认约束算一个完整的例子：4 个候选节点，同一 ReplicaSet 已有 4 个副本，分布为 n1:2、n2:1、n3:1、n4:0，n1/n2 在 zone-a，n3 在 zone-b，n4 在 zone-c。
+下面用系统默认约束算一个完整的例子。输入是 4 个候选节点，同一个 ReplicaSet 已有 4 个副本：
+
+- n1 上有 2 个副本，n2、n3 各 1 个，n4 上没有；
+- 拓扑归属：n1、n2 在 zone-a，n3 在 zone-b，n4 在 zone-c。
 
 {{< figure src="/images/posts/sched-plugins/13-pts-score.svg" caption="系统默认约束（hostname maxSkew=3、zone maxSkew=5）下的完整打分算例，包括对数权重、取整和 NormalizeScore（点击查看大图）" link="/images/posts/sched-plugins/13-pts-score.svg" >}}
 
-n4 所在的 zone 和节点都没有副本，原始分最低（6），归一化后得 100，乘以默认权重 2 得 200。n1 原始分最高（14），归一化后仍有 42 分。也就是说，这个算例里 `PodTopologySpread` 在最好和最差的节点之间拉开的分差是 `(100 − 42) × 2 = 116` 分，其它插件（比如 `NodeResourcesFit` 的资源打分）完全可能把这个差距抹平——这也是「默认会打散，但不保证打散」的原因。
+按 6.3 的公式逐步算：
+
+1. n4 所在的 zone 和节点都没有副本，原始分最低，是 6；
+2. n1 所在的两个域计数都最高，原始分是 14；
+3. 归一化后 n4 得 100，n1 仍有 42；
+4. 再乘默认权重 2，n4 最终是 200。
+
+也就是说，这个算例里 `PodTopologySpread` 在最好和最差的节点之间拉开的分差是 `(100 − 42) × 2 = 116` 分，其它插件（比如 `NodeResourcesFit` 的资源打分）完全可能把这个差距抹平——**这也是「默认会打散，但不保证打散」的原因**。
+
+分数出来之后，还剩一个问题没回答：这个 Pod 被拒绝或被打低分之后，什么事件值得让它重新排队？
 
 ## 七、EventsToRegister 与 QueueingHint
 
@@ -721,15 +770,19 @@ n4 所在的 zone 和节点都没有副本，原始分最低（6），归一化�
 
 各个 hint 的判断都围绕「这次变化是否改变了某条约束的计数或域」：
 
-- **已绑定 Pod 的增、删、改标签**（`isSchedulableAfterAssignedPodChange`）：变化的 Pod 必须已经绑定或已被 nominate，并且与目标 Pod 同 namespace（`involvedInTopologySpreading`），否则 `QueueSkip`。新增 Pod 匹配任一约束的 selector，或被删除的 Pod 匹配任一约束的 selector，返回 `Queue`。标签更新时只在「更新前后对某条约束的匹配结果发生翻转」时返回 `Queue`。注意新增一个匹配的 Pod 也会 `Queue`：它可能填满了一个空域，提高了全局最小值。
-- **目标 Pod 自身更新**（`isSchedulableAfterTargetPodChange`）：容忍度变化且有 `nodeTaintsPolicy: Honor` 的约束时 `Queue`，因为统计口径变了；否则按标签变化判断，因为 `matchLabelKeys` 读的是 Pod 自己的标签，`selfMatchNum` 也取决于自身标签。
-- **节点增、删、改标签/污点**（`isSchedulableAfterNodeChange`）：只关心带齐所有 `topologyKey` 的节点。新增或删除这样的节点返回 `Queue`；更新时，带齐与否的状态发生翻转，或者仍然带齐但拓扑标签的值变了、污点变了，返回 `Queue`。
+- 已绑定 Pod 的增、删、改标签（`isSchedulableAfterAssignedPodChange`）：变化的 Pod 必须已经绑定或已被 nominate，并且与目标 Pod 同 namespace（`involvedInTopologySpreading`），否则 `QueueSkip`。新增 Pod 匹配任一约束的 selector，或被删除的 Pod 匹配任一约束的 selector，返回 `Queue`。标签更新时只在「更新前后对某条约束的匹配结果发生翻转」时返回 `Queue`。注意新增一个匹配的 Pod 也会 `Queue`：它可能填满了一个空域，提高了全局最小值。
+- 目标 Pod 自身更新（`isSchedulableAfterTargetPodChange`）：容忍度变化且有 `nodeTaintsPolicy: Honor` 的约束时 `Queue`，因为统计口径变了；否则按标签变化判断，因为 `matchLabelKeys` 读的是 Pod 自己的标签，`selfMatchNum` 也取决于自身标签。
+- 节点增、删、改标签/污点（`isSchedulableAfterNodeChange`）：只关心带齐所有 `topologyKey` 的节点。新增或删除这样的节点返回 `Queue`；更新时，带齐与否的状态发生翻转，或者仍然带齐但拓扑标签的值变了、污点变了，返回 `Queue`。
 
 这里的约束是用 `getConstraints` 取的，也就是只看 `DoNotSchedule` 约束（显式或默认）。软约束不会导致 Pod 不可调度，自然不需要为它注册唤醒条件。
 
+主流程到这里走完了：解析、计数、判定、增量更新、打分、唤醒条件。剩下的是几处不看源码容易踩到的边界。
+
 ## 八、边界情况与坑
 
-**被别的插件过滤掉的节点也在统计里。** PreFilter 统计的是全部节点，Filter 阶段被 `NodeResourcesFit` 淘汰的节点照样贡献计数和域。一个 zone 的节点全都资源不足，这个 zone 的计数仍然是「最小值候选」，它会让其它 zone 的节点 skew 超限，结果是整体 Pending，而错误信息里只有一部分节点显示 `didn't match pod topology spread constraints`，另一部分显示 `Insufficient cpu`。排查这类问题时要把所有节点的失败原因合起来看。污点的情况可以用 `nodeTaintsPolicy: Honor` 解决，资源不足没有对应的策略。
+**被别的插件过滤掉的节点也在统计里。** PreFilter 统计的是全部节点，Filter 阶段被 `NodeResourcesFit` 淘汰的节点照样贡献计数和域。
+
+一个 zone 的节点全都资源不足，这个 zone 的计数仍然是「最小值候选」，它会让其它 zone 的节点 skew 超限，结果是整体 Pending，而错误信息里只有一部分节点显示 `didn't match pod topology spread constraints`，另一部分显示 `Insufficient cpu`。排查这类问题时要把所有节点的失败原因合起来看。污点的情况可以用 `nodeTaintsPolicy: Honor` 解决，资源不足没有对应的策略。
 
 **`nodeAffinityPolicy: Honor` 只看 required 部分。** `GetRequiredNodeAffinity` 合并的是 `nodeSelector` 和 `requiredDuringSchedulingIgnoredDuringExecution`，preferred nodeAffinity 不影响统计口径。
 
@@ -758,7 +811,11 @@ func (pl *PodTopologySpread) SignPod(ctx context.Context, pod *v1.Pod) ([]fwk.Si
 }
 ```
 
-判断默认约束时看的是插件配置而不是 Pod：默认 System 模式下 `pl.defaultConstraints` 永远非空，于是**每一个 Pod** 都拒签。KEP-5598 的 opportunistic batching（feature gate `OpportunisticBatching`，1.35 起 Beta 且默认开启）依赖 Pod 签名识别「等价」的 Pod、复用上一个 Pod 的过滤与打分结果；gate 虽然默认开着，在默认插件配置下它对任何 Pod 都不会生效。想让它工作，需要把 `defaultingType` 设为 `List` 并给一个空的 `defaultConstraints`——代价是失去默认打散。这样设计的原因是拓扑分布依赖集群中其它 Pod 的位置，同一个 Deployment 的两个副本在调度第一个之后，第二个的可行性和打分就变了，不能复用前一个的结果。
+判断默认约束时看的是插件配置而不是 Pod：默认 System 模式下 `pl.defaultConstraints` 永远非空，于是**每一个 Pod** 都拒签。KEP-5598 的 opportunistic batching（feature gate `OpportunisticBatching`，1.35 起 Beta 且默认开启）依赖 Pod 签名识别「等价」的 Pod、复用上一个 Pod 的过滤与打分结果。
+
+**gate 虽然默认开着，在默认插件配置下它对任何 Pod 都不会生效。** 想让它工作，需要把 `defaultingType` 设为 `List` 并给一个空的 `defaultConstraints`——代价是失去默认打散。
+
+这样设计的原因是拓扑分布依赖集群中其它 Pod 的位置，同一个 Deployment 的两个副本在调度第一个之后，第二个的可行性和打分就变了，不能复用前一个的结果。
 
 **PreScore 没有显式约束时的空 zone 标签。** System 模式下 `requireAllTopologies` 为 false，没有 zone 标签的节点在 `initPreScoreState` 里会被登记成值为空字符串的「域」，这会让 zone 约束的 `topoSize` 多算 1。Score 时这类节点因为没有 zone 标签而跳过 zone 项，所以影响只体现在权重上，一般可以忽略。
 
@@ -766,7 +823,11 @@ func (pl *PodTopologySpread) SignPod(ctx context.Context, pod *v1.Pod) ([]fwk.Si
 
 ### 9.1 从 SelectorSpread 到系统默认约束
 
-早期的 kube-scheduler 用 `SelectorSpread` 插件（以及更早的 `SelectorSpreadPriority` 优选函数）实现「同一个 Service/控制器的 Pod 自动打散」。它的计算方式与 `PodTopologySpread` 不同，也不能配置。引入 `PodTopologySpread` 之后，这件事被统一到 System 模式的两条默认约束上，`SelectorSpread` 最终被移出了 in-tree 插件，当前的 `names` 包里已经没有它。默认约束里 hostname `maxSkew: 3`、zone `maxSkew: 5` 都是比较宽松的取值，配合 `ScheduleAnyway`，它表达的是和旧插件类似的「尽量分散」的软偏好，而不是硬性均衡。
+`PodTopologySpread` 不是凭空出现的，它接替的是更早的一套做法，而这段历史解释了插件里几个看起来奇怪的设计。
+
+早期的 kube-scheduler 用 `SelectorSpread` 插件（以及更早的 `SelectorSpreadPriority` 优选函数）实现「同一个 Service/控制器的 Pod 自动打散」。它的计算方式与 `PodTopologySpread` 不同，也不能配置。
+
+引入 `PodTopologySpread` 之后，这件事被统一到 System 模式的两条默认约束上，`SelectorSpread` 最终被移出了 in-tree 插件，当前的 `names` 包里已经没有它。默认约束里 hostname `maxSkew: 3`、zone `maxSkew: 5` 都是比较宽松的取值，配合 `ScheduleAnyway`，它表达的是和旧插件类似的「尽量分散」的软偏好，而不是硬性均衡。
 
 这一历史也解释了 `buildDefaultConstraints` 里推导 selector 的方式为什么和 `SelectorSpread` 一模一样（Service + RC/RS/StatefulSet），以及为什么 System 模式要放宽「节点必须带齐所有拓扑标签」的要求：要兼容没有 zone 标签的集群。
 

@@ -13,7 +13,9 @@ description: "NetworkOverhead 读取 AppGroup 里的服务依赖和 NetworkTopol
 
 {{< figure src="/images/posts/sched-plugins/callstack/29.svg" link="/images/posts/sched-plugins/callstack/29.svg" caption="NetworkOverhead 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
 
-[上一篇](/posts/sched-plugin-28-capacity-scheduling/)的 CapacityScheduling 在 PreFilter 和 PostFilter 上做多租户配额。NetworkOverhead 同样从 PreFilter 开始介入，但关心的是另一类约束：一个微服务的 Pod 放在哪里，它和它所调用的服务之间的网络代价最小。它实现 PreFilter（带空的 `PreFilterExtensions`）、Filter、Score 和 NormalizeScore，不在默认 Profile 里，需要通过 scheduler-plugins 编译出的调度器启用，常与[第 26 篇](/posts/sched-plugin-26-topological-sort/)的 TopologicalSort 一起配置。`pkg/networkaware/README.md` 把它的成熟度标为 Sample。
+[上一篇](/posts/sched-plugin-28-capacity-scheduling/)的 CapacityScheduling 在 PreFilter 和 PostFilter 上做多租户配额。NetworkOverhead 同样从 PreFilter 开始介入，但关心的是另一类约束：一个微服务的 Pod 放在哪里，它和它所调用的服务之间的网络代价最小。
+
+它实现 PreFilter（带空的 `PreFilterExtensions`）、Filter、Score 和 NormalizeScore，不在默认 Profile 里，需要通过 scheduler-plugins 编译出的调度器启用，常与[第 26 篇](/posts/sched-plugin-26-topological-sort/)的 TopologicalSort 一起配置。`pkg/networkaware/README.md` 把它的成熟度标为 Sample。
 
 本文基于 scheduler-plugins `cfeb3aa`（依赖 Kubernetes v1.36.4）；两个 CRD 的类型来自依赖模块 `github.com/diktyo-io/appgroup-api v1.0.1-alpha` 和 `github.com/diktyo-io/networktopology-api v1.0.1-alpha`。
 
@@ -61,9 +63,13 @@ profiles:
       networkTopologyName: "net-topology-test"
 ```
 
-这份示例在 multiPoint 里禁用了 NodeResourcesFit。要注意这不仅关掉了 NodeResourcesFit 的打分，也关掉了它的 PreFilter/Filter，调度器从此不再检查节点的 CPU、内存是否够用，Pod 可能被放到资源不足的节点上、被 kubelet 以 `OutOfcpu`/`OutOfmemory` 拒绝。示例的注释只说「尽量避免与 NodeResourcesFit 组合」，没有给出原因；如果担心的是两者的打分互相抵消，更稳妥的做法是只调整 NodeResourcesFit 的 Score 权重，而不是整体禁用。
+这份示例在 multiPoint 里禁用了 NodeResourcesFit。要注意这不仅关掉了 NodeResourcesFit 的打分，也关掉了它的 PreFilter/Filter，调度器从此不再检查节点的 CPU、内存是否够用，Pod 可能被放到资源不足的节点上、被 kubelet 以 `OutOfcpu`/`OutOfmemory` 拒绝。
+
+示例的注释只说「尽量避免与 NodeResourcesFit 组合」，没有给出原因；如果担心的是两者的打分互相抵消，更稳妥的做法是只调整 NodeResourcesFit 的 Score 权重，而不是整体禁用。
 
 ## 二、两个 CRD
+
+插件要用到的数据分成两半：应用的依赖图写在 AppGroup 里，基础设施的代价写在 NetworkTopology 里。
 
 ### 2.1 AppGroup：依赖与 maxNetworkCost
 
@@ -88,7 +94,9 @@ type DependenciesInfo struct {
 }
 ```
 
-`MinBandwidth` 在插件里没有被读取，KEP 把带宽约束留给了扩展资源（由 DaemonSet 把带宽注册成节点的扩展资源，交给 NodeResourcesFit 处理）。插件只用 `Workload.Selector` 和 `MaxNetworkCost`。`maxNetworkCost` 不写时是 0，意味着跨 zone、跨 region 的任何已知代价都算违反。
+`MinBandwidth` 在插件里没有被读取，KEP 把带宽约束留给了扩展资源（由 DaemonSet 把带宽注册成节点的扩展资源，交给 NodeResourcesFit 处理）。插件只用 `Workload.Selector` 和 `MaxNetworkCost`。
+
+`maxNetworkCost` 不写时是 0，意味着跨 zone、跨 region 的任何已知代价都算违反。
 
 依赖列表的提取方式：
 
@@ -119,6 +127,8 @@ func GetDependencyList(pod *v1.Pod, ag *agv1alpha1.AppGroup) []agv1alpha1.Depend
 只看当前 Pod 自己这个 workload 的出边。被别人依赖的一方（例如 redis）没有出边，NetworkOverhead 对它不起作用。
 
 ### 2.2 NetworkTopology：四层嵌套的代价表
+
+依赖图只说了「谁调用谁、最多容忍多少代价」，代价本身要另外一张表提供。
 
 ```go
 // github.com/diktyo-io/networktopology-api@v1.0.1-alpha/pkg/apis/networktopology/v1alpha1/types.go
@@ -182,13 +192,21 @@ const (
 
 代价是有向的：z1→z2 和 z2→z1 是两条记录，要分别写。也没有节点级别的条目：KEP 的假设是同一 zone 内节点之间的网络是均匀的，插件对同 zone 一律记 1，不查表。
 
-`weights` 可以并存多套，插件参数 `weightsName` 选用其中一套。名字为 `NetperfCosts` 的那套约定由 networktopology controller 根据 netperf 测量结果（存放在 `configmapName` 指向的 ConfigMap 里）自动维护；其它名字（默认 `UserDefined`）视为手工填写。这个区别会影响插件是否对代价表排序，见 3.3 节。
+`weights` 可以并存多套，插件参数 `weightsName` 选用其中一套。名字为 `NetperfCosts` 的那套约定由 networktopology controller 根据 netperf 测量结果（存放在 `configmapName` 指向的 ConfigMap 里）自动维护；其它名字（默认 `UserDefined`）视为手工填写。
 
-仓库里的示例 `manifests/networktopology/networkTopology-example.yaml` 用的字段名是 `configMapName`、`costList`、`originCosts`、`costs`，与 CRD 的 `configmapName`、`topologyList`、`originList`、`costList` 对不上。CRD 把 `configmapName`、`weights[].topologyList` 列为必填，照着这份示例 apply 会被 API Server 拒绝；依赖模块里 `networktopology-api/manifests/example.yaml` 的字段名才是正确的。
+这个区别会影响插件是否对代价表排序，见 3.3 节。
+
+仓库里的示例 `manifests/networktopology/networkTopology-example.yaml` 用的字段名是 `configMapName`、`costList`、`originCosts`、`costs`，与 CRD 的 `configmapName`、`topologyList`、`originList`、`costList` 对不上。
+
+CRD 把 `configmapName`、`weights[].topologyList` 列为必填，照着这份示例 apply 会被 API Server 拒绝；依赖模块里 `networktopology-api/manifests/example.yaml` 的字段名才是正确的。
 
 ## 三、源码
 
+两个 CRD 的结构清楚了，下面看插件怎么把它们用起来。
+
 ### 3.1 结构体、参数与默认值
+
+先看插件持有的字段和它固定的几个常量。
 
 ```go
 // pkg/networkaware/networkoverhead/networkoverhead.go
@@ -264,6 +282,8 @@ func SetDefaults_NetworkOverheadArgs(obj *NetworkOverheadArgs) {
 
 ### 3.2 CycleState：PreFilter 把所有活都做完
 
+这个插件和前面几个的最大区别，是它把全部计算压在 PreFilter 里，Filter 和 Score 只查表。CycleState 里的结构就是为此设计的。
+
 ```go
 // pkg/networkaware/networkoverhead/networkoverhead.go
 // PreFilterState computed at PreFilter and used at Filter and Score.
@@ -305,9 +325,13 @@ func (no *PreFilterState) Clone() fwk.StateData {
 }
 ```
 
-Filter 和 Score 只是查表：`satisfiedMap`、`violatedMap`、`finalCostMap` 三张以节点名为 key 的 map 在 PreFilter 里一次算好。`Clone` 直接返回自身指针，没有深拷贝。这在 Filter/Score 只读的前提下是安全的，但也意味着抢占模拟里复制出来的 CycleState 与原状态共享同一份数据；配合下面 AddPod/RemovePod 什么也不做，抢占模拟对这个插件的结果没有任何影响。
+Filter 和 Score 只是查表：`satisfiedMap`、`violatedMap`、`finalCostMap` 三张以节点名为 key 的 map 在 PreFilter 里一次算好。
+
+`Clone` 直接返回自身指针，没有深拷贝。这在 Filter/Score 只读的前提下是安全的，但也意味着抢占模拟里复制出来的 CycleState 与原状态共享同一份数据；配合下面 AddPod/RemovePod 什么也不做，抢占模拟对这个插件的结果没有任何影响。
 
 ### 3.3 PreFilter
+
+PreFilter 的代码很长，但结构是「一串提前返回 + 一段节点循环」。
 
 ```go
 // pkg/networkaware/networkoverhead/networkoverhead.go
@@ -486,7 +510,11 @@ func (no *NetworkOverhead) populateCostMap(
 }
 ```
 
-查找全部是二分：`FindTopologyKey` 在 `topologyList` 上按 key 二分，`FindOriginCosts` 在 `originList` 上按 origin 二分。二分要求有序，手工填写的代价表不一定有序，所以在 `weightsName` 不是 `NetperfCosts` 时，PreFilter 开头的 `sortNetworkTopologyCosts` 先按 `topologyKey` 排一次，`populateCostMap` 再对 `originList` 按 origin 排序；`NetperfCosts` 则信任 controller 已经排好。由于 `Get` 返回的是深拷贝，这些排序不会改动缓存里的对象，但会在每次 PreFilter、对每个节点重复一遍：`originList` 的排序发生在节点循环内部，N 个节点就排 N 次。
+查找全部是二分：`FindTopologyKey` 在 `topologyList` 上按 key 二分，`FindOriginCosts` 在 `originList` 上按 origin 二分。
+
+二分要求有序，手工填写的代价表不一定有序，所以在 `weightsName` 不是 `NetperfCosts` 时，PreFilter 开头的 `sortNetworkTopologyCosts` 先按 `topologyKey` 排一次，`populateCostMap` 再对 `originList` 按 origin 排序；`NetperfCosts` 则信任 controller 已经排好。
+
+由于 `Get` 返回的是深拷贝，这些排序不会改动缓存里的对象，但会在每次 PreFilter、对每个节点重复一遍：`originList` 的排序发生在节点循环内部，N 个节点就排 N 次。
 
 `weightsName` 在 `weights` 里找不到同名条目时，所有节点的 `costMap` 都是空的。插件不会报错，只是所有跨 zone、跨 region 的查找都落到「查不到」分支，见下一节。
 
@@ -557,19 +585,21 @@ func (no *NetworkOverhead) populateCostMap(
 	}
 ```
 
-`getAccumulatedCost` 的结构完全相同，只是把「满足/违反」换成加代价：同节点加 `SameHostname`（0），对方节点没有 region 和 zone 加 `MaxCost`（100），同 zone 加 `SameZone`（1），查到代价加查到的值，**查不到加 `MaxCost`**。
+`getAccumulatedCost` 的结构完全相同，只是把「满足/违反」换成加代价：同节点加 `SameHostname`（0），对方节点没有 region 和 zone 加 `MaxCost`（100），同 zone 加 `SameZone`（1），查到代价加查到的值，查不到加 `MaxCost`。
 
 {{< figure src="/images/posts/sched-plugins/29-pair-decision.svg" caption="一对（已调度 Pod，依赖）的判定树：Filter 计数与 Score 代价走同一套分支，只在「代价表里查不到」时分道——Filter 不计数，Score 加 100（点击查看大图）" link="/images/posts/sched-plugins/29-pair-decision.svg" >}}
 
 几个由代码结构决定、文档里没有写的性质：
 
-- **按副本计数，不按依赖计数。** cart 有两个副本已调度，frontend 对 cart 的这一条依赖就会被计两次。依赖副本越多，它在多数票里的权重越大。
-- **同 zone 不看 maxNetworkCost。** 同一 zone 的不同节点一律算满足，即使 `maxNetworkCost` 写的是 0。
-- **两种「没有拓扑信息」的处理不对称。** 依赖 Pod 所在节点没有 region 和 zone 时，Filter 记违反、Score 加 100；而**候选节点自己**没有 region、zone 时，`populateCostMap` 跳过两个分支，`costMap` 为空，后续查找全部落空，Filter 什么都不计、Score 加 100。前者会被过滤，后者在 Filter 阶段总能通过。
+- 按副本计数，不按依赖计数。cart 有两个副本已调度，frontend 对 cart 的这一条依赖就会被计两次。依赖副本越多，它在多数票里的权重越大。
+- 同 zone 不看 maxNetworkCost。同一 zone 的不同节点一律算满足，即使 `maxNetworkCost` 写的是 0。
+- 两种「没有拓扑信息」的处理不对称。依赖 Pod 所在节点没有 region 和 zone 时，Filter 记违反、Score 加 100；而候选节点自己没有 region、zone 时，`populateCostMap` 跳过两个分支，`costMap` 为空，后续查找全部落空，Filter 什么都不计、Score 加 100。**前者会被过滤，后者在 Filter 阶段总能通过。**
 - **查不到代价时 Filter 放行、Score 惩罚。** 代价表漏写某个方向（比如只写了 z1→z2，没写 z2→z1），从 z2 看过去的这对依赖既不算满足也不算违反。
-- **zone 名需要全局唯一。** 同 region 不同 zone 时，查表的 key 是 `(本节点 zone, 对方 zone)`，没有带上 region。两个 region 下都有叫 `a` 的 zone，代价表就无法区分。
+- zone 名需要全局唯一。同 region 不同 zone 时，查表的 key 是 `(本节点 zone, 对方 zone)`，没有带上 region。两个 region 下都有叫 `a` 的 zone，代价表就无法区分。
 
 ### 3.5 Filter：多数票
+
+PreFilter 算出了每个节点的满足数和违反数，Filter 只做一件事：把它们拿来投票。
 
 ```go
 // pkg/networkaware/networkoverhead/networkoverhead.go
@@ -628,6 +658,8 @@ Filter 读的又是 PreFilter 算好的计数，所以驱逐任何 Pod 都不会
 
 ### 3.6 Score 与 NormalizeScore
 
+过滤只留下「违反不多于满足」的节点，剩下的排序靠累计代价。
+
 ```go
 // pkg/networkaware/networkoverhead/networkoverhead.go
 func (no *NetworkOverhead) Score(ctx context.Context,
@@ -685,11 +717,13 @@ Score 返回的原始值是累计代价，可以远大于 100，框架只在 Nor
 score = 100 − int64( 100 × (cost − min) / (max − min) )
 ```
 
-`min`、`max` 取的是本轮参与打分的节点（即通过所有 Filter 的节点）的代价。代价最低的节点得 100，最高的得 0，`int64` 向零截断。所有节点代价相同且不为 0 时都得 100；全为 0（包括 `scoreEqually` 的情况）时保持 0，同样不影响相对排序。
+`min`、`max` 取的是本轮参与打分的节点（即通过所有 Filter 的节点）的代价。代价最低的节点得 100，最高的得 0，`int64` 向零截断。
+
+所有节点代价相同且不为 0 时都得 100；全为 0（包括 `scoreEqually` 的情况）时保持 0，同样不影响相对排序。
 
 ## 四、算例
 
-用一个两 region、四 zone 的集群把上面的规则走一遍。
+用一个两 region、四 zone 的集群把上面的规则走一遍。先看输入，再逐个节点算满足数、违反数和累计代价，最后统一归一化。
 
 {{< figure src="/images/posts/sched-plugins/29-topology-example.svg" caption="算例集群：us-west-1 下 z1、z2，us-east-1 下 z3、z4；cart 的两个副本在 n-1、n-2，catalog 的一个副本在 n-3；n-6 没有拓扑 label；待调度的是 frontend 的一个副本（点击查看大图）" link="/images/posts/sched-plugins/29-topology-example.svg" >}}
 
@@ -730,19 +764,51 @@ spec:
         - {destination: "z3", networkCost: 10}
 ```
 
-AppGroup `shop` 里 frontend 依赖 cart（`maxNetworkCost: 8`）和 catalog（`maxNetworkCost: 15`）。已绑定的依赖 Pod：cart-a 在 n-1，cart-b 在 n-2，catalog-a 在 n-3。每个节点要处理三对：(cart-a, cart)、(cart-b, cart)、(catalog-a, catalog)。
+AppGroup `shop` 里 frontend 依赖 cart（`maxNetworkCost: 8`）和 catalog（`maxNetworkCost: 15`）。已绑定的依赖 Pod：cart-a 在 n-1，cart-b 在 n-2，catalog-a 在 n-3。
 
-**n-1（us-west-1/z1）**：cart-a 就在本节点，满足，+0；cart-b 在同 region 的 z2，查 `(z1, z2)` 得 5 ≤ 8，满足，+5；catalog-a 在 us-east-1，查 `(us-west-1, us-east-1)` 得 20 > 15，违反，+20。满足 2、违反 1，通过；代价 25。
+每个节点要处理三对：(cart-a, cart)、(cart-b, cart)、(catalog-a, catalog)。
 
-**n-2（us-west-1/z2）**：与 n-1 对称，cart-a 查 `(z2, z1)` 得 5，满足 +5；cart-b 同节点 +0；catalog-a 违反 +20。2/1，通过；代价 25。
+**n-1（us-west-1/z1）**：
 
-**n-3（us-east-1/z3）**：cart-a、cart-b 都跨 region，20 > 8，各违反一次、各 +20；catalog-a 同节点，满足 +0。满足 1、违反 2，`Unschedulable`；代价 40。
+- cart-a：就在本节点，满足，+0；
+- cart-b：同 region 的 z2，查 `(z1, z2)` 得 5 ≤ 8，满足，+5；
+- catalog-a：在 us-east-1，查 `(us-west-1, us-east-1)` 得 20 > 15，违反，+20。
 
-**n-4（us-east-1/z4）**：cart 两个副本各违反 +20；catalog-a 在同 region 的 z3，查 `(z4, z3)` 得 10 ≤ 15，满足 +10。1/2，`Unschedulable`；代价 50。
+满足 2、违反 1，通过；代价 25。
 
-**n-5（us-west-1/z1）**：cart-a 在同 zone 的 n-1，满足 +1（`SameZone`）；cart-b 查 `(z1, z2)` 得 5，满足 +5；catalog-a 违反 +20。2/1，通过；代价 26。
+**n-2（us-west-1/z2）**：与 n-1 对称。
 
-**n-6（无 label）**：本节点 region、zone 都是空串，`costMap` 为空。三对依赖都走「region 不同」分支，查 `("", us-west-1)` 或 `("", us-east-1)` 都查不到：Filter 不计数，Score 各 +100。0/0，通过；代价 300。
+- cart-a：查 `(z2, z1)` 得 5 ≤ 8，满足，+5；
+- cart-b：就在本节点，满足，+0；
+- catalog-a：违反，+20。
+
+满足 2、违反 1，通过；代价 25。
+
+**n-3（us-east-1/z3）**：
+
+- cart-a、cart-b：都跨 region，20 > 8，各违反一次、各 +20；
+- catalog-a：就在本节点，满足，+0。
+
+满足 1、违反 2，`Unschedulable`；代价 40。
+
+**n-4（us-east-1/z4）**：
+
+- cart-a、cart-b：各违反 +20；
+- catalog-a：在同 region 的 z3，查 `(z4, z3)` 得 10 ≤ 15，满足，+10。
+
+满足 1、违反 2，`Unschedulable`；代价 50。
+
+**n-5（us-west-1/z1）**：
+
+- cart-a：在同 zone 的 n-1，满足 +1（`SameZone`）；
+- cart-b：查 `(z1, z2)` 得 5 ≤ 8，满足 +5；
+- catalog-a：违反 +20。
+
+满足 2、违反 1，通过；代价 26。
+
+**n-6（无 label）**：本节点 region、zone 都是空串，`costMap` 为空。
+
+三对依赖都走「region 不同」分支，查 `("", us-west-1)` 或 `("", us-east-1)` 都查不到：Filter 不计数，Score 各 +100。满足 0、违反 0，通过；代价 300。
 
 n-3、n-4 被 Filter 拒绝，参与打分的是 n-1、n-2、n-5、n-6：
 
@@ -751,7 +817,13 @@ n-3、n-4 被 Filter 拒绝，参与打分的是 n-1、n-2、n-5、n-6：
 
 {{< figure src="/images/posts/sched-plugins/29-result-table.svg" caption="算例结果：多数票让 n-1、n-2、n-5 在各有一次违反的情况下通过；没有 label 的 n-6 逃过 Filter 但代价最高；min-max 归一化让 n-5 的得分随 n-6 是否在场在 100 与 0 之间跳变（点击查看大图）" link="/images/posts/sched-plugins/29-result-table.svg" >}}
 
-这个算例暴露了 min-max 归一化的两个性质。第一，**分数只反映相对位置，不反映绝对差距**：25 和 26 只差 1 点代价，在没有 n-6 时被放大成 100 分对 0 分，乘上权重 5 就是 500 分的差距，在默认打分插件之间通常足以单独决定结果。第二，**一个离群节点会压扁其余节点的区分度**：n-6 的 300 让 25 和 26 之间的差距在截断后消失。结论随候选集合变化：大集群里 Filter 找够 percentageOfNodesToScore 规定数量的可行节点就会停止，哪些节点进入打分不是固定的，同一个节点的 NetworkOverhead 分数也会随之变化。
+这个算例暴露了 min-max 归一化的两个性质。
+
+第一，**分数只反映相对位置，不反映绝对差距**：25 和 26 只差 1 点代价，在没有 n-6 时被放大成 100 分对 0 分，乘上权重 5 就是 500 分的差距，在默认打分插件之间通常足以单独决定结果。
+
+第二，**一个离群节点会压扁其余节点的区分度**：n-6 的 300 让 25 和 26 之间的差距在截断后消失。
+
+结论随候选集合变化：大集群里 Filter 找够 percentageOfNodesToScore 规定数量的可行节点就会停止，哪些节点进入打分不是固定的，同一个节点的 NetworkOverhead 分数也会随之变化。
 
 ## 五、EventsToRegister 与重新入队
 
@@ -769,35 +841,59 @@ NetworkOverhead 实现了 PreFilter 和 Filter，却没有实现 `EnqueueExtensi
 	}
 ```
 
-`defaultEnqueueExtension.EventsToRegister` 返回 `framework.UnrollWildCardResource()`：Pod、Node、PV、PVC、CSINode、CSIDriver、CSIStorageCapacity、StorageClass、ResourceClaim、DeviceClass 的所有动作（开启 `GenericWorkload` 时再加 PodGroup），QueueingHint 用 `defaultQueueingHintFn`，一律返回 `Queue`。所以被 NetworkOverhead 拒绝的 Pod，集群里任何一个 Pod 或节点的变化都会把它放回 activeQ（经过退避），这比实际需要的宽得多，但不会漏掉。
+`defaultEnqueueExtension.EventsToRegister` 返回 `framework.UnrollWildCardResource()`：Pod、Node、PV、PVC、CSINode、CSIDriver、CSIStorageCapacity、StorageClass、ResourceClaim、DeviceClass 的所有动作（开启 `GenericWorkload` 时再加 PodGroup），QueueingHint 用 `defaultQueueingHintFn`，一律返回 `Queue`。
+
+所以被 NetworkOverhead 拒绝的 Pod，集群里任何一个 Pod 或节点的变化都会把它放回 activeQ（经过退避），这比实际需要的宽得多，但不会漏掉。
 
 真正会漏掉的是 CRD 的变化。AppGroup、NetworkTopology 不在调度器的集群事件里，修改 `maxNetworkCost` 或代价表不会触发任何 Pod 重新入队。如果一个 Pod 是因为代价表写错被拒绝的，修正代价表之后，它要等到下一个 Pod/Node 事件，或者等 unschedulablePods 的定期刷新（`DefaultPodMaxInUnschedulablePodsDuration` 为 5 分钟）。
 
 ## 六、边界与坑
 
-**CR 找不到时会 panic。** 当 Pod 带 AppGroup label 时，PreFilter 依次执行 `findAppGroupNetworkOverhead`、`findNetworkTopologyNetworkOverhead`、`sortNetworkTopologyCosts`、`GetDependencyList`。两个 find 在所有 namespace 都找不到时返回 `nil`；`sortNetworkTopologyCosts` 在 `weightsName` 不是 `NetperfCosts` 时会 `range networkTopology.Spec.Weights`，对 nil 指针解引用；即使跳过了排序，`GetDependencyList(pod, nil)` 也会访问 `ag.Spec`。PreFilter 运行在调度主循环的 goroutine 里，框架不 recover，调度器进程退出。KEP「Known limitations」一节写的是「没有这两个 CRD 时，NetworkOverhead 对所有节点打同分」，与代码行为不符。常见的触发方式是 `networkTopologyName` 用了默认的 `nt-default` 而集群里的 CR 叫别的名字，或 CR 建在了 `args.namespaces` 之外。
+**CR 找不到时会 panic。** 当 Pod 带 AppGroup label 时，PreFilter 依次执行 `findAppGroupNetworkOverhead`、`findNetworkTopologyNetworkOverhead`、`sortNetworkTopologyCosts`、`GetDependencyList`。
 
-**依赖 Pod 所在节点被删除，会让整组 Pod 的 PreFilter 报错。** 依赖 Pod 的 `spec.nodeName` 指向的节点如果不在调度快照里（节点对象已删除、Pod 对象还没被清理），`NodeInfos().Get` 返回错误，PreFilter 返回 `Error`。这个 Pod 会进入错误退避，依赖同一个 workload 的所有 Pod 在这段时间里都无法调度，直到那个孤儿 Pod 被垃圾回收。
+两个 find 在所有 namespace 都找不到时返回 `nil`；`sortNetworkTopologyCosts` 在 `weightsName` 不是 `NetperfCosts` 时会 `range networkTopology.Spec.Weights`，对 nil 指针解引用；即使跳过了排序，`GetDependencyList(pod, nil)` 也会访问 `ag.Spec`。
 
-**连续调度的 Pod 互相看不见。** `scheduledList` 来自 Pod informer，只包含 API Server 已经写入 `nodeName` 的 Pod。同一批 frontend 副本连续出队时，前一个副本只是在调度器缓存里 assume 了，绑定还在异步进行，后一个副本的 PreFilter 看不到它。对 frontend 自己没有影响（它不依赖 frontend），但如果 cart 和 frontend 同时排队，frontend 很可能看不到刚被调度的 cart。读调度快照（`SnapshotSharedLister().NodeInfos()` 里的 Pod 包含 assumed Pod）可以避免这个时间差，代价是要遍历节点上的 Pod 而不是按 label 列。
+PreFilter 运行在调度主循环的 goroutine 里，框架不 recover，调度器进程退出。
 
-**MaxCost 与真实代价的量纲。** `MaxCost` 写死为 100，而 `networkCost` 在 CRD 里没有上限，`maxNetworkCost` 上限是 10000。如果代价表用毫秒级延迟填写，跨洲的真实代价可能是 150，比「查不到」的惩罚 100 还大，没有 label 的节点在打分上反而优于有完整拓扑信息的远端节点。代价表的取值范围应当控制在 100 以内，或者把「未知」视为比任何已知代价都差。
+KEP「Known limitations」一节写的是「没有这两个 CRD 时，NetworkOverhead 对所有节点打同分」，与代码行为不符。常见的触发方式是 `networkTopologyName` 用了默认的 `nt-default` 而集群里的 CR 叫别的名字，或 CR 建在了 `args.namespaces` 之外。
 
-**每次 PreFilter 都是全量计算。** 对快照中的全部 N 个节点，各构造一份 costMap（含一次 originList 排序），再对 S 个已调度 Pod 与 D 个依赖做双重循环，每对还要按名字取一次 NodeInfo。复杂度约为 O(N × (S × D + O log O))，其中 O 是 originList 长度。仓库的基准测试覆盖到 10000 个节点、10 个已调度 Pod 的规模；AppGroup 内已调度 Pod 达到数千时，这部分开销会集中在 PreFilter，而且对每个待调度的 Pod 都要重来一遍。
+**依赖 Pod 所在节点被删除，会让整组 Pod 的 PreFilter 报错。** 依赖 Pod 的 `spec.nodeName` 指向的节点如果不在调度快照里（节点对象已删除、Pod 对象还没被清理），`NodeInfos().Get` 返回错误，PreFilter 返回 `Error`。
+
+这个 Pod 会进入错误退避，依赖同一个 workload 的所有 Pod 在这段时间里都无法调度，直到那个孤儿 Pod 被垃圾回收。
+
+**连续调度的 Pod 互相看不见。** `scheduledList` 来自 Pod informer，只包含 API Server 已经写入 `nodeName` 的 Pod。同一批 frontend 副本连续出队时，前一个副本只是在调度器缓存里 assume 了，绑定还在异步进行，后一个副本的 PreFilter 看不到它。
+
+对 frontend 自己没有影响（它不依赖 frontend），但如果 cart 和 frontend 同时排队，frontend 很可能看不到刚被调度的 cart。
+
+读调度快照（`SnapshotSharedLister().NodeInfos()` 里的 Pod 包含 assumed Pod）可以避免这个时间差，代价是要遍历节点上的 Pod 而不是按 label 列。
+
+**MaxCost 与真实代价的量纲。** `MaxCost` 写死为 100，而 `networkCost` 在 CRD 里没有上限，`maxNetworkCost` 上限是 10000。如果代价表用毫秒级延迟填写，跨洲的真实代价可能是 150，比「查不到」的惩罚 100 还大，没有 label 的节点在打分上反而优于有完整拓扑信息的远端节点。
+
+代价表的取值范围应当控制在 100 以内，或者把「未知」视为比任何已知代价都差。
+
+**每次 PreFilter 都是全量计算。** 对快照中的全部 N 个节点，各构造一份 costMap（含一次 originList 排序），再对 S 个已调度 Pod 与 D 个依赖做双重循环，每对还要按名字取一次 NodeInfo。复杂度约为 O(N × (S × D + O log O))，其中 O 是 originList 长度。
+
+仓库的基准测试覆盖到 10000 个节点、10 个已调度 Pod 的规模；AppGroup 内已调度 Pod 达到数千时，这部分开销会集中在 PreFilter，而且对每个待调度的 Pod 都要重来一遍。
 
 ## 七、发散
 
 ### 7.1 与 InterPodAffinity 的对比
 
-InterPodAffinity 的 preferred 规则也能表达「靠近某类 Pod」，它的打分是「拓扑域内匹配 Pod 的数量 × 权重」，只区分同域与不同域。NetworkOverhead 多出来的是两样东西：分层的代价（同节点 0、同 zone 1、跨 zone 查表、跨 region 查表）和每条依赖各自的容忍上限。代价是它要求维护两个 CRD 和配套 controller，且只覆盖 region/zone 两级，同 zone 内的机架、交换机层级无法表达。如果只是想让 frontend 和 cart 同 zone，InterPodAffinity 更简单、也更可靠。
+InterPodAffinity 的 preferred 规则也能表达「靠近某类 Pod」，它的打分是「拓扑域内匹配 Pod 的数量 × 权重」，只区分同域与不同域。
+
+NetworkOverhead 多出来的是两样东西：分层的代价（同节点 0、同 zone 1、跨 zone 查表、跨 region 查表）和每条依赖各自的容忍上限。代价是它要求维护两个 CRD 和配套 controller，且只覆盖 region/zone 两级，同 zone 内的机架、交换机层级无法表达。如果只是想让 frontend 和 cart 同 zone，InterPodAffinity 更简单、也更可靠。
 
 ### 7.2 与 NodeResourceTopologyMatch 同属「拓扑感知」，但关注的层级不同
 
-NetworkOverhead 关心节点之间的距离，[下一篇](/posts/sched-plugin-30-node-resource-topology/)的 NodeResourceTopologyMatch 关心节点内部的拓扑：CPU、内存、设备分布在哪个 NUMA 节点上。两者都需要一个额外的 CRD 把调度器看不到的拓扑信息喂进来（NetworkTopology、NodeResourceTopology），也都面临同样的问题：CRD 的变化不在调度器的事件体系里，数据的新鲜度取决于外部 controller。
+NetworkOverhead 关心节点之间的距离，[下一篇](/posts/sched-plugin-30-node-resource-topology/)的 NodeResourceTopologyMatch 关心节点内部的拓扑：CPU、内存、设备分布在哪个 NUMA 节点上。
+
+两者都需要一个额外的 CRD 把调度器看不到的拓扑信息喂进来（NetworkTopology、NodeResourceTopology），也都面临同样的问题：CRD 的变化不在调度器的事件体系里，数据的新鲜度取决于外部 controller。
 
 ### 7.3 代价从哪里来
 
-手工填写的 `UserDefined` 代价是静态的。KEP 设想的完整链路是：netperf 组件定期在每对 zone/region 之间各挑一对节点测量延迟，写入 ConfigMap；networktopology controller 读取 ConfigMap，计算代价（例如对多跳路径求最短路），写回 NetworkTopology 的 `NetperfCosts` 权重；插件配置 `weightsName: NetperfCosts` 使用它。这个设计只测 zone/region 之间的代表性节点对，避免在大集群里做 O(N²) 的全量探测，前提是同一 zone 内的网络质量均匀，这也是插件对同 zone 固定记 1 的原因。
+手工填写的 `UserDefined` 代价是静态的。KEP 设想的完整链路是：netperf 组件定期在每对 zone/region 之间各挑一对节点测量延迟，写入 ConfigMap；networktopology controller 读取 ConfigMap，计算代价（例如对多跳路径求最短路），写回 NetworkTopology 的 `NetperfCosts` 权重；插件配置 `weightsName: NetperfCosts` 使用它。
+
+这个设计只测 zone/region 之间的代表性节点对，避免在大集群里做 O(N²) 的全量探测，前提是同一 zone 内的网络质量均匀，这也是插件对同 zone 固定记 1 的原因。
 
 ## 八、小结
 

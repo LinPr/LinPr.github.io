@@ -13,7 +13,7 @@ description: "DefaultPreemption 是默认 Profile 里唯一会驱逐别人的插
 
 {{< figure src="/images/posts/sched-plugins/callstack/18.svg" link="/images/posts/sched-plugins/callstack/18.svg" caption="DefaultPreemption 在调度流程中的位置：红框是本篇插件实现的扩展点（点击查看大图）" >}}
 
-前面十几篇读的都是「判断」：节点能不能放、放哪里更好。[上一篇的 DeferredPodScheduling](/posts/sched-plugin-17-deferred-pod-scheduling/) 结尾已经提到，它自己不腾地方，腾地方要靠抢占。本篇读的 `DefaultPreemption` 是默认 Profile 里唯一会**改变集群现状**的插件：所有节点都没通过 Filter 时，它在内存里模拟驱逐低优先级 Pod，找到一个可行的节点，然后真的去删 Pod，并把这个节点记进抢占者的 `status.nominatedNodeName`。本文基于 Kubernetes master 提交 `aabdf5a2`。
+前面十几篇读的都是「判断」：节点能不能放、放哪里更好。[上一篇的 DeferredPodScheduling](/posts/sched-plugin-17-deferred-pod-scheduling/) 结尾已经提到，它自己不腾地方，腾地方要靠抢占。本篇读的 `DefaultPreemption` 是默认 Profile 里唯一会改变集群现状的插件：所有节点都没通过 Filter 时，它在内存里模拟驱逐低优先级 Pod，找到一个可行的节点，然后真的去删 Pod，并把这个节点记进抢占者的 `status.nominatedNodeName`。本文基于 Kubernetes master 提交 `aabdf5a2`。
 
 它在默认 Profile 的 MultiPoint 列表里没有权重，紧跟在 `DynamicResources` 之后（[第 15 篇](/posts/sched-plugin-15-dynamic-resources/)解释过为什么 DRA 要排在前面：先释放闲置 claim，再考虑驱逐 Pod）。实现了 PostFilter 和 PreEnqueue 两个扩展点，`GenericWorkload` 开启时还有 PodGroupPostFilter。插件本身不受 gate 控制，默认启用；它的行为由 `SchedulerAsyncPreemption`（1.33 起 Beta，默认开）和 `GenericWorkload` 等 gate 调整。
 
@@ -53,7 +53,11 @@ spec:
 
 如果所有节点都是因为 CPU 不足（`NodeResourcesFit` 返回 `Unschedulable`）而失败，且节点上有优先级低于 1000 的 Pod，抢占就有机会。反过来，如果失败原因是节点亲和不匹配、污点不容忍、DRA 设备分配失败——这些插件返回的都是 `UnschedulableAndUnresolvable`——驱逐谁都没用，`DefaultPreemption` 连模拟都不会做。
 
+所以抢占的第一步不是找受害者，而是筛掉那些「驱逐了也没用」的节点。这一点贯穿下一节的候选筛选。
+
 ## 二、插件结构
+
+插件字段不多，但每一个都对应一种扩展方式：
 
 ```go
 // pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go
@@ -92,6 +96,8 @@ type Interface interface {
 
 ### 2.1 参数
 
+两个参数，都服务于第五节的候选数量计算：
+
 ```go
 // pkg/scheduler/apis/config/v1/defaults.go
 func SetDefaults_DefaultPreemptionArgs(obj *configv1.DefaultPreemptionArgs) {
@@ -106,7 +112,11 @@ func SetDefaults_DefaultPreemptionArgs(obj *configv1.DefaultPreemptionArgs) {
 
 校验规则：百分比在 `[0, 100]`，绝对值不小于 0，两者不能同时为 0。它们的用法在第五节讲。
 
+到这里，插件的账面结构已经清楚了。下面按一次抢占的实际顺序走：入口、资格检查、找候选、模拟受害者、排序、执行。
+
 ## 三、PostFilter 的入口与返回值语义
+
+入口只转发一次调用，其余都在 `Evaluator` 里：
 
 ```go
 // pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go
@@ -153,6 +163,8 @@ func (pl *DefaultPreemption) PostFilter(ctx context.Context, state fwk.CycleStat
 
 {{< figure src="/images/posts/sched-plugins/18-preemption-flow.svg" caption="Evaluator.Preempt 的主路径与提前退出；右列标出每种退出对 nominatedNodeName 的影响（点击查看大图）" link="/images/posts/sched-plugins/18-preemption-flow.svg" >}}
 
+返回值这一层说清了「结果怎么记」，下一层说「谁有资格抢占」。
+
 ## 四、资格检查：PodEligibleToPreemptOthers
 
 `evaluate` 的第一步是从 PodLister 重新取一次 Pod，然后问插件「这个 Pod 有没有资格抢占」：
@@ -195,7 +207,11 @@ func (pl *DefaultPreemption) PodEligibleToPreemptOthers(_ context.Context, pod *
 
 例外是提名节点在本轮 Filter 中是 `UnschedulableAndUnresolvable`，比如节点被打了 `NoSchedule` 污点。等受害者退出也没用了，允许重新抢占。
 
+资格通过之后，开始找候选节点。
+
 ## 五、候选节点：只看 Unschedulable，按比例抽样
+
+候选不是所有失败的节点，只是其中状态为 `Unschedulable` 的那部分：
 
 ```go
 // pkg/scheduler/framework/preemption/preemption.go
@@ -251,9 +267,13 @@ func (pl *DefaultPreemption) calculateNumCandidates(numNodes int32) int32 {
 
 这两个参数名里的「Min」容易引起误解：它们是**提前停止的阈值**，不是上限。模拟找到这么多候选就可以停，但找到多少都会参与第七节的排序，排序结果才决定选谁。调小它们能显著缩短大集群的抢占耗时，代价是选出的节点不一定是全局最优。
 
+候选节点定了，接下来是逐节点模拟。
+
 ## 六、DryRunPreemption 与 SelectVictimsOnNode
 
 ### 6.1 并行模拟
+
+模拟对每个候选节点并行跑一遍，通过的进候选列表：
 
 ```go
 // pkg/scheduler/framework/preemption/preemption.go
@@ -331,11 +351,11 @@ func (pl *DefaultPreemption) calculateNumCandidates(numNodes int32) int32 {
 
 第一步：筛出优先级严格低于抢占者、且 `IsEligiblePod` 通过的受害者。**同优先级不会互相抢占**。
 
-第二步：把它们**全部**从 NodeInfo 移除，每移除一个都调用 `RunPreFilterExtensionRemovePod`，让 `PodTopologySpread`、`InterPodAffinity`、`NodePorts` 这类插件更新各自的 CycleState。
+第二步：把它们全部从 NodeInfo 移除，每移除一个都调用 `RunPreFilterExtensionRemovePod`，让 `PodTopologySpread`、`InterPodAffinity`、`NodePorts` 这类插件更新各自的 CycleState。
 
-第三步：跑一次完整的 Filter。全部移除后还放不下，这个节点就没救了，直接返回。注释里特别说明：如果抢占者对某个受害者有 Pod 亲和，移除受害者反而会让 Filter 失败，这种情况出于性能考虑**不支持**。
+第三步：跑一次完整的 Filter。全部移除后还放不下，这个节点就没救了，直接返回。注释里特别说明：如果抢占者对某个受害者有 Pod 亲和，移除受害者反而会让 Filter 失败，这种情况出于性能考虑不支持。
 
-`RunFilterPluginsWithNominatedPods` 不是普通的 `RunFilterPlugins`。它会把提名到本节点、优先级**不低于**抢占者的其他 Pod 临时加进来跑一遍，全部通过后再不加它们跑一遍，两次都通过才算通过。这保证抢占者不会抢走为更高优先级 Pod 腾出的位置。
+`RunFilterPluginsWithNominatedPods` 不是普通的 `RunFilterPlugins`。它会把提名到本节点、优先级不低于抢占者的其他 Pod 临时加进来跑一遍，全部通过后再不加它们跑一遍，两次都通过才算通过。这保证抢占者不会抢走为更高优先级 Pod 腾出的位置。
 
 ```go
 // pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go
@@ -384,9 +404,13 @@ func (pl *DefaultPreemption) calculateNumCandidates(numNodes int32) int32 {
 
 {{< figure src="/images/posts/sched-plugins/18-select-victims.svg" caption="SelectVictimsOnNode 算例：p-b 比 p-a 更重要，但 p-a 受 PDB 保护，先被尝试放回并赦免，最终受害者是 p-b 和 p-c（点击查看大图）" link="/images/posts/sched-plugins/18-select-victims.svg" >}}
 
-这是一个贪心算法，复杂度是 O(受害者数 × Filter 开销)。它得到的不是「最少受害者」的最优解，而是在「尽量保留重要的、尽量保留受 PDB 保护的」这个偏好下的一个可行解。为什么不直接「从最不重要的开始逐个移除，直到放得下」？因为那样每一步都要判断「还差多少」，而 Filter 插件只回答「放得下/放不下」，不回答「差多少」。全移除再放回的方向只需要二值判断，对任何 Filter 插件都适用。
+这是一个贪心算法，复杂度是 O(受害者数 × Filter 开销)。它得到的不是「最少受害者」的最优解，而是在「尽量保留重要的、尽量保留受 PDB 保护的」这个偏好下的一个可行解。
+
+为什么不直接「从最不重要的开始逐个移除，直到放得下」？因为那样每一步都要判断「还差多少」，而 Filter 插件只回答「放得下/放不下」，不回答「差多少」。全移除再放回的方向只需要二值判断，对任何 Filter 插件都适用。
 
 ### 6.3 受害者的重要性
+
+两个受害者谁更该被保留，由这个函数按五个级别依次比较：
 
 ```go
 // pkg/scheduler/framework/preemption/util.go
@@ -419,6 +443,8 @@ func MoreImportantVictim(vi1, vi2 Victim) bool {
 
 ### 6.4 PDB 违反计数
 
+PDB 的余量是这样一个个扣下去的：
+
 ```go
 // pkg/scheduler/framework/preemption/util.go
 	podIsViolating := func(pod *v1.Pod) bool {
@@ -449,11 +475,15 @@ func MoreImportantVictim(vi1, vi2 Victim) bool {
 	}
 ```
 
-每个 PDB 的余量从 `status.disruptionsAllowed` 开始，受害者**按重要性降序**逐个扣减，扣到负数的 Pod 才算违反。这意味着：同一个 PDB 下有两个受害者、余量为 1 时，更重要的那个先扣掉余量，不算违反；不那么重要的那个被判为违反，于是会被优先尝试赦免。最终结果倾向于驱逐更重要的那个——这是贪心顺序带来的一个副作用。
+每个 PDB 的余量从 `status.disruptionsAllowed` 开始，受害者按重要性降序逐个扣减，扣到负数的 Pod 才算违反。这意味着：同一个 PDB 下有两个受害者、余量为 1 时，更重要的那个先扣掉余量，不算违反；不那么重要的那个被判为违反，于是会被优先尝试赦免。最终结果倾向于驱逐更重要的那个——这是贪心顺序带来的一个副作用。
 
 已经在 `status.disruptedPods` 里的 Pod 不扣减，因为它已经被 Eviction API 处理过、计入过余量了。PodGroup 受害者只要有一个成员违反，整个组都算违反，`ViolateCount` 是违反成员的个数。
 
+到这一步，每个候选节点都有了一份「要驱逐谁、违反几个 PDB」的答案。如果候选不止一个，就要在这些答案之间做选择。
+
 ## 七、选一个节点：五级排序
+
+多个候选节点时，用五级打分逐级淘汰，第一个分出胜负的级别决定结果：
 
 ```go
 // pkg/scheduler/framework/preemption/preemption.go
@@ -493,15 +523,21 @@ func MoreImportantVictim(vi1, vi2 Victim) bool {
 
 不加偏移，X 的和更小，会选 X，但 X 要多杀一个 Pod。加了偏移后每个受害者都贡献一个正数，受害者越多和越大，Y 胜出。源码注释原话是：避免「有几个负优先级 Pod 的节点」压过「只有更少同样负优先级 Pod 的节点」。
 
-第 5 级是「尽量驱逐刚启动的 Pod」：节点的分数是最高优先级那批受害者中**最早**的启动时间，分数越大（越晚）越好。
+第 5 级是「尽量驱逐刚启动的 Pod」：节点的分数是最高优先级那批受害者中最早的启动时间，分数越大（越晚）越好。
+
+节点选出来了，接下来是真正动手删。
 
 ## 八、extender 的介入
 
 `callExtenders` 在排序之前执行。只有 `SupportsPreemption()` 且 `IsInterested(pod)` 的 extender 参与，它们通过 `ProcessPreemption` 拿到 `节点 → 受害者` 的 map，可以删掉节点、改受害者列表。返回空受害者的节点会被丢弃，除非输入时它本来就是空的占位（为第 6.1 节说的「有支持抢占的 extender 时保留空受害者候选」而设计）。
 
+extender 处理完，剩下的就是执行。
+
 ## 九、执行：Executor
 
 ### 9.1 删除一个受害者
+
+删除之前，先看受害者处在哪个阶段：
 
 ```go
 // pkg/scheduler/framework/preemption/executor.go
@@ -532,13 +568,15 @@ func MoreImportantVictim(vi1, vi2 Victim) bool {
 
 受害者可能处在三种状态：
 
-- **在 Permit 等待中**（比如 Gang 调度还没凑齐）：调用 `waitingPod.Preempt`，它的绑定周期会以拒绝结束，Pod 回队列。不发任何 API 请求。
-- **在 PreBind 中**：`CancelPod` 取消它的 PreBind context。绑定周期在 PreBind 之后会调用 `MarkPrebound`，如果已被取消就返回错误，进入失败处理。只有取消成功（还没 `MarkPrebound`）才算内存中抢占。
-- **已经在运行**：先 patch 一个 `DisruptionTarget` condition，再 `DELETE`。顺序不能反：condition 是第四节 `PodTerminatingByPreemption` 的判断依据，也让 Job 控制器等组件能区分「被调度器抢占」和普通删除。
+- 在 Permit 等待中（比如 Gang 调度还没凑齐）：调用 `waitingPod.Preempt`，它的绑定周期会以拒绝结束，Pod 回队列。不发任何 API 请求。
+- 在 PreBind 中：`CancelPod` 取消它的 PreBind context。绑定周期在 PreBind 之后会调用 `MarkPrebound`，如果已被取消就返回错误，进入失败处理。只有取消成功（还没 `MarkPrebound`）才算内存中抢占。
+- 已经在运行：先 patch 一个 `DisruptionTarget` condition，再 `DELETE`。顺序不能反：condition 是第四节 `PodTerminatingByPreemption` 的判断依据，也让 Job 控制器等组件能区分「被调度器抢占」和普通删除。
 
 删除走的是普通的 Pod DELETE，不是 Eviction API。**PDB 在这里不会拦截**，它只影响第六、七节的选择。
 
 ### 9.2 清理低优先级 Pod 的提名
+
+受害者处理完，还要处理被抢占节点上已经存在的提名：
 
 ```go
 // pkg/scheduler/framework/preemption/executor.go
@@ -546,9 +584,13 @@ func MoreImportantVictim(vi1, vi2 Victim) bool {
 	if err := clearNominatedNodeName(ctx, cs, fh.APICacher(), nominatedPods...); err != nil {
 ```
 
-如果目标节点上已经有更低优先级的 Pod 被提名（它们之前也抢占过），现在这块地方要给更高优先级的抢占者了，它们的提名就失效了。清空它们的 `nominatedNodeName` 会触发 Pod 更新事件，让它们尽快重新调度，而不是等到下次发现节点放不下。注释说明这里没有逐个检查它们是否真的放不下，因为那需要大量 NodeInfo 和 PreFilter 状态操作，而每个节点上的提名 Pod 通常很少。
+如果目标节点上已经有更低优先级的 Pod 被提名（它们之前也抢占过），现在这块地方要给更高优先级的抢占者了，它们的提名就失效了。
+
+清空它们的 `nominatedNodeName` 会触发 Pod 更新事件，让它们尽快重新调度，而不是等到下次发现节点放不下。注释说明这里没有逐个检查它们是否真的放不下，因为那需要大量 NodeInfo 和 PreFilter 状态操作，而每个节点上的提名 Pod 通常很少。
 
 ### 9.3 同步与异步
+
+同步还是异步，只差在 `ActuatePodPreemption` 的一行分支：
 
 ```go
 // pkg/scheduler/framework/preemption/executor.go
@@ -615,7 +657,9 @@ func (pl *DefaultPreemption) PreEnqueue(ctx context.Context, p *v1.Pod) *fwk.Sta
 		e.mu.Unlock()
 ```
 
-前 n-1 个受害者并行删，最后一个单独删，并在删之前登记到 `lastVictimsPendingPreemption`。为什么要这样拆？源码注释描述了一个竞态：最后一个 DELETE 请求返回后、goroutine 执行 `preempting.Delete` 之前，受害者的删除事件可能已经到达队列。此时 PreEnqueue 看到抢占者还在 `preempting` 里，就会把它挡住；等 `preempting.Delete` 执行时，删除事件已经消费过了，没有新事件来唤醒它，抢占者卡在不可调度池里。
+前 n-1 个受害者并行删，最后一个单独删，并在删之前登记到 `lastVictimsPendingPreemption`。**这么拆是为了堵住一个删除事件早于簿记的竞态。**
+
+源码注释描述的竞态是：最后一个 DELETE 请求返回后、goroutine 执行 `preempting.Delete` 之前，受害者的删除事件可能已经到达队列。此时 PreEnqueue 看到抢占者还在 `preempting` 里，就会把它挡住；等 `preempting.Delete` 执行时，删除事件已经消费过了，没有新事件来唤醒它，抢占者卡在不可调度池里。
 
 有了 `lastVictimsPendingPreemption`，`isRunningPreemption` 就能区分这种情况：
 
@@ -645,6 +689,8 @@ func (pl *DefaultPreemption) PreEnqueue(ctx context.Context, p *v1.Pod) *fwk.Sta
 另外两个兜底：goroutine 出错时，或者最后一个受害者是在内存中被抢占的（不会产生删除事件），goroutine 结束时调用 `fh.Activate` 主动把抢占者移回 activeQ。
 
 ### 10.1 EventsToRegister：注册了事件，却总是 Skip
+
+异步模式下，它只注册一个事件：
 
 ```go
 // pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go
@@ -698,9 +744,13 @@ gated 的 Pod 只会被**gating 插件注册过的事件**考虑。注册 `Assig
 
 提名最终会被清除：抢占者绑定时，`ClearingNominatedNodeNameAfterBinding`（1.35 起 Beta，默认开）让 API Server 在 binding 子资源里清空它；或者下一轮抢占发现「Preemption is not helpful」时返回 `NNN=""` 清空。
 
+以上都是单个 Pod 的抢占。PodGroup 走的是另一条路径。
+
 ## 十二、PodGroup 抢占
 
-`GenericWorkload` 开启后，PodGroup 作为一个整体调度，失败时调用 `PodGroupPostFilter`。它走的是另一个 evaluator：`PodGroupEvaluator` 不再逐节点模拟，而是从全集群收集受害者（`GenerateVictims`），一次性全部从快照里移除，用 `podGroupSchedulingFunc` 检查整个组能否放下，再逐个尝试放回。思路与单 Pod 版本相同，只是「放得下」的判断变成了「整个组都放得下」，候选也不再是单个节点，而是一组节点（`candidate.name` 为 `"cluster"`）。`preemptionPolicy` 由 `PodGroupPreemptionPolicy` gate 决定读 PodGroup 的字段还是读组内 Pod 的字段。
+`GenericWorkload` 开启后，PodGroup 作为一个整体调度，失败时调用 `PodGroupPostFilter`。它走的是另一个 evaluator：`PodGroupEvaluator` 不再逐节点模拟，而是从全集群收集受害者（`GenerateVictims`），一次性全部从快照里移除，用 `podGroupSchedulingFunc` 检查整个组能否放下，再逐个尝试放回。
+
+思路与单 Pod 版本相同，只是「放得下」的判断变成了「整个组都放得下」，候选也不再是单个节点，而是一组节点（`candidate.name` 为 `"cluster"`）。`preemptionPolicy` 由 `PodGroupPreemptionPolicy` gate 决定读 PodGroup 的字段还是读组内 Pod 的字段。
 
 ## 十三、边界情况与坑
 
@@ -710,7 +760,7 @@ gated 的 Pod 只会被**gating 插件注册过的事件**考虑。注册 `Assig
 
 **抢占成功不等于马上调度。** 受害者有优雅退出期，默认 30 秒。这期间抢占者是 Pending，`kubectl describe` 能看到 `Nominated Node`。如果受害者的 `terminationGracePeriodSeconds` 很长，抢占者就要等很久。
 
-**受害者退出后，空间可能被别人拿走。** 提名只保护不被**更低**优先级的 Pod 抢走，同优先级或更高优先级的 Pod 仍然可以占用，此时抢占者下一轮要重新抢占。
+**受害者退出后，空间可能被别人拿走。** 提名只保护不被更低优先级的 Pod 抢走，同优先级或更高优先级的 Pod 仍然可以占用，此时抢占者下一轮要重新抢占。
 
 **`UnschedulableAndUnresolvable` 的节点完全不参与。** 一个 Pod 同时有节点亲和和资源需求时，只有亲和匹配、资源不足的节点会被考虑。排障时先看 `kubectl describe` 里每个节点的失败原因。
 
@@ -726,7 +776,7 @@ gated 的 Pod 只会被**gating 插件注册过的事件**考虑。注册 `Assig
 
 - `Clone` 浅拷贝，副本之间会互相污染；
 - 没实现 `AddPod`/`RemovePod`，插件在模拟中看不到受害者被移除，可能把一个本来可行的候选判为不可行；
-- 像 `DynamicResources` 这样 `Clone` 返回自己的插件，前提是它在模拟中**不修改**状态。
+- 像 `DynamicResources` 这样 `Clone` 返回自己的插件，前提是它在模拟中不修改状态。
 
 ### 14.2 抢占的成本
 
@@ -741,7 +791,11 @@ gated 的 Pod 只会被**gating 插件注册过的事件**考虑。注册 `Assig
 
 ### 14.4 历史演进
 
-抢占最早写在 `generic_scheduler.go` 里，scheduler framework 引入 PostFilter 扩展点后才被拆成 `DefaultPreemption` 插件，后来又把通用部分抽到 `framework/preemption` 包，以支持 out-of-tree 复用。异步抢占（KEP-4832）是最近的一次大变化，它把 API 调用移出调度周期，引入了 PreEnqueue 阻挡和 `lastVictimsPendingPreemption` 这套簿记。再往后，`GenericWorkload` 引入了 Victim/DomainVictim 抽象，使得受害者可以是一整个 PodGroup——这也是 `SelectVictimsOnNode` 要处理「远程节点」的原因：一个 PodGroup 受害者的成员可能分布在多个节点，移除它时只修改主节点的 NodeInfo，其他节点只通过 PreFilterExtensions 通知插件更新 CycleState。
+抢占最早写在 `generic_scheduler.go` 里，scheduler framework 引入 PostFilter 扩展点后才被拆成 `DefaultPreemption` 插件，后来又把通用部分抽到 `framework/preemption` 包，以支持 out-of-tree 复用。
+
+异步抢占（KEP-4832）是最近的一次大变化，它把 API 调用移出调度周期，引入了 PreEnqueue 阻挡和 `lastVictimsPendingPreemption` 这套簿记。
+
+再往后，`GenericWorkload` 引入了 Victim/DomainVictim 抽象，使得受害者可以是一整个 PodGroup——这也是 `SelectVictimsOnNode` 要处理「远程节点」的原因：一个 PodGroup 受害者的成员可能分布在多个节点，移除它时只修改主节点的 NodeInfo，其他节点只通过 PreFilterExtensions 通知插件更新 CycleState。
 
 ## 小结
 

@@ -19,6 +19,8 @@ Pod 从 `activeQ` 出队后（[上一篇](/posts/sched-plugin-02-priority-sort/)
 
 ## 一、插件代码
 
+插件在两个扩展点上各有一个函数：PreFilter 缩小候选集，Filter 逐个节点判定。
+
 ```go
 // pkg/scheduler/framework/plugins/nodename/node_name.go
 // NodeName is a plugin that checks if a pod spec node name matches the current node.
@@ -71,13 +73,17 @@ func Fits(pod *v1.Pod, nodeInfo fwk.NodeInfo) bool {
 
 拆开看：
 
-- **没有 CycleState**。PreFilter 不写任何状态，Filter 直接读 `pod.Spec.NodeName`。两次读同一个字段，开销可以忽略，没必要缓存。
-- **PreFilter 不返回 `Skip`**。`nodeName` 为空时返回 `nil, nil`，表示「不缩小范围」，但 Filter 仍会在每个节点上被调用一次，每次都走 `len(...) == 0` 的短路返回成功。返回 `Skip` 可以省掉这些调用，但它没这么做，原因在第四节。
-- **Filter 失败返回 `UnschedulableAndUnresolvable`**，原因字符串是 `node(s) didn't match the requested node name`。驱逐任何 Pod 都不能改变节点名，所以这个节点不应进入抢占候选。
-- **`Fits` 是导出函数**。它被 kubelet 的准入检查直接调用，第五节会讲。
-- **`SignPod`** 把 `spec.nodeName` 作为签名片段，供 `OpportunisticBatching`（1.35 Beta，默认开启）判断两个 Pod 能否复用同一份打分结果。没有实现 `SignPlugin` 的 Filter/Score 插件会让批处理整体关闭，所以连这么小的插件也要实现它。
+- 没有 CycleState。PreFilter 不写任何状态，Filter 直接读 `pod.Spec.NodeName`。两次读同一个字段，开销可以忽略，没必要缓存。
+- PreFilter 不返回 `Skip`。`nodeName` 为空时返回 `nil, nil`，表示「不缩小范围」，但 Filter 仍会在每个节点上被调用一次，每次都走 `len(...) == 0` 的短路返回成功。返回 `Skip` 可以省掉这些调用，但它没这么做，原因在第四节。
+- Filter 失败返回 `UnschedulableAndUnresolvable`，原因字符串是 `node(s) didn't match the requested node name`。驱逐任何 Pod 都不能改变节点名，所以这个节点不应进入抢占候选。
+- `Fits` 是导出函数。它被 kubelet 的准入检查直接调用，第五节会讲。
+- `SignPod` 把 `spec.nodeName` 作为签名片段，供 `OpportunisticBatching`（1.35 Beta，默认开启）判断两个 Pod 能否复用同一份打分结果。**没有实现 `SignPlugin` 的 Filter/Score 插件会让批处理整体关闭，所以连这么小的插件也要实现它。**
+
+代码就这么多。接下来要回答的是：它几乎不会被调用，为什么还要存在。
 
 ## 二、谁会把写了 nodeName 的 Pod 交给调度器
+
+插件的判定只有一行，问题在调用时机：调度器什么时候会拿着这种 Pod 来问它。答案要从 Pod informer 的回调看起。
 
 {{< figure src="/images/posts/sched-plugins/03-nodename-prefilter.svg" link="/images/posts/sched-plugins/03-nodename-prefilter.svg" caption="左：带 spec.nodeName 的 Pod 通常只进调度器缓存，由 kubelet 准入把关；右：进入调度周期后，各插件的 PreFilterResult 取交集，决定哪些节点进入 Filter（点击查看大图）" >}}
 
@@ -104,13 +110,15 @@ func assignedPod(pod *v1.Pod) bool {
 }
 ```
 
-`spec.nodeName` 非空，调度器就认为这个 Pod「已经调度完了」，只把它加进缓存，用于计算节点上的资源占用、端口占用和 Pod 间亲和。它不进调度队列，也就不会经过任何插件，包括 `NodeName` 本身。
+**`spec.nodeName` 非空，调度器就认为这个 Pod「已经调度完了」**，只把它加进缓存，用于计算节点上的资源占用、端口占用和 Pod 间亲和。它不进调度队列，也就不会经过任何插件，包括 `NodeName` 本身。
 
 所以手写一个带 `nodeName` 的 Pod，是完全绕过调度器的：节点资源够不够、污点容不容忍、亲和满不满足，调度器一概不管。真正的把关者是目标节点上的 kubelet（第五节）。
 
 ### 2.2 唯一的入口：被推迟的原地扩容
 
-`addPod` 里那个 `isPodDeferred` 条件是 `NodeName` PreFilter 存在的理由。`InPlacePodVerticalScalingSchedulerPreemption`（1.37 Alpha，默认关闭）这个 feature 处理的场景是：一个已经在运行的 Pod 申请原地扩容（修改 resources），kubelet 发现节点当前放不下，把 resize 标记为 Deferred（`PodResizePending` 条件的 reason 为 `Deferred`）。打开这个 feature 后，调度器会把这种 Pod 重新放进调度队列，评估「能不能在它所在的节点上通过抢占腾出空间」：
+`addPod` 里那个 `isPodDeferred` 条件是 `NodeName` PreFilter 存在的理由。
+
+`InPlacePodVerticalScalingSchedulerPreemption`（1.37 Alpha，默认关闭）这个 feature 处理的场景是：一个已经在运行的 Pod 申请原地扩容（修改 resources），kubelet 发现节点当前放不下，把 resize 标记为 Deferred（`PodResizePending` 条件的 reason 为 `Deferred`）。打开这个 feature 后，调度器会把这种 Pod 重新放进调度队列，评估「能不能在它所在的节点上通过抢占腾出空间」：
 
 ```go
 // pkg/scheduler/eventhandlers.go
@@ -134,11 +142,19 @@ func assignedPod(pod *v1.Pod) bool {
 	}
 ```
 
-这种 Pod 不能换节点，只能在原节点上想办法。`NodeName.PreFilter` 的注释说得很直白：把评估限制在这一个节点上，其他节点被视为 `UnschedulableAndUnresolvable`，不会成为抢占目标。与此同时，`NodeUnschedulable`、`TaintToleration`、`NodeAffinity` 对这种 Pod 的 PreFilter 都返回 `Skip`：Pod 已经在节点上跑着，节点被 cordon、加了新污点、标签变了，都不影响它扩容。剩下真正有意义的检查是资源，由 `NodeResourcesFit` 和第 17 篇的 `DeferredPodScheduling` 完成。`default_plugins.go` 里 `applyDeferredPodScheduling` 的注释特意要求把 `DeferredPodScheduling` 放在 `NodeName` 这类基础过滤之后，也是这个原因。
+这种 Pod 不能换节点，只能在原节点上想办法。`NodeName.PreFilter` 的注释说得很直白：**把评估限制在这一个节点上，其他节点被视为 `UnschedulableAndUnresolvable`，不会成为抢占目标。**
+
+与此同时，`NodeUnschedulable`、`TaintToleration`、`NodeAffinity` 对这种 Pod 的 PreFilter 都返回 `Skip`：Pod 已经在节点上跑着，节点被 cordon、加了新污点、标签变了，都不影响它扩容。
+
+剩下真正有意义的检查是资源，由 `NodeResourcesFit` 和第 17 篇的 `DeferredPodScheduling` 完成。`default_plugins.go` 里 `applyDeferredPodScheduling` 的注释特意要求把 `DeferredPodScheduling` 放在 `NodeName` 这类基础过滤之后，也是这个原因。
 
 除了这条路，`spec.nodeName` 非空的 Pod 不会出现在调度周期里。PreFilter 注释里提到的「static node assignment」，指的就是这类 Pod 在调度器框架里被评估的情况（比如其他复用调度框架做模拟的组件），框架给出一个一致的语义。
 
+入口既然只有一条，插件平时留给调度器的就只有 PreFilter 的那个返回值。下一节拆它。
+
 ## 三、PreFilterResult 怎么缩小候选节点
+
+`PreFilterResult` 是 PreFilter 唯一的输出通道，结构只有一个字段，规则却决定了哪些节点还能参与抢占。
 
 ### 3.1 合并规则
 
@@ -177,7 +193,7 @@ func (p *PreFilterResult) Merge(in *PreFilterResult) *PreFilterResult {
 }
 ```
 
-`nil` 表示「全部节点」，非 nil 的集合之间取交集。注意 `nil` 和空集合的区别：`NodeNames == nil` 是全部，`NodeNames` 是一个长度为 0 的集合则表示一个都不行。
+**`nil` 表示「全部节点」，非 nil 的集合之间取交集。** 注意 `nil` 和空集合的区别：`NodeNames == nil` 是全部，`NodeNames` 是一个长度为 0 的集合则表示一个都不行。
 
 框架在 `RunPreFilterPlugins` 里按链上顺序逐个合并，交集一旦为空就立刻终止：
 
@@ -201,6 +217,8 @@ func (p *PreFilterResult) Merge(in *PreFilterResult) *PreFilterResult {
 `pluginsWithNodes` 记录了哪些插件缩小过范围，它会被写进 `diagnosis.UnschedulablePlugins`。这一点在第六节讲事件时还会用到。
 
 默认插件里能返回非 nil `PreFilterResult` 的只有两个：`NodeName`（`spec.nodeName` 非空）和 `NodeAffinity`（required 节点亲和里用了 `matchFields: metadata.name In [...]`，第 06 篇细讲）。
+
+合并只是算出了一个集合，真正把它变成节点列表的是下一步。
 
 ### 3.2 被排除的节点：不进 Filter，也不参与抢占
 
@@ -231,9 +249,11 @@ func (a *SchedulingAlgorithm) getCandidateNodes(preFilterOutcome preFilterOutcom
 
 三个细节：
 
-1. **不存在的节点被静默丢弃**。`spec.nodeName` 指向一个快照里没有的节点，候选列表就是空的，Pod 本周期失败。
-2. **被排除的节点统一标为 `UnschedulableAndUnresolvable`**。`SetAbsentNodesStatus` 给所有没出现在 `NodeToStatus` 里的节点设置一个默认状态。PostFilter 阶段的抢占只会在 `Unschedulable` 的节点上找受害者，所以这些节点从一开始就不在抢占范围内。对被推迟扩容的 Pod 来说，这正是想要的：只能在自己的节点上抢占。
-3. **Filter 的预算按候选列表计算**。`numNodesToFind` 的入参是 `len(nodes)`，候选只有一个节点时最多找 1 个可行节点。如果直接遍历全部节点、靠 Filter 淘汰，5000 个节点的集群要并行跑 5000 次 Filter 链；有了 PreFilterResult，只跑 1 次。
+1. 不存在的节点被静默丢弃。`spec.nodeName` 指向一个快照里没有的节点，候选列表就是空的，Pod 本周期失败。
+2. 被排除的节点统一标为 `UnschedulableAndUnresolvable`。`SetAbsentNodesStatus` 给所有没出现在 `NodeToStatus` 里的节点设置一个默认状态。PostFilter 阶段的抢占只会在 `Unschedulable` 的节点上找受害者，**所以这些节点从一开始就不在抢占范围内**。对被推迟扩容的 Pod 来说，这正是想要的：只能在自己的节点上抢占。
+3. Filter 的预算按候选列表计算。`numNodesToFind` 的入参是 `len(nodes)`，候选只有一个节点时最多找 1 个可行节点。如果直接遍历全部节点、靠 Filter 淘汰，5000 个节点的集群要并行跑 5000 次 Filter 链；有了 PreFilterResult，只跑 1 次。
+
+候选集被切到最小之后，问题反过来了：既然只剩一个节点，Filter 还有必要吗？
 
 ## 四、为什么有了 PreFilter 还要 Filter
 
@@ -263,7 +283,11 @@ func (a *SchedulingAlgorithm) getCandidateNodes(preFilterOutcome preFilterOutcom
 
 这也解释了 PreFilter 不返回 `Skip` 的原因：返回 `Skip` 会让框架在本周期跳过 `NodeName.Filter`，而 `nodeName` 为空时跳过虽然无害，代码选择了不区分两种情况，保持 Filter 始终在场。对于空 `nodeName`，每个节点多一次函数调用和一次长度判断，代价可以忽略。
 
+插件在调度器里的部分到此为止。但绕过调度器的 Pod 总要有组件把关，这个角色落在 kubelet 身上。
+
 ## 五、和 kubelet、DaemonSet 的关系
+
+前面讲的是调度器内的两条路径：进队列，或者只进缓存。进了缓存的那些 Pod 由 kubelet 接手，而 DaemonSet 恰好选择留在调度器这一侧。
 
 ### 5.1 kubelet 准入复用了 Fits
 
@@ -297,7 +321,7 @@ func generalFilter(logger klog.Logger, pod *v1.Pod, nodeInfo *schedulerframework
 }
 ```
 
-kubelet 只接收 `spec.nodeName` 等于自己的 Pod，所以 `nodename.Fits` 在这里几乎总是为真，它主要是一个防御性检查。更值得注意的是这份清单**没有什么**：没有 `NodeUnschedulable`，没有 `NoSchedule` 污点，没有 Pod 间亲和，没有拓扑分布。所以：
+kubelet 只接收 `spec.nodeName` 等于自己的 Pod，所以 `nodename.Fits` 在这里几乎总是为真，它主要是一个防御性检查。更值得注意的是这份清单缺了什么：没有 `NodeUnschedulable`，没有 `NoSchedule` 污点，没有 Pod 间亲和，没有拓扑分布。所以：
 
 - 给 cordon 掉的节点手写 `nodeName`，Pod 照样能跑起来；
 - 节点上有 `NoSchedule` 污点，手写 `nodeName` 的 Pod 也能跑，只有 `NoExecute` 污点会被拒绝（第 05 篇细讲两者的分工）。
@@ -332,11 +356,17 @@ func ReplaceDaemonSetPodNodeNameNodeAffinity(affinity *v1.Affinity, nodename str
 }
 ```
 
-`metav1.ObjectNameField` 就是 `metadata.name`。这正好落在 `NodeAffinity.PreFilter` 能识别的形式上，它会返回 `PreFilterResult{NodeNames: {nodename}}`。所以 DaemonSet Pod 在调度器里享受的「只看一个节点」的优化，来自 `NodeAffinity` 而不是 `NodeName`。效果相同，但 Pod 是经过调度器的：资源不够时可以触发抢占（目标节点被标为 `Unschedulable` 而不是 `UnschedulableAndUnresolvable`），PriorityClass 生效，失败会被记录成调度事件。
+`metav1.ObjectNameField` 就是 `metadata.name`。这正好落在 `NodeAffinity.PreFilter` 能识别的形式上，它会返回 `PreFilterResult{NodeNames: {nodename}}`。所以**DaemonSet Pod 在调度器里享受的「只看一个节点」的优化，来自 `NodeAffinity` 而不是 `NodeName`。**
+
+效果相同，但 Pod 是经过调度器的：资源不够时可以触发抢占（目标节点被标为 `Unschedulable` 而不是 `UnschedulableAndUnresolvable`），PriorityClass 生效，失败会被记录成调度事件。
 
 DaemonSet 的模板里如果真写了 `spec.nodeName`，控制器的 `nodeShouldRunDaemonPod` 会只在这一个节点上创建 Pod，而创建出的 Pod 带着 `nodeName`，又回到了 5.1 的绕过路径。
 
+两条旁路讲完，回到插件本身：它订阅什么事件、为什么订得这么少。
+
 ## 六、QueueingHint：只关心节点新增
+
+`NodeName` 也要回答「什么变化可能让我拒绝过的 Pod 变得可调度」。答案只有一种。
 
 ```go
 // pkg/scheduler/framework/plugins/nodename/node_name.go
@@ -351,7 +381,9 @@ func (pl *NodeName) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWithH
 
 只注册了 `Node/Add`，而且没有 hint 函数，框架会用 `defaultQueueingHintFn`，等价于总是返回 `Queue`。逻辑是：节点名不会被修改，节点删除也不会让 Pod 变得可调度，唯一能改变 `NodeName` 判定的是「目标节点出现了」，对应 3.2 里「不存在的节点被静默丢弃」的情况。
 
-`NodeName` 怎么进入 Pod 的 `UnschedulablePlugins`？有两条路：Filter 在某个节点上返回失败（只可能发生在提名节点路径上），或者它在 PreFilter 缩小过范围，被 `pluginsWithNodes` 记了下来（3.1）。后一条意味着：只要 Pod 带着 `nodeName` 失败了，哪怕真正的原因是资源不足，之后任何新节点加入都会把它唤醒一次。这是一个宁可多唤醒的选择，代价不大，因为这类 Pod 本身就很少。
+`NodeName` 怎么进入 Pod 的 `UnschedulablePlugins`？有两条路：Filter 在某个节点上返回失败（只可能发生在提名节点路径上），或者它在 PreFilter 缩小过范围，被 `pluginsWithNodes` 记了下来（3.1）。后一条意味着：**只要 Pod 带着 `nodeName` 失败了，哪怕真正的原因是资源不足，之后任何新节点加入都会把它唤醒一次。** 这是一个宁可多唤醒的选择，代价不大，因为这类 Pod 本身就很少。
+
+hint 讲完，插件的全部行为也就齐了。剩下的边角情况集中在 API Server 和 kubelet 一侧。
 
 ## 七、边界情况
 
@@ -363,9 +395,13 @@ func (pl *NodeName) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWithH
 
 **大规模集群里的影响。** 对普通 Pod，`NodeName` 的开销是每个候选节点一次 Filter 调用加一次字符串长度判断，在所有 Filter 插件里最小，这也是它排在 Filter 链最前面的原因：开销小的放前面，即使它几乎不淘汰节点。
 
+四种情况都不在正常路径上。它们共享同一个前提：`nodeName` 由 API Server 一次性写死，调度器只读。下面回到机制本身，看 PreFilterResult 当初为什么会被加进框架。
+
 ## 八、发散：PreFilterResult 的设计取舍
 
-`PreFilterResult` 是后来加进框架的。在它出现之前，所有 Filter 插件都只能「逐个节点回答是否可行」，即使插件在 PreFilter 阶段就已经知道答案只可能是某一个节点。一个只能去 `node-a` 的 DaemonSet Pod，在 5000 节点的集群里要跑 5000 次完整的 Filter 链（每次都在 `NodeAffinity` 处失败），再根据 `percentageOfNodesToScore` 提前停止也无济于事，因为可行节点只有一个，提前停止的条件永远达不到。
+`PreFilterResult` 是后来加进框架的。在它出现之前，所有 Filter 插件都只能「逐个节点回答是否可行」，即使插件在 PreFilter 阶段就已经知道答案只可能是某一个节点。
+
+一个只能去 `node-a` 的 DaemonSet Pod，在 5000 节点的集群里要跑 5000 次完整的 Filter 链（每次都在 `NodeAffinity` 处失败），再根据 `percentageOfNodesToScore` 提前停止也无济于事，因为可行节点只有一个，提前停止的条件永远达不到。
 
 `PreFilterResult` 的设计有三个约束，读完 `NodeName` 和 `getCandidateNodes` 就能理解：
 
@@ -373,7 +409,9 @@ func (pl *NodeName) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWithH
 2. **被排除等同于 `UnschedulableAndUnresolvable`**。插件只能用它表达「这个节点无论如何都不行」，不能表达「这个节点抢占后也许行」。需要后者语义的插件不能用 PreFilterResult，只能老老实实在 Filter 里返回 `Unschedulable`。
 3. **Filter 仍要独立正确**，因为提名节点、批处理 hint 这些路径不经过它。
 
-这三条让 PreFilterResult 成为一个纯粹的性能优化，而不是第二套语义。抢占代码里也能看到第 2 条的落点：`DefaultPreemption` 用 `NodesForStatusCode(..., fwk.Unschedulable)` 挑选潜在节点，状态是 `UnschedulableAndUnresolvable` 的节点从一开始就不在名单里。顺带一提，scheduler-plugins 里实现 PreFilter 的插件（`Coscheduling`、`CapacityScheduling`、`NetworkOverhead`、`NodeResourceTopologyMatch` 等）目前都只返回 `nil` 的 `PreFilterResult`，没有利用这个优化。
+这三条让 PreFilterResult 成为一个纯粹的性能优化，而不是第二套语义。
+
+抢占代码里也能看到第 2 条的落点：`DefaultPreemption` 用 `NodesForStatusCode(..., fwk.Unschedulable)` 挑选潜在节点，状态是 `UnschedulableAndUnresolvable` 的节点从一开始就不在名单里。顺带一提，scheduler-plugins 里实现 PreFilter 的插件（`Coscheduling`、`CapacityScheduling`、`NetworkOverhead`、`NodeResourceTopologyMatch` 等）目前都只返回 `nil` 的 `PreFilterResult`，没有利用这个优化。
 
 ## 九、小结
 
