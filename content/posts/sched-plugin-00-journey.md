@@ -360,6 +360,25 @@ func (a *SchedulingAlgorithm) numFeasibleNodesToFind(percentageOfNodesToScore *i
 
 Pod 要等下一个周期才能真正放上去，那时就会走上面的「提名节点快速路径」。`DefaultPreemption` 在第 18 篇，scheduler-plugins 里改写抢占逻辑的三个插件在第 28、31、32 篇。
 
+#### 举个例子：一次抢占要两轮调度周期
+
+集群有两个节点，`allocatable` 都是 4 CPU：
+
+| 节点 | 已运行的 Pod | 已请求 CPU | 剩余 CPU |
+| --- | --- | --- | --- |
+| node-1 | `low-a`（priority 0，requests 3 CPU） | 3 | 1 |
+| node-2 | `sys-a`（priority 2000000000，requests 3 CPU） | 3 | 1 |
+
+新 Pod `web` 的 `spec.priority` 是 1000，requests 2 CPU。它从出队到落到节点上经过五步：
+
+1. 第一轮 Filter：两个节点都只剩 1 CPU，`NodeResourcesFit` 在两个节点上都返回 `Unschedulable`，`SchedulePod` 返回 `FitError`。
+2. 第一轮 PostFilter：`DefaultPreemption` 只驱逐优先级严格低于 1000 的 Pod。node-2 上的 `sys-a` 优先级更高，赶不走；node-1 上去掉 `low-a` 后剩 4 CPU，放得下。于是选中 node-1，victims 是 `low-a`，`Result` 里的 `NominatingInfo` 指向 node-1。
+3. 第一轮收尾：仍然返回 `Unschedulable`（上面代码第 9 行）。失败处理把 `web` 放回队列，`UnschedulablePlugins` 记为 `NodeResourcesFit`，`status.nominatedNodeName` 写成 node-1；默认开启的异步抢占（`SchedulerAsyncPreemption`）在另一个 goroutine 里删除 `low-a`。
+4. 两轮之间：`low-a` 优雅终止结束、从 apiserver 删除，调度器缓存里 node-1 的已请求 CPU 降到 0，同时产生 `AssignedPod/Delete` 事件，`NodeResourcesFit` 的 hint 返回 `Queue`，`web` 回到队列（第五节）。这期间若有优先级低于 1000 的 Pod 出队，它在 node-1 上跑 Filter 时会把 `web` 当作已经占了 2 CPU（第 02 篇 6.1 节），抢不走腾出来的位置。
+5. 第二轮：`web` 带着 `nominatedNodeName: node-1`，走 3.2 节的提名节点快速路径（那段代码第 9–15 行），只在 node-1 上跑 Filter。node-1 有 4 CPU 空闲，通过；可行节点只有一个，不打分，直接进入 Reserve 和绑定。
+
+抢占和放置是分开的两件事：第一轮只负责腾位置、写提名，`web` 真正落到 node-1 是第二轮的结果，而第二轮连 node-2 都没有检查。
+
 ### 3.5 Score：在可行节点里挑一个
 
 可行节点只有一个时直接选它，不打分。多于一个时进入 `prioritizeNodes`：PreScore 做预计算，Score 对每个节点打分，NormalizeScore 把各插件的分数归一化到 0~100（`MaxNodeScore`），再乘以 profile 里的权重求和，取总分最高的节点。
@@ -464,7 +483,23 @@ Pod 要等下一个周期才能真正放上去，那时就会走上面的「提�
 
 之后它什么时候回到 `activeQ`，取决于这些插件的 `EventsToRegister` 与 QueueingHint。每个插件声明自己关心哪些集群事件，比如 `NodeResourcesFit` 关心节点资源变化和 Pod 删除，`TaintToleration` 关心节点污点变化。
 
-事件到来时，队列只对那些「被这个插件拒绝过」的 Pod 调用插件的 hint 函数，hint 返回 `Queue` 才把 Pod 移出去，返回 `QueueSkip` 就继续等。比如一个节点只是更新了一个无关的 label，`NodeResourcesFit` 的 hint 会判断出可分配资源没有变大，返回 `QueueSkip`，被资源不足拒绝的 Pod 就不会白白重试。
+事件到来时，队列只对那些「被这个插件拒绝过」的 Pod 调用插件的 hint 函数，hint 返回 `Queue` 才把 Pod 移出去，返回 `QueueSkip` 就继续等。比如一个节点的 allocatable 变了，但 Pod 请求的那几种资源都没有变多，`NodeResourcesFit` 的 hint 返回 `QueueSkip`；节点只改了一个无关的 label，事件类型是 `UpdateNodeLabel`，根本不在 `NodeResourcesFit` 注册的 `Node/Add|UpdateNodeAllocatable` 里，连 hint 都不会调用。两种情况下，被资源不足拒绝的 Pod 都不会白白重试。
+
+#### 举个例子：一次失败之后的两条路
+
+Pod `api` 的 `spec.priority` 是 0，requests 2 CPU。node-1、node-2 的 `allocatable` 都是 4 CPU，各自已被优先级同为 0 的 Pod 请求了 3 CPU。`api` 的去向分三步看：
+
+1. 失败时刻：两个节点都只剩 1 CPU，`NodeResourcesFit` 拒绝；抢占只能驱逐优先级更低的 Pod，这里没有，PostFilter 也失败。`handleSchedulingFailure` 把 `UnschedulablePlugins` 设为 `{NodeResourcesFit}`，`AddUnschedulablePodIfNotPresent` 把 `UnschedulableCount` 加到 1，`Timestamp` 刷新为失败时刻。
+2. 情况 A，`api` 还在调度周期里时，集群加入了空闲的 node-3（4 CPU）：
+   - 这个 `Node/Add` 事件被记进 `inFlightEvents`，失败时 `clusterEventsForPod` 把它取出来；
+   - `NodeResourcesFit` 的 hint 发现 node-3 放得下 `api`，返回 `Queue`；
+   - `api` 刚失败，还在 1 秒退避期内，进 `backoffQ`，退避结束后回到 `activeQ`，下一轮选中 node-3。
+3. 情况 B，调度周期里什么都没发生：`api` 进 `unschedulableEntities`，之后：
+   - node-1 改了一个 label，产生 `Node/UpdateNodeLabel`，不匹配 `NodeResourcesFit` 注册的事件，`api` 不动；
+   - node-1 上一个请求 1 CPU 的 Pod 被删除，产生 `AssignedPod/Delete`，`NodeResourcesFit` 的 hint 对已绑定 Pod 的删除返回 `Queue`；
+   - 这时距失败已超过 1 秒，退避已过，`api` 直接进 `activeQ`，下一轮 node-1 剩 2 CPU，放得下。
+
+事件来得早，失败时一并判断，Pod 进 `backoffQ`；来得晚，由 hint 逐个判断，Pod 从 `unschedulableEntities` 被捞出。两条路上，和拒绝它的插件无关的事件都不会让它多跑一轮调度周期。
 
 这套机制决定了「Pod 一直 Pending，集群明明已经变了却不重新调度」这类问题的答案，所以本系列每篇都会讲插件注册了哪些事件、hint 怎么判断。
 

@@ -351,6 +351,22 @@ score = 50 + (50 + Δ) / 2                     ∈ [50, 100]
 
 `BalancedAllocation` 的分数区间只有 50 宽，实际场景中 Δ 通常很小，节点之间的差距往往只有几分，而 `LeastAllocated` 的差距可以是几十分。所以在默认配置下，**它更像一个「平手时的裁判」：剩余量差不多的节点之间，挑一个放上去更均衡的。**
 
+把 4.2 节的节点 X、Y 和那个请求 1 核 CPU、8Gi 内存的 Pod 放回默认 Profile，只看这两个插件的分数怎么相加。假设节点上已有的 Pod 都写了 requests，`NonZeroRequested` 与 `Requested` 相同：
+
+1. `LeastAllocated` 按放上之后的剩余比例打分，每种资源算 `(allocatable − requested) × 100 / allocatable`，再按资源权重 1:1 取平均：
+   - X：CPU `(10 − 8) × 100 / 10 = 20`，内存 `(20 − 10) × 100 / 20 = 50`，平均 `(20 + 50) / 2 = 35`；
+   - Y：CPU `(20 − 11) × 100 / 20 = 45`，内存 `(40 − 28) × 100 / 40 = 30`，平均 `(45 + 30) / 2 = 37`（整数除法）。
+2. `BalancedAllocation` 沿用 4.2 节算出的最终分：X 82，Y 71。
+3. 两个插件的权重都是 1，分数直接相加。
+
+| | 节点 X | 节点 Y |
+| --- | --- | --- |
+| `NodeResourcesFit`（LeastAllocated） | 35 | 37 |
+| `NodeResourcesBalancedAllocation` | 82 | 71 |
+| 合计 | 117 | 108 |
+
+`LeastAllocated` 眼里两个节点差不多空，只差 2 分，稍微偏向 Y；`BalancedAllocation` 拉开了 11 分，Pod 最终落到 X，正好补上 X 闲置的内存。反过来，如果 X 的剩余量明显少于 Y，`LeastAllocated` 的差距会是几十分，这 11 分就扳不回来了。
+
 在装箱场景下（`NodeResourcesFit` 用 `MostAllocated`），两者的配合更有意义：`MostAllocated` 把 Pod 往满的节点上推，`BalancedAllocation` 防止节点被单一资源塞满。如果只装箱不均衡，最终节点会「CPU 满、内存空」，下一个 Pod 放不进去，Cluster Autoscaler 又加一个节点。
 
 ## 六、边界情况与坑

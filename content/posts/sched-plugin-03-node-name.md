@@ -264,6 +264,18 @@ func (a *SchedulingAlgorithm) getCandidateNodes(preFilterOutcome preFilterOutcom
 2. 被排除的节点统一标为 `UnschedulableAndUnresolvable`。`SetAbsentNodesStatus`（第 17 行）给所有没出现在 `NodeToStatus` 里的节点设置一个默认状态。PostFilter 阶段的抢占只会在 `Unschedulable` 的节点上找受害者，**所以这些节点从一开始就不在抢占范围内**。对被推迟扩容的 Pod 来说，这正是想要的：只能在自己的节点上抢占。
 3. Filter 的预算按候选列表计算。`numNodesToFind` 的入参是 `len(nodes)`，候选只有一个节点时最多找 1 个可行节点。如果直接遍历全部节点、靠 Filter 淘汰，5000 个节点的集群要并行跑 5000 次 Filter 链；有了 PreFilterResult，只跑 1 次。
 
+#### 举个例子
+
+集群有 5000 个节点。`db-0` 运行在 node-3 上，申请原地扩容后被 kubelet 标记为 Deferred，`InPlacePodVerticalScalingSchedulerPreemption` 打开时它经 2.2 节的路径进入调度队列。一轮调度周期里，候选节点和各节点的状态这样变化：
+
+1. PreFilter：`NodeName` 返回 `NodeNames: {node-3}`；`NodeUnschedulable`、`TaintToleration`、`NodeAffinity` 等插件对这种 Pod 返回 `Skip`，不参与合并；其余插件返回 `nil`。合并结果是 `{node-3}`，`pluginsWithNodes` 是 `{NodeName}`，写进 `diagnosis.UnschedulablePlugins`。
+2. `getCandidateNodes`：node-3 在快照里，候选列表只有它一个；另外 4999 个节点由 `SetAbsentNodesStatus` 统一标成 `UnschedulableAndUnresolvable`，消息是 `node(s) didn't satisfy plugin(s) [NodeName]`。
+3. Filter：`numNodesToFind` 按 `len(nodes)` 为 1 计算，只在 node-3 上跑一遍 Filter 链。假设扩容后的请求在 node-3 上放不下，资源检查返回 `Unschedulable`，`NodeToStatus` 里显式记录的只有 node-3 这一项。
+4. PostFilter：抢占用 `NodesForStatusCode(..., fwk.Unschedulable)` 挑潜在节点。默认状态是 `UnschedulableAndUnresolvable`，不匹配，于是只拿到 node-3，victims 也只会在 node-3 上找。
+5. 失败回队：`UnschedulablePlugins` 里有 `NodeName` 和在 node-3 上拒绝它的插件，之后任何 `Node/Add` 事件都会把它唤醒一次（第六节）。
+
+一个 `PreFilterResult` 同时做了两件事：Filter 从 5000 次降到 1 次，抢占范围锁定在 node-3。后者正是被推迟扩容的 Pod 需要的语义，它不能换节点。
+
 候选集被切到最小之后，问题反过来了：既然只剩一个节点，Filter 还有必要吗？
 
 ## 四、为什么有了 PreFilter 还要 Filter

@@ -314,6 +314,25 @@ func (bq *backoffQueue) lessBackoffCompletedWithPriority(entity1, entity2 framew
 
 **所以只有同一秒内到期的 entity 之间才按 Less 排序**。这个 feature 打开后，`activeQ` 为空时 `Pop` 会直接从 `backoffQ` 取，取出的顺序因此也基本符合优先级。只有 `entityErrorBackoffQ`（因 `Error` 状态退避的 entity）仍然只按到期时间排序。
 
+#### 举个例子
+
+三个 Pod 在 `backoffQ` 里，`Timestamp` 是各自最近一次失败回队的时刻，退避时长从 1 秒起按 `UnschedulableCount` 翻倍：
+
+| Pod | priority | `UnschedulableCount` | `Timestamp` | 退避时长 | 原始到期时间 | `alignToWindow` 之后 |
+| --- | --- | --- | --- | --- | --- | --- |
+| a | 0 | 1 | 10:00:03.4 | 1s | 10:00:04.4 | 10:00:04 |
+| b | 1000 | 1 | 10:00:03.9 | 1s | 10:00:04.9 | 10:00:04 |
+| c | 1000 | 3 | 10:00:01.2 | 4s | 10:00:05.2 | 10:00:05 |
+
+它们在 `backoffQ` 里的顺序和离开的时机分四步看：
+
+1. 排序：a、b 截断后都是 10:00:04，第 7 行判断相等，落到第 11 行的 `activeQLessFn`，b 的 priority 更高，排在 a 前面；c 的 10:00:05 更晚，排最后。堆里的顺序是 b、a、c，而只按原始到期时间会是 a、b、c。
+2. 10:00:04 整的那次 flush：`isEntityBackingoff` 拿到期时间和截断后的当前时间 10:00:04 比较，a、b 的 10:00:04「不早于」它，仍算在退避中，一个都不移。
+3. 10:00:05 整的那次 flush：a、b 的 10:00:04 早于当前窗口 10:00:05，按 b、a 的顺序移回 `activeQ`；c 的 10:00:05 不早于当前窗口，等到 10:00:06 那次。
+4. 如果 10:00:04.2 时 `activeQ` 已经空了，`Pop` 直接从 `backoffQ` 取堆顶，先拿到的是 b，尽管它的原始到期时间还没到。
+
+窗口把到期时间相差不到 1 秒的 Pod 归成一批，批内按 Less 出队；代价是 a 比原始到期时间晚了约 0.6 秒才被 flush 回 `activeQ`。
+
 两个堆用的是同一份 Less。这不是巧合：整个调度器只有一个 `PriorityQueue`，也就只有一份比较函数，框架对此有强校验。
 
 ## 五、为什么只能有一个 QueueSort
@@ -350,6 +369,16 @@ QueueSort 的职责只有一件：决定谁先出队。而 `spec.priority` 这�
 ```
 
 **高优先级 Pod 抢占腾出的位置，低优先级 Pod 不能趁它还没绑定时占走**；反过来，低优先级 Pod 的提名不会挡住高优先级 Pod。
+
+举个例子。node-1 的 `allocatable` 是 4 CPU，已绑定的 Pod 共请求 1 CPU；`high`（priority 1000，requests 2 CPU）刚通过抢占把 `nominatedNodeName` 写成 node-1，还没绑定。三个同样 requests 2 CPU 的 Pod 先后在 node-1 上跑 Filter：
+
+| Pod | priority | `high` 是否加进 `nodeInfoOut` | node-1 上按已请求计算 | `NodeResourcesFit` 结果 |
+| --- | --- | --- | --- | --- |
+| `mid` | 500 | 是，1000 ≥ 500 | 1 + 2 = 3 CPU，再放 2 CPU 超过 4 | 拒绝 |
+| `peer` | 1000 | 是，1000 ≥ 1000 | 同上，3 CPU | 拒绝 |
+| `top` | 2000 | 否 | 1 CPU，再放 2 CPU 是 3 | 通过 |
+
+比较用的是 `>=`，所以同优先级的 `peer` 也要让着 `high`，只有 `top` 能占走这块位置。`top` 绑定之后 node-1 只剩 1 CPU，`high` 下一轮在提名节点上过不了 Filter，提名节点快速路径落空，回到遍历全部节点。
 
 ### 6.2 抢占
 

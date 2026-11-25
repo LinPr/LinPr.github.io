@@ -309,6 +309,26 @@ func (f *frameworkImpl) RunPlacementGeneratePlugins(ctx context.Context, state f
 
 当前 in-tree 只有这一个生成插件，所以默认配置下不会触发合并。
 
+假设 Profile 里在 TopologyPlacementGenerator 之后再启用一个第三方生成插件，按节点的 GPU 型号标签分组（下称 GPU 插件）。PodGroup 带 rack 约束，集群 6 个节点的标签如下：
+
+| 节点 | rack 标签 | GPU 型号标签 |
+|---|---|---|
+| n1 | r1 | h100 |
+| n2 | r1 | h100 |
+| n3 | r1 | a100 |
+| n4 | r2 | h100 |
+| n5 | r2 | a100 |
+| n6 | r2 | 无 |
+
+合并分四步：
+
+1. TopologyPlacementGenerator 返回 `r1 {n1, n2, n3}`、`r2 {n4, n5, n6}`，不是 `inputPlacement`，记入 `constrained`；
+2. GPU 插件返回 `h100 {n1, n2, n4}`、`a100 {n3, n5}`（n6 没有型号标签，不进任何分组），同样记入 `constrained`；
+3. `mergePlacements` 以第一个插件的结果为外层、第二个为内层，两两取节点交集，得到 `r1/h100 {n1, n2}`、`r1/a100 {n3}`、`r2/h100 {n4}`、`r2/a100 {n5}` 四个 placement，n6 不在任何一个里；
+4. 交集为空的组合被丢掉：如果 n4 也是 a100，`r2/h100` 就不会出现；所有组合都为空时，框架返回 `Unschedulable`（`no feasible merged placements found`）。
+
+如果 GPU 插件对某个 PodGroup 不需要区分型号，原样返回 `inputPlacement`，就会被第 23–25 行剔除，结果退回 rack 级的两个 placement。合并后的每个 placement 同时满足所有生成插件的约束，任何一个插件排除的节点都进不了最终结果。
+
 ### 4.2 AssumePlacement：让逐 Pod 算法只看见这些节点
 
 placement 怎么限制后面的 Filter？靠 snapshot：

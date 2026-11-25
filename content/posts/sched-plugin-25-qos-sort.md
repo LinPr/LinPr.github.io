@@ -353,6 +353,23 @@ func (bq *backoffQueue) lessBackoffCompletedWithPriority(pInfo1, pInfo2 *framewo
 
 所以换成 QOSSort 后，activeQ 为空、调度器直接从 backoffQ 取 Pod 时，同一窗口内的 Pod 也会按 QoS 分层。
 
+用三个 Pod 走一遍。它们的优先级都是 0，各失败过一次（`UnschedulableCount` 为 1），此刻都在 backoffQ 里，activeQ 为空。`getBackoffTime` 用 `Timestamp` 加上退避时长（默认初始退避 1 秒，失败一次就是 1 秒），再由 `alignToWindow` 截断到整秒的窗口：
+
+| Pod | QoS | `Timestamp`（失败回队时刻） | 加 1 秒 | 截断到窗口 |
+| --- | --- | --- | --- | --- |
+| log-agent | Burstable | 10:00:04.900 | 10:00:05.900 | 10:00:05 |
+| batch-probe | BestEffort | 10:00:05.200 | 10:00:06.200 | 10:00:06 |
+| payment-api | Guaranteed | 10:00:05.700 | 10:00:06.700 | 10:00:06 |
+
+`lessBackoffCompletedWithPriority` 对它们的比较分两步：
+
+1. log-agent 和另外两个比，到期时间不相等，按第 5–7 行直接比到期时间，10:00:05 早于 10:00:06，log-agent 排在堆顶；
+2. batch-probe 和 payment-api 落在同一个 10:00:06 窗口，第 9 行转交 `QOSSort.Less`：优先级都是 0，`compQOS` 查表得 Guaranteed 为 3、BestEffort 为 1，payment-api 排在前面。
+
+于是 `unlockedPop` 通过 `popBackoff` 依次取出 log-agent、payment-api、batch-probe，不等它们退避到期。换成 PrioritySort，第二步会落到时间戳比较，先失败的 batch-probe（05.200）排在 payment-api（05.700）前面。
+
+这个例子说明 QoS 这一层在 backoffQ 里只在同一个 1 秒窗口内起作用：跨窗口时仍是到期早的先出，所以 Burstable 的 log-agent 排在了 Guaranteed 的 payment-api 前面。
+
 到了 Kubernetes master，QueueSort 接口本身变了。`aabdf5a2` 中的定义是：
 
 ```go {linenos=inline}

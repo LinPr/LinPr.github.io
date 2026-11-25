@@ -666,6 +666,28 @@ func (pl *PodTopologySpread) updateWithPod(logger klog.Logger, s *preFilterState
 
 skew 超限之所以是 `Unschedulable`，前提就是这里能正确模拟「驱逐某个域里的匹配 Pod 后 skew 下降」。
 
+用一次抢占模拟看这套增减怎么落到 `TpValueToMatchNum` 和 `CriticalPaths` 上。新 Pod P 带 `app: web`，只有一条约束：zone、`maxSkew: 1`、`DoNotSchedule`、selector `app: web`。集群状态如下：
+
+1. zone-a 的节点上共有 3 个 `app: web` 副本；
+2. zone-b 只有节点 b1，上面 1 个副本，b1 的 CPU 已经放不下 P；
+3. zone-c 只有节点 c1，上面 2 个副本，优先级都低于 P，按 `MoreImportantVictim` 排序后记作 web-5、web-6。
+
+PreFilter 得到 `TpValueToMatchNum[0] = {zone-a: 3, zone-b: 1, zone-c: 2}`，`CriticalPaths[0] = [{zone-b, 1}, {zone-c, 2}]`。c1 上 skew 为 2 + 1 − 1 = 2 > 1，返回 `Unschedulable`，c1 进入抢占候选。`SelectVictimsOnNode` 在 c1 上的过程：
+
+| 步骤 | zone-c 计数 | `CriticalPaths[0]` | c1 上的 Filter |
+| --- | --- | --- | --- |
+| 移除第一个副本 | 1 | `[{zone-b, 1}, {zone-c, 1}]` | — |
+| 移除第二个副本 | 0 | `[{zone-c, 0}, {zone-b, 1}]` | 0 + 1 − 0 = 1，通过 |
+| 加回 web-5 | 1 | `[{zone-c, 1}, {zone-b, 1}]` | 1 + 1 − 1 = 1，通过，web-5 保留 |
+| 加回 web-6 | 2 | `[{zone-b, 1}, {zone-c, 2}]` | 2 + 1 − 1 = 2 > 1，失败 |
+| 再次移除 web-6 | 1 | `[{zone-b, 1}, {zone-c, 1}]` | web-6 记为受害者 |
+
+表里每一行都对应 `updateWithPod` 的第 25–26 行：先改计数，再调 `update`。三处结果对应前文的结论：
+
+1. 第二行和第四行，被改动的域越过了另一个槽位，`update` 的交换（3.3 节代码块第 14–17 行）把新的最小值换到 `p[0]`，这就是只记两条路径也够用的原因；
+2. b1 因为 CPU 不足根本放不下 P，zone-b 的计数 1 却一直是最小值，被别的插件淘汰的节点照样参与统计（第八节第一条）；
+3. 最终只驱逐 web-6，c1 上 zone-c 的计数回到 1，放入 P 后为 2，与 zone-b 的差正好是 `maxSkew`。
+
 还有一点：`RunPreFilterExtensionAddPod` 会跳过在 PreFilter 返回 `Skip` 的插件。没有 `DoNotSchedule` 约束的 Pod，`PodTopologySpread` 在抢占和 nominated 处理中完全不参与，这是正确的——它本来就没有硬约束。
 
 硬约束这条线到此完整了。同一套计数逻辑还要服务软约束，但软约束的入口不在 Filter，而在 PreScore 和 Score。

@@ -891,6 +891,16 @@ KEP「Known limitations」一节写的是「没有这两个 CRD 时，NetworkOve
 
 对 frontend 自己没有影响（它不依赖 frontend），但如果 cart 和 frontend 同时排队，frontend 很可能看不到刚被调度的 cart。
 
+沿用第四节的集群和 AppGroup，换一个起点：cart 和 frontend 各有一个 Pod 同时排队，catalog 还没有任何副本完成绑定。即使队列排序让 cart-a 先出队（第 26 篇所说的 ReverseKahn 一类顺序），过程也是这样：
+
+1. cart-a 的调度周期选中 n-1，在调度器缓存里 assume，绑定交给异步 goroutine；此时 API Server 里 cart-a 的 `spec.nodeName` 仍为空；
+2. 调度器随即弹出 frontend 的 Pod。PreFilter 用 `podLister.List` 列出带 `appgroup.diktyo.x-k8s.io=shop` 的 Pod，cart-a 在其中，PreFilter 代码块第 37–44 行的两个提前返回都不触发；
+3. `GetScheduledList` 第 7 行的 `len(p.Spec.NodeName) != 0` 对 cart-a 不成立，`scheduledList` 为空，PreFilter 在其代码块第 49–52 行返回，`scoreEqually` 保持 true；
+4. Filter 在其代码块第 18–21 行对所有节点放行；Score 在 3.6 节代码块第 10–12 行给每个节点 `MinNodeScore`，同一代码块里的 NormalizeScore 见 min、max 都是 0，在第 30–32 行直接返回；
+5. frontend 的落点完全由其它打分插件决定，可能是 us-east-1 的 n-3。
+
+如果 cart-a 的绑定已经写进 API Server，n-3 上这一对就是跨 region 的 20 > 8，满足 0、违反 1，会被 Filter 拒绝。差别只在于 frontend 出队时 cart-a 的绑定是否已经完成，队列排序本身保证不了这一点。
+
 读调度快照（`SnapshotSharedLister().NodeInfos()` 里的 Pod 包含 assumed Pod）可以避免这个时间差，代价是要遍历节点上的 Pod 而不是按 label 列。
 
 **MaxCost 与真实代价的量纲。** `MaxCost` 写死为 100，而 `networkCost` 在 CRD 里没有上限，`maxNetworkCost` 上限是 10000。如果代价表用毫秒级延迟填写，跨洲的真实代价可能是 150，比「查不到」的惩罚 100 还大，没有 label 的节点在打分上反而优于有完整拓扑信息的远端节点。

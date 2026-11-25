@@ -257,6 +257,15 @@ func (pl *DynamicResources) PreEnqueue(ctx context.Context, pod *v1.Pod) (status
 
 还有一个容易漏掉的出口：`resourceclaim.Name` 遇到模板生成的 claim、而 status 里有条目但 `ResourceClaimName` 为 nil 时返回 `nil`，`foreachPodResourceClaim` 会直接跳过。这是 controller 判断「不需要生成 claim」时的约定，此时 Pod 不需要这个 claim 也能调度。
 
+用 1.1 节的 `train-0` 走一遍。它通过 `resourceClaimTemplateName: gpu-tpl` 引用模板，刚创建时 `status.resourceClaimStatuses` 为空：
+
+1. Pod 进队列前跑 `PreEnqueue`：`resourceclaim.Name` 在 status 里找不到名为 `gpu` 的条目，返回 `ErrClaimNotFound`，`statusUnschedulable` 把它包成 `UnschedulableAndUnresolvable`。队列把 `DynamicResources` 记为 gating 插件，Pod 留在不可调度池。
+2. resourceclaim controller 以 `GenerateName: train-0-gpu-` 创建 claim，API Server 补上随机后缀，比如 `train-0-gpu-x7k2p`。调度器收到 ResourceClaim 的 Add 事件，`preQueueingHint` 按 Pod 索引查找引用它的 Pod；索引键同样经 `resourceclaim.Name` 从 `resourceClaimStatuses` 算出，此时 `train-0` 不在其中，这个事件唤不醒它。
+3. controller 把 `{name: gpu, resourceClaimName: train-0-gpu-x7k2p}` 写进 Pod status。`PodSchedulingPropertiesChange` 识别出 `UpdatePodGeneratedResourceClaim`，`isSchedulableAfterTargetPodUpdate` 再跑一遍 `foreachPodResourceClaim`：名字解析成功，claim 在 assume cache 里，owner 是 `train-0`，返回 `Queue`。
+4. 队列重跑 PreEnqueue，这次通过，Pod 进入 activeQ，下一节的 PreFilter 才开始收集 claim。
+
+Pod informer 和 claim 事件的先后不固定。如果第 3 步的 Pod 更新先到、claim 还没进 assume cache，hint 因为取不到 claim 返回 `QueueSkip`；随后 claim 的 Add 事件到达时 Pod 已经进了索引，`isSchedulableAfterClaimChange` 走到「Pod 引用的 claim 被创建」那一条，返回 `Queue`。两种顺序下，Pod 都要等 claim 和 status 齐备才进队列，等待 controller 的这段时间不占用任何调度周期。
+
 PreEnqueue 只是把明显还不该调的 Pod 挡在门外。真正的准备工作在 PreFilter 里。
 
 ## 五、PreFilter：收集 claim、构建分配器
@@ -829,6 +838,18 @@ in-flight 条目的移除被推迟到整个 PreBind 成功之后：
 
 1. `successCleanup` 在 PreBind 成功后才由 `defer`（第 8–12 行）调用，以 `forceRemove=true` 调用 `MaybeRemoveClaimPendingAllocation`，不管还有几个 sharer 都删掉，因为 API 里已经有了真实的 allocation；
 2. `state.claims.set`（第 14 行）把 claim 换成 API 返回的新对象，这样如果后续 Bind 失败，Unreserve 能看到「这个 claim 已经 reserve 给我了」，知道要去撤销。
+
+#### 举个例子：两个 Pod 共享一个 claim
+
+把 8.1 到 8.3 串起来看。设手工创建的 claim `shared-gpu` 还没有分配，`pod-a` 和 `pod-b` 都用 `resourceClaimName: shared-gpu` 引用它，调度器先处理 `pod-a`：
+
+1. `pod-a` 的调度周期：PreFilter 发现 claim 未分配、也不在 in-flight 表里，构建分配器；Filter 在 node-1 上分到 `gpu-0`，结果存进 `nodeAllocations["node-1"]`；选中 node-1 后，Reserve 把带 allocation 的副本交给 `SignalClaimPendingAllocation`，in-flight 表多出 `shared-gpu` 一条，`sharers` 为 1。API 和 assume cache 里的 claim 仍然没有 allocation。
+2. `pod-a` 进入绑定 goroutine，调度器接着处理 `pod-b`：PreFilter 走 5.2 节的未分配分支，`GetPendingAllocation` 返回非 nil，`pod-b` 以 `UnschedulableAndUnresolvable`（`is in the process of being allocated`）回到不可调度池。
+3. `pod-a` 的 PreBind 调用 `bindClaim`：先 `Update` 加 finalizer，再 `UpdateStatus` 写入 allocation（设备 `gpu-0`，nodeSelector 指向 node-1）和 `reservedFor: [pod-a]`；defer 里的 `AssumeClaimAfterAPICall` 把新对象放进 assume cache；PreBind 成功后 `successCleanup` 删除 in-flight 条目。
+4. assume cache 发出 claim 的更新事件：`preQueueingHint` 按索引找到 `pod-b`，`isSchedulableAfterClaimChange` 发现 status 变了，返回 `Queue`。
+5. `pod-b` 的新一轮：PreFilter 看到 claim 已有 allocation，只编译 nodeSelector；Filter 中 node-1 以外的节点都因 `availableOnNodes.Match` 不通过而被拒；Reserve 对已分配的 claim 不做任何事；PreBind 里 `bindClaim` 拿到的 allocation 为 nil，只往 `reservedFor` 追加 `pod-b`。
+
+最终 claim 的 `reservedFor` 是 `[pod-a, pod-b]`，allocation 只由 `pod-a` 写过一次。`pod-b` 在第 2 步被拒的那一次是有意为之：如果它当时就按「已分配」处理，它的 PreBind 可能抢在 `pod-a` 之前执行，正好落进 8.2 节的第一个反例。
 
 ### 8.4 binding conditions：PreBind 里的等待
 

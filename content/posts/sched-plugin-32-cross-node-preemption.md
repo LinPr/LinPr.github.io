@@ -353,6 +353,23 @@ README 的说法是：
 
   DFS 会为同一个节点产出很多 candidate（每个可行的超集一个），选择时它们会相互覆盖，最终被选中的未必是受害者最少的那个。
 
+#### 举个例子：同节点两个受害者
+
+第 1 条缺陷在资源类抢占里最容易碰到。集群只有一个节点 node-a，4 核 CPU，上面是两个低优先级 Pod `a1`、`a2`，各占 2 核；高优先级的 `p` 请求 4 核，Filter 阶段 `NodeResourcesFit` 判 node-a 资源不足（`Unschedulable`），所以 node-a 是潜在节点。
+
+in-tree 的 `SelectVictimsOnNode` 在一个节点副本上同时移除 `a1`、`a2`，空出 4 核，Filter 通过；逐个赦免时加回任何一个都只剩 2 核，于是两个都是受害者，`p` 抢占成功。
+
+`bruteForceDryRunPreemption` 收集到 `pods = [a1, a2]`，DFS 依次访问四个子集：
+
+| 子集 | `dryRunOnePass` 克隆出的节点副本 | Filter 结果 |
+| --- | --- | --- |
+| {a1, a2} | 副本 1 只移除 `a1`，副本 2 只移除 `a2` | 两份副本都还剩 2 核已用，`p` 要 4 核，失败 |
+| {a1} | 副本 1 只移除 `a1` | 失败 |
+| {a2} | 副本 1 只移除 `a2` | 失败 |
+| {} | 无 | 没有节点可试 |
+
+第一行的关键在 `dryRunOnePass` 第 9–10 行：处理 `a2` 时又从 `nodeLister` 取了一次原始的 node-a 再 `Clone`，前一份副本里移除 `a1` 的效果没有带过来。`RunPreFilterExtensionRemovePod`（第 14 行）虽然对两个 Pod 都调用了，但 `NodeResourcesFit` 的 Filter 读的是 `NodeInfo` 上的已请求量，不在 CycleState 里。最终 `FindCandidates` 一个候选都没有，`p` 抢占失败，而 in-tree 抢占对同一个场景能成功：这个插件在单节点资源抢占上反而不如它要替代的实现。
+
 ### 3.3 它为什么编译不过
 
 代码用的是很早期的框架 API，在 v1.36.4 里几乎都不存在了：

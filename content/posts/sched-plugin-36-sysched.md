@@ -308,6 +308,20 @@ func (sc *SySched) podDeleted(obj interface{}) {
 
 只有在第 2 步之后的那次更新里，旧对象才同时满足两个条件，Pod 这时才进入 `HostToPods`。**在那之前，调度器在这个节点上看不到它的系统调用。**
 
+#### 举个例子
+
+Pod `web-1` 引用了一个 seccomp profile，被调度到此前没有任何已记录 Pod 的 node-a。调度器的 Pod informer 依次收到下面五个事件：
+
+| 序号 | informer 事件 | 回调判断用的对象 | 判断结果 | `HostToPods["node-a"]` |
+|---|---|---|---|---|
+| 1 | Add：刚创建，`Pending`，`nodeName` 为空 | 新对象 | `podAdded` 第 8 行：不是 `Running`，跳过 | 没有这个键 |
+| 2 | Update：绑定写入 `nodeName: node-a` | 旧对象：`Pending`，`HostIP` 为空 | `podUpdated` 第 19 行不成立 | 没有这个键 |
+| 3 | Update：kubelet 写入 `status.hostIP`，仍是 `Pending` | 旧对象：`Pending`，`HostIP` 为空 | 第 19 行不成立 | 没有这个键 |
+| 4 | Update：下一次状态更新（如容器启动、变为 `Running`） | 旧对象：`Pending`，`HostIP` 已填 | 第 19 行成立，第 21 行 `addPod` | `[web-1]`，`HostSyscalls` 并入它的画像 |
+| 5 | 之后的 Update | 旧对象：`Running` | 第 19 行不成立 | 不变 |
+
+在事件 2 到事件 4 之间，另一个 Pod `web-2` 进入调度：4.1 节 Score 代码第 19 行的 `getHostSyscalls("node-a")` 查不到这个键，返回 nil，第 23–24 行直接给 0 分，归一化后是满分。`web-1` 已经绑在 node-a 上，`SySched` 却仍把 node-a 当成空节点，这就是第六节「批次效应」的来源。
+
 删除这一侧，调度器的 Pod informer 带有字段选择器 `status.phase!=Succeeded,status.phase!=Failed`（`kubernetes@v1.36.4/pkg/scheduler/scheduler.go` 的 `newPodInformer`），Pod 进入终态时对 informer 而言就是删除事件，会触发 `removePod`，节点并集按剩余 Pod 重新计算。
 
 `podDeleted` 直接做 `obj.(*v1.Pod)` 断言（第 27 行），没有处理 informer 在丢失删除事件时投递的 `DeletedFinalStateUnknown`，断言失败会 panic。

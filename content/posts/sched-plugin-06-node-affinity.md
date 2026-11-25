@@ -352,6 +352,25 @@ func (s *preFilterState) Clone() fwk.StateData {
 
 `NotIn` 不参与推导：排除一个节点名并不能把候选集缩小到一个可枚举的集合。
 
+#### 举个例子
+
+API 校验要求 `metadata.name` 的每条 `In` 只能有一个值，所以「多选几个节点」只能写成多个 term。下面三个 Pod 的 required 亲和各不相同，按上面代码块的行号走一遍：
+
+1. Pod p1 有两个 term：term1 是 `metadata.name In [n1]`，term2 是 `metadata.name In [n3]`。
+   - term1：第 11–13 行得到 `termNodeNames = {n1}`，第 24 行并入，`nodeNames = {n1}`；
+   - term2：同理得到 `{n3}`，并入后 `nodeNames = {n1, n3}`；
+   - 第 30–31 行返回 `PreFilterResult{NodeNames: {n1, n3}}`，这个周期里 Filter 只在 n1、n3 上跑，其余节点统一标成 `UnschedulableAndUnresolvable`。
+2. Pod p2 的 term1 是 `metadata.name In [n1]`，term2 是 `topology.kubernetes.io/zone In [cn-a]`。
+   - term1 同样得到 `{n1}`；
+   - term2 没有 `MatchFields`，`termNodeNames` 保持 `nil`，第 19–22 行直接返回 `nil, nil`。
+   - 结果是不缩小候选集：任何 cn-a 节点都可能命中 term2，只看 term1 会漏掉它们。
+3. Pod p3 只有一个 term，里面写了两条 `metadata.name In [n1]` 和 `metadata.name In [n2]`。
+   - 第 12–13 行先得到 `{n1}`，第 14–15 行和 `{n2}` 求交集，得到一个非 nil 的空集合；
+   - 第 24 行并入后 `nodeNames` 仍是非 nil 的空集合；
+   - 第 28–29 行返回 `UnschedulableAndUnresolvable`，原因串 `pod affinity terms conflict`，Filter 一个节点都不用跑。
+
+三个 Pod 对应 PreFilter 的三种出口：能确定集合就缩小，有一个 term 说不清就放弃，所有 term 都自相矛盾就提前失败。
+
 这个优化的主要受益者是 DaemonSet。DaemonSet 控制器为每个节点创建 Pod 时，会把 Pod 的 required 亲和整个替换成指向单个节点的 term：
 
 ```go {linenos=inline}

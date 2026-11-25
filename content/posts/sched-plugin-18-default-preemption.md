@@ -817,6 +817,18 @@ gated 的 Pod 只会被**gating 插件注册过的事件**考虑。注册 `Assig
 1. 抢占者绑定时，`ClearingNominatedNodeNameAfterBinding`（1.35 起 Beta，默认开）让 API Server 在 binding 子资源里清空它；
 2. 下一轮抢占发现「Preemption is not helpful」时返回 `NNN=""` 清空。
 
+用第一节的 `api-7`（优先级 1000，请求 4 核 CPU）把提名的一来一回走一遍。node-2 有 8 核，跑着 `web-1`（优先级 1000，4 核）和 `batch-a`（优先级 0，4 核），已经满了；其它节点也都满了，上面的 Pod 优先级都不低于 1000：
+
+1. 第一轮调度：所有节点都在 `NodeResourcesFit` 上返回 `Unschedulable`（Insufficient cpu），进入 PostFilter。
+2. `findCandidates`：所有节点都是潜在节点。其它节点在 `SelectVictimsOnNode` 第一步找不到优先级更低的 Pod，返回 `UnschedulableAndUnresolvable`；node-2 上只有 `batch-a` 符合（`web-1` 与 `api-7` 同优先级，不能抢）。移除 `batch-a` 后剩 4 核，放得下；尝试放回 `batch-a` 又放不下，受害者是 `[batch-a]`，node-2 成为唯一候选。
+3. 执行：异步模式下 `prepareCandidateAsync` 把 `api-7` 放进 `preempting`，goroutine 给 `batch-a` 打上 `DisruptionTarget` condition 后删除；PostFilter 立刻返回 node-2，`handleSchedulingFailure` 把 `api-7` 加进 nominator，并把 `status.nominatedNodeName` 写成 node-2。本周期仍算失败，`api-7` 回到不可调度池。
+4. `batch-a` 优雅退出期间仍在调度器缓存里，node-2 还是满的。它的删除事件到达后，缓存里 node-2 已请求的 CPU 降到 4 核；`NodeResourcesFit` 对 `AssignedPod/Delete` 的 hint 返回 `Queue`，`api-7` 移出不可调度池。
+5. 如果 `api-7` 的退避还没到期，第 4 步把它放进的是 backoffQ。这时 activeQ 里优先级为 0、请求 2 核的 `batch-c` 先出队，它在 node-2 上跑 `RunFilterPluginsWithNominatedPods`：`api-7` 提名到 node-2，优先级 1000 不低于 0，被临时加进 NodeInfo，已请求变成 8 核，`batch-c` 放不下。
+6. `api-7` 出队：`findNodesThatFitPod` 先用 `evaluateNominatedNode` 单独评估 node-2。提名到 node-2 的只有它自己，按 UID 排除；Filter 看到 4 + 4 = 8 核，通过，直接选中 node-2，不再评估其它节点，也不打分。
+7. 绑定时 `ClearingNominatedNodeNameAfterBinding` 让 API Server 清空 `status.nominatedNodeName`。
+
+从第 3 步到第 6 步，受害者删除和抢占者重新调度之间有一个时间窗，node-2 腾出的 4 核在这段时间里由提名占着。第 5 步出队的如果是优先级不低于 1000 的 Pod，提名挡不住它，这就是第十三节说的「空间可能被别人拿走」。
+
 以上都是单个 Pod 的抢占。PodGroup 走的是另一条路径。
 
 ## 十二、PodGroup 抢占

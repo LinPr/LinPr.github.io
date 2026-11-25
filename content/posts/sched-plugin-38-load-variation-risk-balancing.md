@@ -415,6 +415,14 @@ LVRB 实际的分数区间往往只有 [50, 100] 左右，和其它满幅 [0, 10
 
 **没有滞后补偿，批量调度会扎堆。** 如第二节所述，`eventHandler` 只创建、不读取。连续调度一批 Pod 时，在下一次快照刷新之前（最长 30 秒，Prometheus 15 分钟均值下更久），所有 Pod 看到的都是同一份 μ 和 σ，会落到同一个「风险最低」的节点上。区别只在于每个 Pod 自己的 request 都会加到 μ 上，但这只计入了**当前**这个 Pod，之前刚调度的 Pod 不会被计入。
 
+沿用 4.4 节的两个节点（margin = 1、sensitivity = 1），在快照刷新前连续来三个和算例相同的 Pod（`cpu: 500m`、`memory: 1Gi`）：
+
+1. 第一个 Pod：N1 得 66，N2 得 61，落到 N1；
+2. 第二个 Pod：N1 的 CPU 均值仍是快照里的 50%，`GetMuSigma` 算出的 μ 仍是 0.5 + 0.125 = 0.625，N1 仍得 66、N2 仍得 61，又落到 N1；
+3. 第三个 Pod 同理，三个 Pod 共 1.5 核 request 全部落到 N1。
+
+对照一下：如果像 TLP 那样把刚绑定的 Pod 计入（这里按 request 计），第二个 Pod 看到的 N1 CPU μ = 0.5 + 0.125 + 0.125 = 0.75，risk = (0.75 + 0.05) / 2 = 0.4，得 60；内存 μ = 0.4 + 0.25 = 0.65，risk = 0.35，得 65；取较小值 60，低于 N2 的 61.25（四舍五入为 61），第二个 Pod 就该去 N2。这一份补偿缓存插件已经在维护，只是打分时没有读。
+
 **标准差是对平滑过的序列算的。** Prometheus provider 发的是 `stddev_over_time(instance:node_cpu:ratio[15m])`。而 `instance:node_cpu:ratio` 这类 recording rule 本身就是在几分钟窗口上算出的速率，是已经平滑过的序列，它的标准差会小于原始秒级用量的标准差。LVRB 直接使用这个值，没有做修正。下一篇的 `LowRiskOverCommitment` 用 `smoothingWindowSize` 专门处理了这个问题。
 
 **BestEffort Pod。** request 为 0，μ 中只剩节点自身用量，LVRB 退化为按当前风险选节点，不会因为这个 Pod 有任何区别。

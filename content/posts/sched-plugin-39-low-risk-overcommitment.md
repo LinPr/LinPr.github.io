@@ -506,6 +506,29 @@ LROC 选 A。B 的负载更低、request 更少，但已有 Pod 的 limit 之和
 3. 此时虽然 L⁻ < C，但 σ = 0 时 `fitDistribution` 为 nil，不做条件化；
 4. riskLoad = 1，totalRisk = 0.5 × 0 + 0.5 × 1 = 0.5，与断言一致。
 
+**连续调度同样的 Pod。** 第四节说 R、L 来自包含 assumed Pod 的 `NodeInfo`，下一个周期就能看到上一个 Pod。接着上面的算例，在 Collector 快照刷新之前，再来两个和第一节一样的 Pod，前一个落到哪里，就被 assume 到哪里：
+
+| A 节点 CPU | 第 1 个 Pod | 第 2 个 Pod | 第 3 个 Pod |
+|---|---|---|---|
+| R⁻ / L⁻ | 2000m / 3000m | 2500m / 4000m | 3000m / 5000m |
+| R / L | 2500m / 4000m | 3000m / 5000m | 3500m / 6000m |
+| riskLimit | 0 | (5000 − 4000) / (5000 − 3000) = 0.5 | (6000 − 4000) / (6000 − 3500) = 0.8 |
+| 阈值 R⁻/C | 0.5 | 0.625 | 0.75 |
+| riskLoad | 0.1364 | 1 − 0.9929 = 0.0071 | 1 − 0.99997 ≈ 0 |
+| totalRisk | 0.0682 | 0.2535 | 0.4000 |
+| A 得分 | 93 | 75 | 60 |
+| B 得分 | 63 | 63 | 63 |
+| 选中 | A | A | B |
+
+表中的数据分四点说明：
+
+1. 第 2、3 个 Pod 的 L⁻ 分别等于、大于 C，不满足 5.2 节 riskLoad 代码第 19 行的 `limitMinusPod < capacity`，不做条件化；
+2. A 的内存 L 依次是 11Gi、12Gi、13Gi，都小于 16Gi，riskLimit 为 0，riskLoad 也接近 0，rank 由 CPU 决定；
+3. 前两个 Pod 都落在 A，B 的 `NodeInfo` 没有变化，一直是 63 分；
+4. riskLoad 一路下降：μ 仍是快照里的 40%，阈值 R⁻/C 却随着 assumed Pod 抬高。
+
+所以，起作用的是 riskLimit：A 的 limit 之和一旦越过容量，静态风险立刻上升，第 3 个 Pod 转向 B。request/limit 这一半没有滞后，负载这一半在快照刷新前仍停在旧值，甚至会因为阈值抬高而显得更安全。
+
 ## 七、边界情况与坑
 
 **缺少某种资源的指标时，该资源看起来更安全。** `CreateResourceStats` 返回 `ok == false` 时（5.2 节代码第 5 行的 `if ok` 不成立），riskLoad 保持初始值 0，totalRisk 只剩 `w × riskLimit`。比如 SignalFx 只配置了 CPU 指标时，内存风险最多只有 0.5 × riskLimit。

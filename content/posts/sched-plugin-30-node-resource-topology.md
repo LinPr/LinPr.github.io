@@ -819,6 +819,31 @@ func checkPodFingerprintForNode(lh logr.Logger, objs []podData, nodeName, pfpExp
 
 `FlushNodes` 替换快照后，删除该节点的预留和三个计数，并把 `generation` 加一。
 
+#### 举个例子：一次误拒与恢复
+
+把 7.3 的悲观扣减和本节的指纹校验串起来，用一个节点走一遍。`worker-1` 的 NRT 上报 `single-numa-node` 策略、`container` 作用域，调度器启动时快照里两个 zone 的 CPU `Available` 是 node-0 = 6、node-1 = 10。
+
+三个 Guaranteed Pod `p1`、`p2`、`p3` 先后到来，都只有一个容器、请求 4 个 CPU（内存余量充足，下面只看 CPU）。代理几十秒才更新一次 NRT，这段时间里快照不变：
+
+| 时刻 | `assumedResources[worker-1]` | Filter 看到的 node-0 / node-1 | 结果 |
+| --- | --- | --- | --- |
+| `p1` 调度 | 空 | 6 / 10 | 通过，Reserve 记下 `p1` |
+| `p2` 调度 | `p1` | 2 / 6 | 通过，Reserve 记下 `p2` |
+| `p3` 调度 | `p1`、`p2` | 0 / 2 | 拒绝，节点计入 `nodesMaybeOverreserved` |
+| Flush 后 `p3` 重试 | 空 | 2 / 6 | 通过 |
+
+逐步看：
+
+1. `p1`：`assumedResources` 里还没有 `worker-1`，`GetCachedNRTCopy` 直接返回快照副本（7.3 节代码第 15–18 行），两个 zone 都放得下，Filter 通过；Reserve 把 `p1` 的有效请求 cpu 4 记进 `assumedResources`。
+2. `p2`：`UpdateNRT`（`GetCachedNRTCopy` 第 20 行）把 `p1` 的 4 从两个 zone 各减一次，看到 2 / 6，node-1 可行，通过并记下 `p2`。
+3. `p3`：两个已预留 Pod 各减一次 4。node-0 第一次减到 2，第二次不够减，被置 0；node-1 减到 2。两个 zone 都放不下 4，`singleNUMAContainerLevelHandler` 返回 `cannot align container`，Filter 随即调用 `NodeMaybeOverReserved`（5.1 节代码第 40–42 行）。
+4. 节点上的真实情况：kubelet 把 `p1` 放进编号最小的 node-0，`p2` 到来时 node-0 只剩 2，于是放进 node-1，真实余量是 2 / 6，`p3` 本可以放在 node-1。第 3 步是悲观扣减造成的误拒。
+5. 代理观察到 `p1`、`p2` 的分配后更新 NRT：`Available` 改为 2 / 6，指纹按包含 `p1`、`p2` 的 Pod 集合计算。这次 NRT Update 事件会把 `p3` 移回调度队列（第九节），但快照没有变，`p3` 再次看到 0 / 2，又被拒一次。
+6. 下一个 Resync 周期：`GetDesyncedNodes` 返回 `worker-1`；GET 到第 5 步的 NRT，Pod lister 列出的 `worker-1` 上的 Pod（`p1`、`p2` 已经 Running）与代理看到的集合相同，`checkPodFingerprintForNode` 校验通过；`FlushNodes` 用这份 NRT 替换快照，删掉 `p1`、`p2` 的预留和计数。
+7. 之后某次事件再把 `p3` 移回调度队列，Filter 看到 2 / 6，node-1 可行，`p3` 通过，Reserve 记下它，新一轮累积从这里开始。
+
+如果第 5 步上报的 NRT 只反映了 `p1`（`p2` 还在 kubelet 准入中），代理的指纹里没有 `p2`，调度器侧的集合却有，第 6 步就跳过这个节点，`worker-1` 保持脏状态，`p3` 继续被拒，直到某个周期两边对上。这正是 7.1 的取舍：用 `p3` 多等几个周期，换来它不会被放进一个实际放不下的 zone。
+
 ### 7.5 外来 Pod
 
 调度器只对自己调度的 Pod 做了预留。如果别的调度器（典型场景是 NRT 插件跑在第二调度器里，默认调度器也在往同一批节点放 Pod）把 Pod 放到节点上，缓存的用量就错了，而且错的方向是乐观的，这是唯一不能接受的方向。

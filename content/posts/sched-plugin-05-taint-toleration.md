@@ -536,6 +536,27 @@ func getNoExecuteTaints(taints []v1.Taint) []v1.Taint {
 
 所以**节点失联后，普通 Pod 大约 5 分钟才被驱逐**；DaemonSet 的 Pod 带的是不设 `tolerationSeconds` 的同名容忍（上一篇的 `AddOrUpdateDaemonPodTolerations`），永远不会因为节点失联被驱逐。
 
+#### 举个例子
+
+节点 node-1 失联（`Ready` condition 变成 `Unknown`），node-lifecycle-controller 在时刻 T 给它打上 `node.kubernetes.io/unreachable:NoExecute`。node-1 上有三个 Pod，容忍各不相同：
+
+| Pod | 和 `unreachable:NoExecute` 匹配的容忍 | 来源 |
+| --- | --- | --- |
+| web-1（Deployment） | `tolerationSeconds: 300` | `DefaultTolerationSeconds` 自动追加 |
+| cache-1 | `tolerationSeconds: 30` | 自己写的；已经容忍 unreachable，准入插件不再追加 |
+| agent-1（DaemonSet） | 不设 `tolerationSeconds` | `AddOrUpdateDaemonPodTolerations` |
+
+`NodeUpdated` 发现 `getNoExecuteTaints` 的结果从空变成一项，`handleNodeUpdate` 取出这三个 Pod，逐个交给 `processPodOnNode`（上面代码块的行号）：
+
+1. `GetMatchingTolerations` 对三个 Pod 都返回 `allTolerated = true`，`usedTolerations` 里各是上表那一条容忍，所以都不走第 2–9 行的立即删除；
+2. web-1：`getMinTolerationTime` 得到 300 秒，第 18–21 行登记一个 T+300s 触发的驱逐；
+3. cache-1：得到 30 秒，登记 T+30s 的驱逐；
+4. agent-1：容忍里没有 `tolerationSeconds`，`getMinTolerationTime` 返回负数，第 12–16 行取消驱逐，永久容忍。
+
+T+30s 时 cache-1 被删除。假设 T+60s 节点恢复，node-lifecycle-controller 删掉 unreachable 污点，`handleNodeUpdate` 看到 `NoExecute` 污点列表为空，对节点上剩下的 Pod 逐个 `cancelWorkWithEvent`，web-1 那个 T+300s 的驱逐被撤销。
+
+同一个污点、同一时刻，三个 Pod 得到「30 秒后删、300 秒后删、永不删」三种结局，区别全在 `tolerationSeconds`。这一切发生在 kube-controller-manager 里，调度器没有参与。
+
 ### 6.3 一个推论：not-ready 为什么有两个污点
 
 node-lifecycle-controller 在节点 `Ready=False` 时会打两个同名污点：

@@ -672,6 +672,30 @@ maximumVolumeSize: 200Gi
 
 还要注意它只判断单个 PVC 能否放下，**不累加**同一 Pod 的多个 PVC，也不考虑其它正在供给中的 PVC。容量数据本身也是周期刷新的快照，所以它是「降低失败率」而不是「保证成功」，真正的兜底是供给失败后的重调度（第八节）。
 
+#### 举个例子：同一个 Pod 在两个节点上的方案
+
+把 5.1～5.3 串起来，看 Filter 怎样为每个节点各算一份 `PodVolumes`。Pod `db-0` 有两个未绑定、也没有 `selected-node` 注解的 PVC：
+
+1. `data` 请求 50Gi，StorageClass 是第一节的 `local-storage`（`WaitForFirstConsumer`，provisioner 为 `kubernetes.io/no-provisioner`）；
+2. `log` 请求 20Gi，StorageClass 是 `topolvm-ssd`（`WaitForFirstConsumer`），对应的 CSIDriver 设了 `storageCapacity: true`。
+
+`local-storage` 有两块 `Available` 的 PV：第一节的 `local-pv-node1`（100Gi，只允许 node-1）和 `local-pv-node2`（40Gi，只允许 node-2）。`topolvm-ssd` 没有静态 PV；node-1、node-2 各有一个 `CSIStorageCapacity`，`capacity` 分别为 500Gi 和 300Gi，都没有设 `maximumVolumeSize`。
+
+PreFilter 把两个 PVC 都放进 `unboundClaimsDelayBinding`，`unboundVolumesDelayBinding` 里 `local-storage` 对应这两块 PV，`topolvm-ssd` 对应空列表。Filter 对 node-1 的处理分四步：
+
+1. 两个 PVC 都没有注解，进入 `claimsToFindMatching`；
+2. `findMatchingVolumes` 按请求容量排成 `log`、`data`。`log` 的候选列表为空，收进 `unboundClaims`；`data` 匹配到 `local-pv-node1`（100Gi ≥ 50Gi，nodeAffinity 允许 node-1），记一条 `BindingInfo`；
+3. `checkVolumeProvisions` 只检查 `log`：provisioner 可用，StorageClass 没有 `allowedTopologies`，node-1 的 500Gi ≥ 20Gi，记一条 `DynamicProvision`，`NodeCapacity` 指向这个 `CSIStorageCapacity`；
+4. 没有失败原因，Filter 把「`data` 静态绑定 `local-pv-node1`、`log` 动态供给」这份方案写进 `podVolumesByNode["node-1"]`，`hasStaticBindings` 置为 true。
+
+Filter 对 node-2 的处理分三步：
+
+1. `findMatchingVolumes` 里 `log` 同样没有候选；`data` 唯一能去 node-2 的 `local-pv-node2` 只有 40Gi，也收进 `unboundClaims`，结果是 `[log, data]`；
+2. `checkVolumeProvisions` 先检查 `log`，300Gi 足够；再检查 `data`，provisioner 是 `kubernetes.io/no-provisioner`，返回 `(false, true)`（`checkVolumeProvisions` 代码块第 13–17 行）；
+3. `unboundVolumesSatisfied` 被覆盖为 false，原因 `node(s) didn't find available persistent volumes to bind`，Filter 返回 `UnschedulableAndUnresolvable`。
+
+`data` 在两个节点上都先走了一遍静态匹配，没匹配上也没有立即失败；节点最终能不能放，取决于剩下的 PVC 能否在这里动态供给。这正是 5.2 节「静态 PV 不够并不立即失败」的实际效果。
+
 到这里，「这个节点能不能放」已经有了答案。接下来是在全部可行的节点之间排序。
 
 ## 六、Score：存储利用率打分
@@ -1121,6 +1145,16 @@ PV 事件没有 hint 是有代价的：PV 控制器（写 `status.phase`、`clai
 **被 selected-node 钉住的 PVC。** PreBind 超时、Pod 被删除重建、或调度器重启，只要 PVC 上的注解还在，新 Pod 就只能去那个节点。如果那个节点后来不满足 CPU、污点等条件，Pod 会在所有其它节点上报 `didn't find available persistent volumes to bind`，这条信息很容易误导人去查 PV。
 
 排查时先 `kubectl get pvc -o yaml` 看有没有 `volume.kubernetes.io/selected-node`。供给器只会在节点不存在或 `ResourceExhausted` 时主动删注解，其它情况需要人工判断后手动删除。
+
+下面是一个被钉住的完整过程。Pod `db-0` 只有一个 `WaitForFirstConsumer` 的 PVC `data`，集群有 node-1、node-2、node-3 三个节点：
+
+1. 第一次调度选中 node-1。Reserve 在 `pvcCache` 里给 `data` 加上 `selected-node: node-1`，PreBind 的 `bindAPIUpdate` 把它写进 API；
+2. 驱动的 `CreateVolume` 一直返回 `DeadlineExceeded`，供给器保留注解反复重试；`checkBindings` 每秒读到的都是「注解仍是 node-1、PVC 未完全绑定」，返回 false 继续等；
+3. 600 秒后轮询超时，PreBind 返回 `Error`，Unreserve 之后 Pod 进入 backoffQ。informer 里的 `data` 此时带着注解，`pvcCache` 读到的也是这一版；
+4. 这期间 node-1 被 cordon。第二次调度时，node-1 先被 `NodeUnschedulable` 拒绝；node-2、node-3 在 `FindPodVolumes` 的快速路径上（5.2 节代码块第 4–9 行）因为注解不等于自己而直接失败；
+5. 调度失败信息里，1 个节点的原因是 `node(s) were unschedulable`，2 个节点是 `node(s) didn't find available persistent volumes to bind`。
+
+后两个节点的报错指向 PV，真正的原因是 `data` 被钉在了 node-1。只有 node-1 恢复可调度，或者人工删掉注解（PVC 更新事件让 hint 返回 `Queue`），Pod 才能继续调度。
 
 **存储失败不会触发抢占。** Filter 和 PreFilter 的所有拒绝都是 `UnschedulableAndUnresolvable`。高优先级 Pod 因为本地盘被低优先级 Pod 占着而无法调度时，抢占不会发生。对 local PV 而言，PV 绑定后就不会因为 Pod 删除而释放（PVC 还在），驱逐 Pod 本来也没用。
 

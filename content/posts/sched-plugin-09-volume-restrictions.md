@@ -438,6 +438,19 @@ RWOP 部分则只比较 PVC 名字，不去查 PVC 的 access mode，注释解�
 
 内联 EBS、GCE PD 是按卷 ID 判冲突的，跨命名空间的两个 Pod 完全可能用同一块盘；按这个 hint，其他命名空间里占盘 Pod 的删除不会唤醒等待者，只能等队列的周期性刷新（`DefaultPodMaxInUnschedulablePodsDuration`，5 分钟）。不过内联云盘本来就是遗留用法，实际影响不大。
 
+#### 举个例子
+
+把第一节的 `single-writer` 放进一次单副本 Deployment 的滚动更新：旧 Pod `db-0` 正挂着这个 PVC 运行，新 Pod `db-1` 已经创建出来，两者优先级相同，都在 `prod` 命名空间。`db-1` 的经历如下：
+
+1. PreFilter：`readWriteOncePodPVCsForPod` 返回 `{single-writer}`；`calPreFilterState` 里 `IsPVCUsedByPods("prod/single-writer")` 为真（`db-0` 在快照里），`conflictingPVCRefCount` = 1。`db-1` 没有内联卷，`needsCheck` 为假，但计数不为 0，所以不 Skip，状态写进 CycleState。
+2. Filter：每个节点上 `satisfyVolumeConflicts` 都通过（没有内联卷），`satisfyReadWriteOncePod` 看到计数 1，全部返回 `Unschedulable`。
+3. 抢占：`db-0` 与 `db-1` 优先级相同，不能当受害者，没有任何节点能让计数归零，`db-1` 进入不可调度队列。
+4. 旧 Pod 被删除（控制器缩容旧副本，或者手动删除）。优雅终止期间 `db-0` 仍在调度缓存里，计数仍是 1；kubelet 停掉容器、`db-0` 对象从 apiserver 删除后，调度器才收到 `AssignedPod/Delete`。
+5. hint：命名空间相同；`satisfyVolumeConflicts` 通过，不在第 7–10 行返回；第 22–25 行发现 `db-0` 也引用了 `single-writer`，返回 `Queue`。
+6. 下一个调度周期：缓存里已经没有 `db-0`，计数为 0，PreFilter 返回 `Skip`，Filter 里 `VolumeRestrictions` 不再参与，`db-1` 由其他插件决定落点。
+
+`db-1` 从第 1 步到第 6 步一直 Pending，等的是 `db-0` 对象真正被删除，而不是收到删除请求。第 4 步也不会自己发生：单副本时默认的 `maxSurge`（25% 向上取整为 1）和 `maxUnavailable`（25% 向下取整为 0）要求新 Pod 就绪之后才缩容旧 Pod，两边互相等待，滚动更新卡住。这就是第五节建议 RWOP 配合 `maxSurge: 0` 或 `Recreate` 的原因。
+
 插件的判定、抢占和唤醒都看完了，最后列几条容易踩空的地方。
 
 ## 四、边界与坑

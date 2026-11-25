@@ -363,7 +363,16 @@ PV 的 hint 没有检查「这块 PV 是不是 Pod 要用的」，任何 PV 的�
 对 `WaitForFirstConsumer` 的静态 PV，label 约束在首次调度时完全不起作用，问题分两步暴露：
 
 1. VolumeBinding 的 `FindMatchingVolume` 不看 PV 的 label（除非 PVC 写了 `selector`），可能为 Pod 选中一块 label 与节点不符的 PV；
-2. 绑定完成后，Pod 一旦重建，就会被 VolumeZone 拒绝在所有节点之外。
+2. 绑定完成后，Pod 一旦重建，VolumeZone 就会把它限制在 PV 标签写的可用区里，可能与首次调度的位置不一致。
+
+以一块手工打了标签的静态 PV 为例：`manual-pv-1` 带 `topology.kubernetes.io/zone: us-west1-a`，没有 `nodeAffinity`，StorageClass 为 `WaitForFirstConsumer`。StatefulSet 的 Pod `app-0` 通过 PVC `data-app-0` 使用它；node-a1 在 `us-west1-a`，node-b1 在 `us-west1-b`。过程分四步：
+
+1. 首次调度时 `data-app-0` 还没有 `volumeName`，`getPVbyPod` 在 2.2 节代码块第 16–19 行跳过它，`podPVTopologies` 为空，VolumeZone 的 PreFilter 返回 `Skip`；
+2. VolumeBinding 的 `FindMatchingVolume` 在两个节点上都能匹配 `manual-pv-1`：PV 没有 `nodeAffinity`，PVC 没有 `selector`，标签不参与比较。假设打分选中 node-b1，PreBind 之后 PV 控制器完成绑定，`volumeName` 写成 `manual-pv-1`；
+3. `app-0` 被删除重建。这次 `getPVbyPod` 能取到 PV，`getPVTopologies` 展开出一条 `{key: topology.kubernetes.io/zone, values: {us-west1-a}}`；
+4. Filter 中 node-b1 的 zone 值 `us-west1-b` 不在集合里，返回 `UnschedulableAndUnresolvable`；node-a1 通过。
+
+同一个 Pod、同一块 PV，两次调度被放到了不同的可用区。如果 Pod 自己还用 `nodeSelector` 限定在 `us-west1-b`，第二次调度时 node-a1 被 NodeAffinity 拒绝、node-b1 被 VolumeZone 拒绝，就没有任何节点可选。
 
 重复检查。早期由云厂商 admission 创建的 in-tree PV，往往同时带有 zone 标签和对应的 `nodeAffinity`，两者会被 VolumeZone 和 VolumeBinding 各检查一次，结论一致，只是多花一点时间。
 

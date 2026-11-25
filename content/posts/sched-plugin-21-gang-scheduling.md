@@ -882,6 +882,19 @@ func (p *PriorityQueue) isEntityWorthRequeuing(logger klog.Logger, entity framew
 
 于是节点变化（唤醒 p2~p4）和新 Pod 加入（唤醒 p1、p5、p6）都能让这个组重新出队。
 
+把 3.1 节的队列结构、第五节的 PreEnqueue 和这一节的 hint 串起来，用 2.2 节的 `train-0`（`minCount: 4`）走一遍「Pod 先到、PodGroup 后到」的情况。4 个 worker 和 PodGroup 按下面的顺序创建：
+
+1. `worker-0`、`worker-1` 先创建。`addPodToSchedulingQueue` 先调 `AddPod`，tracker 用 `getOrCreateGroup` 建出占位节点（`minCount` 默认 1，`genericGroup == nil`），`allPods` 记下两个 UID。队列这边 `addPodGroupMember` 在 `workloadForest` 里找不到根组，两个 Pod 进 `incompletePodGroupPods`（3.1 节代码块第 4–9 行），PreEnqueue 还没有机会运行。
+2. PodGroup `train-0` 创建。`addPodGroup` 依次通知 cache、tracker 和队列：
+   - tracker 写入真实的 `minCount: 4`，`allPods` 只有 2 个，仍未就绪；
+   - 队列的 `AddGenericPodGroup` 把两个 Pod 从 `incompletePodGroupPods` 取出，逐个重走 `addPodGroupMember`。`worker-0` 新建一个 `QueuedPodGroupInfo` 送去 `moveToActiveQ`，PreEnqueue 返回 `waiting for podgroup/default/train-0 to meet its quorum`（5.4 节代码块第 25 行），整组以 `GangScheduling` 为 gating plugin 进入 `unschedulableEntities`；`worker-1` 经 `addToPodGroupIfExists` 并进同一个组；
+   - 随后的 PodGroup/Add 事件让 `isSchedulableAfterPodGroupAdded` 返回 `Queue`，组再跑一次 PreEnqueue，计数还是 2，又被拦下。
+3. `worker-2` 创建。tracker 计数到 3，队列把它并进组；未调度 Pod Add 事件让 `isSchedulableAfterPodAdded` 返回 `Queue`（同一棵树），PreEnqueue 重跑，3 < 4，仍被拦。
+4. `worker-3` 创建。`addPod` 里计数从 3 涨到 4，跨过阈值（5.3 节代码块第 8–12 行；没有父组，`propagateReadinessDelta` 不做任何事）。同样的事件让组再跑一次 PreEnqueue，这次 `rootReadiness.IsReady` 为 true，返回 nil（5.4 节代码块第 17–19 行）；4 个 Pod 都通过，组进入 activeQ。
+5. 主循环的 `NextEntity` 取出整个 `QueuedPodGroupInfo`，进入 `scheduleOnePodGroup`，4 个 Pod 在同一个 PodGroup 调度周期里逐个试放。
+
+前三步里 PreEnqueue 拦了这个组三次：第一次在新建组时，后两次是 PodGroup/Add 和 `worker-2` 的 Add 事件经 hint 把组送回 `moveToActiveQ`，又按 tracker 的计数被拦下。hint 只决定「值不值得再试」，放不放行始终由 PreEnqueue 看计数决定；计数够了，四个 Pod 才作为一个 entity 一起出队。
+
 ## 七、提交结果与回队
 
 试放结束后，结果要分发给每个 Pod 并写回队列，这是调度周期的最后两步。

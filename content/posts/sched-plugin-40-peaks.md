@@ -291,6 +291,15 @@ Score 在以下五种情况下都返回 0：
 
 在 Score 阶段，0 对其它三个 Trimaran 插件表示「最差」。但到了 Peaks 的反向归一化里，0 是**最小的代价**，会被映射成 **100 分**。也就是说，在 Peaks 看来，没有数据、没有模型、甚至预测会超载的节点，都是「最省电」的节点。
 
+当所有节点都返回 0 时，结果又不一样。把 2.2 节的 nil map 问题和这里串起来走一遍：配置里只写了 `WatcherAddress`，模型放在 `NODE_POWER_MODEL` 指向的文件里，覆盖了全部节点。
+
+1. 参数转换：`autoConvert_v1_PeaksArgs_To_config_PeaksArgs` 按指针转换，`args.NodePowerModel` 是 nil；
+2. `New` 调用 `initNodePowerModels(args.NodePowerModel)`：第 3 行向 stdout 打印 `args power model : map[]`；长度为 0，不走第 4–6 行的提前返回；第 13 行 `Decode(&powerModel)` 给局部变量新分配 map 并填入全部节点的模型，返回 nil，调度器正常启动；
+3. Score：`getPowerModel` 在 nil map 里查不到任何节点，第 7 行返回 `config.PowerModel{0, 0, 0}`；`getPowerJumpForUtilisation` 里 K1 = 0，ΔP = 0，Score 第 40 行返回的原始值在每个节点上都是 0；
+4. NormalizeScore：`minCost`、`maxCost` 都是 0，第 4–5 行提前返回，所有节点保持 0 分。
+
+最终 Peaks 对排序没有任何影响，日志里也没有错误。和「部分节点为 0 → 这些节点满分」不同，全部为 0 时插件相当于没有启用，唯一的线索是 stdout 里那行 `args power model : map[]`。
+
 {{< figure src="/images/posts/sched-plugins/40-peaks-power-jump.svg" caption="两台 8 核节点的功耗曲线与功耗跳变：n1 绝对功耗更低但边际功耗更大，Peaks 选 n2；预测超载的 n3 原始值为 0，归一化后反而得 100 分（点击查看大图）" link="/images/posts/sched-plugins/40-peaks-power-jump.svg" >}}
 
 ## 五、算例

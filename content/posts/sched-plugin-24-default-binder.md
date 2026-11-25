@@ -392,6 +392,17 @@ func (sched *Scheduler) handleBindingCycleError(
 2. 广播一次「Pod 删除」（第 18–22 行）：被 assume 的 Pod 曾经占着资源，这期间可能有别的 Pod 因为资源不足被判为不可调度。**现在资源释放了，用 `EventAssignedPodDelete` 通知队列，让那些 Pod 的 QueueingHint 有机会把它们捞回来。** 被拒绝的情况（`IsRejected`，只可能来自 Permit）用 `defer` 并排除自身，原因写在注释里：否则这个事件会被记进自身的 in-flight 事件，让自己也被移到 backoffQ。
 3. FailureHandler（第 25 行）：传入 `clearNominatedNode`，清空提名。`Error` 状态的 Pod 没有 `UnschedulablePlugins`，按队列规则进 backoffQ 等待重试。
 
+用两个 Pod 走一遍从 assume 到回滚的过程。node-a 可分配 8 CPU，上面已有 Pod 的请求合计 5 CPU；`web-1`、`web-2` 各请求 2 CPU，所有 Pod 优先级相同，集群里只有 node-a 放得下它们：
+
+1. `web-1` 的调度周期选中 node-a。`prepareAssumedPod` 给副本写上 `spec.nodeName: node-a`，`cache.AssumePod` 把它加进 node-a 的 NodeInfo，`Requested` 的 CPU 从 5 变成 7；主循环去取下一个 Pod，绑定在后台 goroutine 里进行。
+2. `web-2` 的调度周期开头 `UpdateSnapshot`，看到 node-a 只剩 1 CPU，`NodeResourcesFit` 的 Filter 拒绝它；优先级相同，抢占找不到可驱逐的 Pod。`web-2` 带着 `NodeResourcesFit` 进入 `unschedulableEntities`。
+3. `web-1` 的 binding 连续收到 503，`util.BindPod` 尝试 4 次后返回错误，`DefaultBinder.Bind` 包成 `Error`，绑定周期转入 `handleBindingCycleError`。
+4. `UnreserveAndForgetFromCache`（第 9 行）把 `web-1` 从 cache 里删掉，node-a 的 `Requested` 回到 5 CPU。
+5. `Error` 不属于 `IsRejected`，立即用 `EventAssignedPodDelete` 调用 `MoveAllToActiveOrBackoffQueue`（第 21 行），`oldObj` 是带着 `nodeName` 的 `web-1` 副本。`web-2` 的拒绝插件 `NodeResourcesFit` 用 `isSchedulableAfterAssignedPodDelete` 判断：被删 Pod 的 `spec.nodeName` 非空，返回 `Queue`。`web-2` 离开 `unschedulableEntities`，按退避是否结束进入 backoffQ 或 activeQ。
+6. FailureHandler（第 25 行）把 `web-1` 送进 backoffQ。
+
+两个 Pod 最后都回到了会被重试的位置，node-a 上 3 CPU 的空闲也重新可见。没有第 5 步的广播，`web-2` 只能等别的事件或 `unschedulableEntities` 的定期 flush 才会被重新考虑，而它被拒的原因恰恰是 `web-1` 这份已经撤销的 assume。
+
 ### 5.1 「其实已经绑定成功了」
 
 `handleSchedulingFailure` 里有一段专门处理这种情况：

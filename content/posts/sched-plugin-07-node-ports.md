@@ -407,6 +407,21 @@ hint 没有检查被删 Pod 在哪个节点。只要端口有交集就 `Queue`�
 
 集群里大多数 Pod 删除事件都发生在没有 `hostPort` 的 Pod 上，第 2 步就能把它们挡掉。这意味着一个等端口的 Pod 不会被每次滚动更新反复唤醒。
 
+#### 举个例子
+
+等待中的 Pod `exporter` 声明 `hostPort: 9100`，`hostIP` 和 `protocol` 都没写，按 `sanitize` 就是 `0.0.0.0:9100/TCP`。集群里先后删除了四个 Pod，hint 的判断如下（行号对应上面的 `isSchedulableAfterAssignedPodDeleted`）：
+
+| 被删的 Pod | 它的端口 | 走到哪一步 | 结果 |
+| --- | --- | --- | --- |
+| `pending-x` | 从未调度，`spec.nodeName` 和 `NominatedNodeName` 都为空 | 第 9–12 行 | `QueueSkip` |
+| `web-7` | 没有 `hostPort` | 第 15–18 行，`ports` 为空 | `QueueSkip` |
+| `dns-1` | `hostPort: 9100`，`protocol: UDP` | 临时表是 `{0.0.0.0: {UDP 9100}}`，查 `TCP 9100` 查不到，第 26–29 行 | `QueueSkip` |
+| `debug-1` | `hostIP: 10.0.0.5`，`hostPort: 9100` | 临时表是 `{10.0.0.5: {TCP 9100}}`；`exporter` 要的是 `0.0.0.0`，`CheckConflict` 遍历整张表，在 `10.0.0.5` 下查到 `TCP 9100`，`fitsPorts` 为假 | `Queue`（第 32 行） |
+
+把 `exporter` 换成声明 `hostIP: 10.0.0.6` 的 Pod，`debug-1` 的删除就变成 `QueueSkip`：这时 `CheckConflict` 只查 `0.0.0.0` 和 `10.0.0.6` 两个 key，临时表里只有 `10.0.0.5`。
+
+四次删除只有一次唤醒了 `exporter`，而且是否唤醒和 Filter 判冲突的结论一致，这正是 hint 复用 `fitsPorts` 的效果。
+
 到这里，判定逻辑、失败码和唤醒条件都齐了。剩下几种情况是插件判不到的，下一节把它们集中列出来。
 
 ## 五、边界情况与坑

@@ -510,6 +510,17 @@ hint 的判断都很直接：
 1. `isSchedulableAfterNodeChange`：新增节点一律 `Queue`（并不检查新节点是否满足需求）；节点更新时，`declaredFeatures` 不变返回 `QueueSkip`，变了返回 `Queue`。典型场景是节点 kubelet 升级重启后重新上报。
 2. `isSchedulableAfterTargetPodUpdate`：对新旧 Pod spec 各推断一次，需求位图相同返回 `QueueSkip`，不同返回 `Queue`。
 
+把节点侧的 hint 放进第一节的升级场景走一遍。集群有 node-1、node-2、node-3，kubelet 都没开 `RestartAllContainersOnContainerExits` gate，`declaredFeatures` 里都没有这一项；Pod `job-0` 的容器写了 `action: RestartAllContainers` 的重启规则，其它 Filter 在三个节点上都能通过：
+
+1. PreFilter：注册表里只有 `restartAllContainersFeature.InferForScheduling` 返回 true，`reqs` 只置了排序后的第 7 位，写进 CycleState。
+2. Filter：三个节点的 `NodeInfo.DeclaredFeatures` 第 7 位都是 0，`IsSubset` 为假，各返回 `UnschedulableAndUnresolvable`。抢占不会考虑这些节点，`job-0` 进入不可调度池，`UnschedulablePlugins` 里记的是 `NodeDeclaredFeatures`。
+3. node-3 的 kubelet 照常上报节点状态，condition 只有心跳时间在变。`NodeSchedulingPropertiesChange` 里的 `extractNodeConditionsChange` 只比较 condition 的类型和状态，`extractNodeFeaturesChange` 看到列表没变，这次更新不产生任何调度事件。
+4. 运维给 node-1 加了一个标签，产生 `Node/UpdateNodeLabel`。`NodeDeclaredFeatures` 只注册了 `Add | UpdateNodeDeclaredFeature`，这个事件不经过它的 hint，`job-0` 仍留在池里。
+5. node-2 升级 kubelet 并打开 gate，重启时 `discoverNodeDeclaredFeatures` 多算出 `RestartAllContainersOnContainerExits`，写进 `status.declaredFeatures`。`extractNodeFeaturesChange` 发现新旧列表不同，产生 `UpdateNodeDeclaredFeature`；`isSchedulableAfterNodeChange` 返回 `Queue`，`job-0` 回到 activeQ 或 backoffQ。
+6. 下一轮：`SetNode` 已把 node-2 的新列表 `TryMap` 成位图，第 7 位为 1，`IsSubset` 为真；node-1、node-3 照旧被拒，`job-0` 落到 node-2。
+
+第 3、4 步是专门事件类型的价值：节点上大量无关的更新到不了这个插件的 hint；第 5 步只要有一个节点声明了所需特性，Pod 就会被唤醒重试。
+
 ## 六、另外两道检查：kubelet 准入与 apiserver 准入
 
 调度器只在 Pod 选节点时检查一次。同一个库还被另外两处调用，覆盖调度器管不到的环节。

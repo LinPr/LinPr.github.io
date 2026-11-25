@@ -353,6 +353,14 @@ func nodeTopologyMatchesAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) b
 
 注意条件是「全集群为空」而不是「本域为空」：只要别的 zone 已经有了匹配的 Pod，新副本就必须去那个 zone。
 
+举个例子：Deployment `cache` 的副本带 `app: cache` 标签，required 亲和项是 `app: cache` + `topology.kubernetes.io/zone`，gate 关闭。集群有 zone-a、zone-b 两组节点，另有一个没有 zone 标签的节点 n0。副本依次调度的过程：
+
+1. 第一个副本 cache-0：集群里还没有 `app: cache` 的 Pod，`clusterWideAffinityCounts` 为空。带 zone 标签的节点上 `podsExist` 为 false，进入第 17–19 行，表为空且 cache-0 满足自己的亲和项，放行；n0 缺 zone 标签，在第 13 行返回 false。假设 cache-0 落在 zone-a；
+2. 第二个副本 cache-1：cache-0 在调度周期里已经 assume 进调度器缓存，即使还没绑定完成，PreFilter 也能数到它，表为 `{zone=zone-a: 1}`。zone-a 的节点计数大于 0，通过；zone-b 的节点计数为 0，而表不为空，第 18 行返回 false，结果是 `UnschedulableAndUnresolvable`；
+3. 之后的副本同理，只能去 zone-a。
+
+第一个副本落在哪里，整个 Deployment 就跟到哪里。zone-a 的资源用完之后，后续副本 Pending，zone-b 的节点因为是 `UnschedulableAndUnresolvable`，也不会进入抢占候选。
+
 ### 4.2 反亲和检查
 
 新 Pod 的反亲和只看它自己每条规则对应的拓扑对：
@@ -574,6 +582,20 @@ func nodePodsSatisfyAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) bool 
 所以 Filter 读到的本机 Pod 列表与计数表的增减是一致的。
 
 调用场景与上一篇相同：nominated Pod 的占位，以及抢占的「全部移除、逐个加回」。
+
+拿第四节开头那张图的场景走一遍抢占（gate 关闭），假设 batch-1、cache-2 的优先级都低于新 Pod web。n3 上的模拟分三步：
+
+1. `SelectVictimsOnNode` 移除 batch-1，`RemovePod` 以 `multiplier` 为 −1 调用 `updateWithPod`。batch-1 的反亲和项匹配 web，`existingClusterWideAntiAffinityCounts` 的 `zone=b` 从 1 减到 0，键被删除，表变空；batch-1 不匹配 web 的亲和、反亲和项，另两张表不变；
+2. 重跑 Filter：亲和查 `zone=b`，计数 1 来自 n4 上的 cache-2，通过；反亲和查 `hostname=n3`，为 0，通过；已有 Pod 反亲和的表为空，通过；
+3. 加回 batch-1，`zone=b` 恢复为 1，Filter 在第三道检查失败，batch-1 被记为受害者。n3 成为候选节点，代价是驱逐 batch-1。
+
+n4 上的模拟也分三步：
+
+1. 移除 cache-2。cache-2 满足 web 的全部亲和项，`clusterWideAffinityCounts` 的 `zone=b` 从 1 减到 0 被删除，表只剩 `{zone=a: 1}`；
+2. 重跑 Filter，第一道亲和检查就失败：`zone=b` 计数为 0，表又不为空，自亲和特例不适用；
+3. 移除全部低优先级 Pod 后仍放不下，n4 被淘汰。
+
+n4 的失败有两层原因：冲突的 batch-1 在 n3 上，n4 上驱逐什么都碰不到它；被驱逐的 cache-2 又恰好是 web 要亲近的 Pod，这就是 4.3 节那段注释里「不支持」的情况。
 
 这里要注意 PreFilter 返回 `Skip` 的后果。框架的 `RunPreFilterExtensionAddPod` 会跳过被 Skip 的插件，Filter 也整个跳过。如果新 Pod 自己没有 required 规则、集群里也没有任何已绑定的 Pod 用反亲和排斥它，而某个高优先级的 nominated Pod 恰好带有排斥新 Pod 的反亲和，`RunFilterPluginsWithNominatedPods` 第一轮（加入 nominated Pod 的那一轮）也不会检查到它。**nominated Pod 真正绑定之后，下一个 Pod 的 PreFilter 才会看到它的反亲和。**
 

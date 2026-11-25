@@ -317,7 +317,30 @@ scheduler-plugins 的调度器二进制里，Profile 依然包含 in-tree 的默
 
 好在两者的区分度不一样。Fit 在空节点之间的差异只有十几分（81 到 98），Allocatable 经过 min-max 后总是拉满 0 到 100。权重都为 1 时 small 得 `81 + 100 = 181`，large 得 `98 + 0 = 98`，Allocatable 胜出。
 
-但随着小节点被填满，Fit 给小节点的分数快速下降，两者的合力会在某个负载点上翻转，Pod 开始流向大节点。这正是 KEP 想要的效果：先填小的，填满了再用大的。
+但每在小节点上放一个 Pod，Fit 给它的分数就快速下降，两者的合力很快会翻转，Pod 开始流向其他节点。KEP 想要的效果是「先用小节点，把大节点留给大 Pod」，下面的例子会看到，默认权重下实际达到的是后半句：large 一直被留着，但 small 并不会被单独填满。
+
+#### 举个例子：连续调度五个 1 CPU / 2Gi 的 Pod
+
+沿用第四节的四个空节点，连续来五个 1 CPU / 2Gi 的 Pod。两个插件权重都为 1，Allocatable 用 `Least` 模式，其余默认打分插件不计入。
+
+五轮里四个节点都放得下，候选集合不变，Allocatable 的分数固定为 small 100、medium 80、memheavy 61、large 0。变的只有 Fit：`leastRequestedScore` 对 CPU、内存各算一次 `(capacity - requested) * fwk.MaxNodeScore / capacity`，`requested` 包含节点上已有的 Pod 和本 Pod，两项再按 1:1 权重做整数平均。下表每格是「Fit + Allocatable = 合计」：
+
+| Pod | small | medium | memheavy | large | 落点 |
+| --- | --- | --- | --- | --- | --- |
+| 第 1 个 | 81 + 100 = 181 | 94 + 80 = 174 | 92 + 61 = 153 | 98 + 0 = 98 | small |
+| 第 2 个 | 62 + 100 = 162 | 94 + 80 = 174 | 92 + 61 = 153 | 98 + 0 = 98 | medium |
+| 第 3 个 | 62 + 100 = 162 | 90 + 80 = 170 | 92 + 61 = 153 | 98 + 0 = 98 | medium |
+| 第 4 个 | 62 + 100 = 162 | 85 + 80 = 165 | 92 + 61 = 153 | 98 + 0 = 98 | medium |
+| 第 5 个 | 62 + 100 = 162 | 81 + 80 = 161 | 92 + 61 = 153 | 98 + 0 = 98 | small |
+
+逐轮看：
+
+1. 第 1 个 Pod：各节点都空，Fit 分与图中最右一列相同，small 以 181 领先。
+2. 第 2 个 Pod：small 上已有 1 核 / 2Gi，加上本 Pod 是 2 核 / 4Gi。CPU 项 `(4000 − 2000) × 100 / 4000 = 50`，内存项 `(16 − 4) × 100 / 16 = 75`，Fit 为 `(50 + 75) / 2 = 62`，合计 162，低于 medium 的 174，Pod 落到 medium。
+3. 第 3、4 个 Pod：medium 的 Fit 依次降到 90、85，合计 170、165，仍高于 small 的 162。
+4. 第 5 个 Pod：medium 上已有 3 个 Pod，加上本 Pod 是 4 核 / 8Gi，CPU 项 75、内存项 87，Fit 为 81，合计 161，small 以 162 重新领先。
+
+翻转比直觉来得早：small 和 medium 在 Allocatable 上只差 20 分，small 上放一个 Pod 就让它的 Fit 掉 19 分（81 → 62），第 2 个 Pod 就转向了 medium，此后两者交替接收 Pod。large 的合计一直停在 98，远低于另外三个节点，留给了后来的大 Pod。所以在默认权重下，「先填小的」实际是「先填 large 以外的节点」，small 并不会被单独填满。
 
 若希望 Allocatable 的语义更占主导，可以给它更高的 `weight`，或者把 Fit 的打分策略改成 `MostAllocated`。后者在同规格节点之间也做装箱，两者的方向就一致了。
 

@@ -1156,6 +1156,21 @@ func haveAnyRequestedResourcesIncreased(pod *v1.Pod, originalNode, modifiedNode 
 
 事件本身由框架过滤：`UpdateNodeAllocatable` 只在 `status.allocatable` 语义上发生变化时才产生（`extractNodeAllocatableChange` 用 `equality.Semantic.DeepEqual` 比较），kubelet 定期上报节点状态、更新 condition 都不会触发它。
 
+#### 举个例子
+
+Pod `batch-1` 请求 `cpu: 6`、`memory: 4Gi`，正在等待。唯一像样的节点 n-1 的 allocatable 是 8000m / 32Gi、`maxPods` 110，已经请求了 5000m CPU，剩 3000m，Filter 报 `Insufficient cpu`。之后陆续来了四个节点事件。表里「第 3–6 行」「第 13–16 行」指 hint 判断的那段代码，「第 5–7 行」「第 9–13 行」指 `haveAnyRequestedResourcesIncreased`：
+
+| 事件 | `isFit`（空 `NodeInfo`） | 后续判断 | hint |
+| --- | --- | --- | --- |
+| 新增节点 n-small，allocatable 4000m / 16Gi | 6000m > 4000m，放不下 | 第 3–6 行 | `QueueSkip` |
+| n-1 调大 `kube-reserved`，内存 allocatable 32Gi → 30Gi | 放得下 | `haveAnyRequestedResourcesIncreased`：Pod 数没变，CPU 没变，内存变小，返回 `false`；第 13–16 行 | `QueueSkip` |
+| n-1 的 `maxPods` 110 → 250 | 放得下 | Pod 名额增加，第 5–7 行直接返回 `true` | `Queue` |
+| n-1 的 CPU allocatable 8000m → 12000m | 放得下 | Pod 请求了 CPU 且 CPU 变大，第 9–13 行返回 `true` | `Queue` |
+
+第三个事件唤醒了 `batch-1`，但下一个调度周期里 n-1 仍然只剩 3000m，Filter 照样失败，Pod 回到不可调度队列。第四个事件之后剩余量变成 12000m − 5000m = 7000m，`batch-1` 才真正放了上去。
+
+hint 只拿节点总量和 Pod 关心的那几项做粗筛，第三个事件那样的误唤醒是它有意接受的代价，实际剩余量留给调度周期去算。
+
 ### 7.3 Pod 原地缩容
 
 `InPlacePodVerticalScaling` 让运行中的 Pod 可以修改 requests。框架在 Pod 更新时比较新旧请求量：
@@ -1263,6 +1278,21 @@ func adjustDeltasToAccomodateCacheDiscrepancy(opts ResourceRequestsOptions, podR
 3. 负增量截断为 0，理由写在注释里：kubelet 还没真正释放的资源，不能提前算作空闲。
 
 `Unresolvable` 的判定仍然用 `podRequest`（完整的新请求量）与 `allocatable` 比较：Pod 想扩到比整个节点还大，抢占也无济于事。
+
+#### 举个例子
+
+节点 n-1 的 CPU allocatable 是 8000m，上面跑着三类 Pod：高优先级的 `app` 请求 2000m，低优先级的 `batch-a` 请求 1500m，其余 Pod 合计 4500m，`Requested` 正好 8000m。现在把 `app` 的 CPU 从 2000m 改到 3000m：
+
+1. 节点放不下，kubelet 把这次 resize 标成 `Deferred`，`app` 的 `allocated` 和 `actuated` 都还是 2000m。
+2. 调度器收到 Pod 更新，缓存里 `app` 的 `CalculateResource` 取 `max(3000m, 2000m, 2000m)` = 3000m，n-1 的 `Requested` 变成 9000m，超过了 allocatable。
+3. `app` 重新进入调度。PreFilter 按 spec 算出 `podRequest.MilliCPU` = 3000m。
+4. Filter 里 `adjustDeltasToAccomodateCacheDiscrepancy` 按 UID 找到缓存中的 `app`，第 22 行得到 `deltaMilliCPU = max(0, 3000 − 3000) = 0`。
+5. 5.3 节代码块第 4 行的判定变成 `0 > 8000 − 9000`，即 `0 > −1000`，成立，报 `Insufficient cpu`；`Unresolvable` 是 `3000 > 8000`，不成立，状态码是 `Unschedulable`，可以抢占。
+6. 抢占模拟用 `NodeInfo.RemovePod` 删掉 `batch-a`，`Requested` 降到 7500m，判定变成 `0 > 500`，不成立，Filter 通过。
+
+如果不折算，第 5 步的 `delta` 是 3000m，删掉 `batch-a` 之后仍是 `3000 > 500`。要通过，得把 `Requested` 压到 5000m 以下，也就是腾出 4000m，而 n-1 上低优先级的只有 `batch-a` 的 1500m，抢占找不到可行方案。折算后只需腾出 1000m，两者差的 3000m 正是缓存里已经记过一次的 `app`。
+
+所以对这类 Pod，Filter 实际判断的是「节点有没有超额」：缓存已经按扩容后的值记了它，只要 `Requested` 不超过 allocatable 就放行。
 
 QueueingHint 也为这类 Pod 加了节点维度的过滤，下面三种事件只有发生在同一个节点上才 `Queue`：
 

@@ -357,6 +357,18 @@ func extractPodSchedulingGateEliminatedChange(newPod *v1.Pod, oldPod *v1.Pod) fw
 
 **从 gate 删光到 Pod 可以被 Pop，中间没有任何人为延迟。**
 
+#### 举个例子
+
+拿第一节的 `job-worker-0` 走一遍，它带着 `example.com/quota-check` 和 `example.com/network-ready` 两个 gate：
+
+1. 创建：API Server 写入 reason 为 `SchedulingGated` 的 `PodScheduled` 条件（5.3 节）。调度器的 `addPod` 把它交给队列，`moveToActiveQ` 跑 PreEnqueue，`SchedulingGates` 返回 `UnschedulableAndUnresolvable`。Pod 的 `GatingPlugin` 变成 `SchedulingGates`，`GatingPluginEvents` 只有 `TargetPod/UpdatePodSchedulingGatesEliminated`，以 gated 状态进入 `unschedulableEntities`，`UnschedulableCount` 是 0。
+2. 等待期间：集群里新增节点、删除别的 Pod，`moveEntitiesToActiveOrBackoffQueue` 遍历到它时都走 4.1 节代码第 8–12 行的 `continue`，hint 不调用。
+3. 配额控制器删掉 `example.com/quota-check`：还剩一个 gate，`extractPodSchedulingGateEliminatedChange` 返回 `None`，这次更新产生的是通用的 `TargetPod/Update`。`PriorityQueue.Update` 调用 `isEntityWorthRequeuing`，事件匹配不上 `SchedulingGates` 注册的事件，结果是 `queueSkip`，Pod 原样留在 `unschedulableEntities`。
+4. 网络控制器删掉 `example.com/network-ready`：旧 Pod 有 gate、新 Pod 没有，产生 `TargetPod/UpdatePodSchedulingGatesEliminated`，hint 返回 `Queue`，策略是 `queueAfterBackoff`。`UnschedulableCount` 为 0，上面代码第 8–12 行返回零值时间，不算在退避中，直接走 `moveToActiveQ`。
+5. PreEnqueue 再跑一遍：`GatingPlugin` 仍是 `SchedulingGates`，先跑它，这次返回 `nil`；其余 PreEnqueue 插件也放行后 `GatingPlugin` 被清空，Pod 进入 `activeQ`，`Timestamp` 仍是第 1 步入队的时刻（4.4 节）。
+
+删掉第一个 gate 时，调度器只做了一次事件匹配；删掉最后一个时，Pod 不经过 `backoffQ` 直接进入 `activeQ`。gate 有几个对调度器没有区别，它只看是否删光。
+
 ### 4.3 兜底刷新不会把它放出来
 
 上面的路径依赖事件和 hint 都正确。万一插件把 hint 写错、事件没产生，队列还有一层定时兜底：每 30 秒执行一次 `flushUnschedulableEntitiesLeftover`，把在 `unschedulableEntities` 里待超过 5 分钟的 entity 以通配事件 `UnschedulableTimeout` 重新评估。

@@ -562,6 +562,16 @@ kubelet 启动时就会创建 CSINode（上面 4.5 节提到的 `initializeCSINo
 
 两个事件都注册，是为了覆盖「没有 VA 的驱动」和「有 VA 的驱动」两种情况。
 
+把这两个事件放到同一个节点上走一遍。节点 n1 的 CSINode 里 `ebs.csi.aws.com` 的 `allocatable.count` 为 2；已有 Pod A 使用 `pvc-a`、`pvc-b`，分别绑定 CSI PV `vol-a`、`vol-b`，两块盘各有一个 VA。新 Pod P 只用一个已绑定 `vol-p` 的 `pvc-p`，其它节点也放不下它，P 只被 `NodeVolumeLimits` 拒绝过。过程分五步：
+
+1. 初次调度：Filter 中 `attachedVolumes` 为 `{ebs/vol-a, ebs/vol-b}`，两个 VA 都已在其中、不再加计数，已用 2；`newVolumes` 为 `{ebs/vol-p}`，2 + 1 > 2，返回 `Unschedulable`（4.1 节代码块第 74–75 行），P 进入不可调度队列；
+2. 删除 Pod A：调度器缓存移除 A，产生 AssignedPod Delete 事件。A 有 PVC 卷且 `nodeName` 为 n1，`isSchedulableAfterAssignedPodDeleted` 返回 `Queue`，P 被移出不可调度队列；
+3. 重新跑 Filter：`nodeInfo.GetPods()` 里已经没有 A，`attachedVolumes` 为空；但 detach 还没完成，两个 VA 仍在，4.1 节代码块第 56–61 行把它们都计入，已用仍是 2，2 + 1 > 2，P 回到不可调度队列；
+4. `vol-a` detach 完成，它的 VA 被删除：P 有 PVC 卷，`isSchedulableAfterVolumeAttachmentDeleted` 返回 `Queue`；
+5. 第三次 Filter：VA 只剩 `vol-b`，已用 1，1 + 1 = 2 不超过上限，n1 通过。
+
+第 3 步那次失败就是前面说的时间差：Pod 删除事件来得早，真正腾出槽位的是第 4 步的 VA 删除事件。
+
 ## 七、边界与坑
 
 **抢占几乎帮不上忙。** 插件没有 `PreFilterExtensions`，抢占模拟依赖 Filter 从 `nodeInfo.GetPods()` 现算：移除受害者后，它的卷从 `attachedVolumes` 里消失。
@@ -569,6 +579,14 @@ kubelet 启动时就会创建 CSINode（上面 4.5 节提到的 `initializeCSINo
 但 VA 那一路查的是 informer 里的真实 VA，模拟不会动它。受害者的卷只要有 VA，就会在第 3 步以「不在 `attachedVolumes` 中」的身份重新计入，计数纹丝不动。所以对需要 attach 的驱动（有上限的块存储基本都是），因卷数量超限而失败的 Pod 走抢占通常找不到候选。
 
 这从语义上也说得通：Pod 删除后卷还要经过 unmount、detach 才真正释放槽位，调度器不该假设驱逐立即见效。
+
+沿用第六节末尾那个节点（上限 2，Pod A 占着 `vol-a`、`vol-b`，两块盘都有 VA），假设 P 的优先级高于 A，n1 上的抢占模拟分三步：
+
+1. `SelectVictimsOnNode` 先从 `nodeInfo` 副本里移除 A，再对 n1 跑 Filter；
+2. `attachedVolumes` 为空，但 `getNodeVolumeAttachmentInfo` 仍从 VA informer 里读到 `vol-a`、`vol-b`，两者都不在 `attachedVolumes` 中，已用 2；
+3. 2 + 1 > 2，移除全部低优先级 Pod 之后仍然放不下，n1 不会成为候选节点。
+
+模拟里 A 的两块盘一个槽位也没有腾出来，P 只能等 detach 完成后由 VA 删除事件唤醒。
 
 新 Pod 自己的卷已经 attach 在节点上时会多算一次。第 2 步只用已有 Pod 的卷去重 `newVolumes`，不用 VA 去重。
 

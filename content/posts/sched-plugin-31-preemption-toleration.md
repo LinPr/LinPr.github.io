@@ -363,6 +363,33 @@ func (pl *PreemptionToleration) PostFilter(ctx context.Context, state fwk.CycleS
 
 容忍期的判断发生在「全部移除」之前，是一个硬筛选，而不是赦免阶段的偏好。即便驱逐一个容忍期内的 Pod 就能让抢占者放下，插件也不会这么做，而是去别的节点找；所有节点都找不到，抢占就失败。容忍策略的优先级高于「尽量让高优先级 Pod 调度成功」。
 
+#### 举个例子：同一个节点，两个插件选出不同的受害者
+
+节点 `n1` 有 8 核 CPU，已被三个优先级同为 8000 的 Pod 占满，节点上没有 PDB。三个 Pod 的 `PodScheduled` 时间与 `status.startTime` 相同（忽略拉镜像的耗时），PostFilter 开始的时刻记为 `now`：
+
+| Pod | `PriorityClass` | CPU | 调度时间 |
+| --- | --- | --- | --- |
+| `a` | `low`（无 annotation） | 2 | `now` 前 60 分钟 |
+| `b` | `low-non-preempted-10min` | 4 | `now` 前 3 分钟 |
+| `c` | `low-non-preempted-10min` | 2 | `now` 前 30 分钟 |
+
+抢占者 `p` 的优先级是 9000（`high`），请求 2 核。`PreemptionToleration` 的 `SelectVictimsOnNode` 在 `n1` 上分五步：
+
+1. 筛候选（3.2 节代码第 3–16 行）：三者优先级都低于 9000，逐个进入 `ExemptedFromPreemption`：
+   - `a`：门槛默认 8001，9000 达到门槛，第 35–37 行判不豁免；
+   - `b`：门槛 10000，9000 不够；容忍 600 秒，3 分钟前才调度，`scheduledAt` 加 10 分钟晚于 `now`，第 51 行判豁免；
+   - `c`：同样不够门槛，但 30 分钟前调度，容忍期已过，第 51 行判不豁免。
+
+   `potentialVictims` 是 `[a, c]`。
+2. 全部移除（第四节代码第 4–8 行）：节点副本上只剩 `b` 的 4 核，空出 4 核。
+3. 跑 Filter（第 18–20 行）：`p` 要 2 核，放得下。
+4. 排序（第 25–27 行）：优先级相同，`MoreImportantPod` 比较启动时间，越早越重要，顺序是 `a`、`c`。
+5. 逐个赦免：加回 `a` 后已用 6 核、剩 2 核，`p` 仍放得下，`a` 被赦免；再加回 `c`，已用 8 核，放不下，`c` 被移回并记为受害者。
+
+结果是 `victims = [c]`。同样的节点交给 `DefaultPreemption`，第 1 步不会剔除 `b`，三者全部移除后按 `a`、`c`、`b` 的顺序赦免：加回 `a`、`c` 后还剩 4 核，仍放得下；最后加回 `b` 剩 0 核，`b` 成为受害者。
+
+默认抢占驱逐的是启动最晚、刚调度 3 分钟的 `b`，正是容忍期要保护的 Pod；`PreemptionToleration` 让 `b` 留在节点副本上占着 4 核，受害者换成容忍期已过的 `c`。如果 `p` 请求 6 核，移除 `a`、`c` 只能空出 4 核，第 3 步就失败，`n1` 不会成为候选，这就是上面说的硬筛选。
+
 ## 五、和 DefaultPreemption 的逐项对比
 
 第四节说的「只差一处」仅指受害者筛选，其余部分不是重写，而是从 in-tree 复制来的。源码在文件末尾标了一个分界线：

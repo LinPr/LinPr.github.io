@@ -136,7 +136,7 @@ type ElasticQuotaInfo struct {
 
 map 的 key 是 Namespace 名，不是 `ElasticQuota` 的名字。`Min`、`Max`、`Used` 都是调度器内部的 `framework.Resource`，也就是 `MilliCPU`、`Memory`、`EphemeralStorage`、`AllowedPodNumber` 四个固定字段加一个 `ScalarResources` map。
 
-`pods` 是这个结构里最关键的字段。它记录已经计入 `Used` 的 Pod 的 `namespace/name`，让「加一个 Pod」和「减一个 Pod」都是幂等的：
+`pods` 是这个结构里最关键的字段。它记录已经计入 `Used` 的 Pod 的 key，也就是 `framework.GetPodKey` 返回的 Pod UID，让「加一个 Pod」和「减一个 Pod」都是幂等的：
 
 ```go {linenos=inline}
 // pkg/capacityscheduling/elasticquota.go
@@ -646,6 +646,27 @@ func (c *CapacityScheduling) Unreserve(ctx context.Context, state fwk.CycleState
 如果不在 `Reserve` 时记录用量，Pod 2 的 PreFilter 拍快照时看不到 Pod 1，两者会共用同一份配额。这和调度器缓存的 assume 机制同理：在 API 层面确认之前，先在本地「假定」它已经成功。
 
 绑定失败、Permit 拒绝或超时时，框架调用 `Unreserve`，用量记录回滚（第 23 行的 `deletePodIfPresent`）。之后如果绑定成功，informer 的 Add 事件再到，`pods` 集合里已有这个 key，不会重复计量。
+
+用一个 Pod 把用量记录的变化走一遍。Namespace `test` 有第一节示例里的 `ElasticQuota`（`min` cpu 10、memory 20Gi，`max` cpu 20、memory 40Gi），集群里只有这一个 quota；`Used` 目前是 cpu 4、memory 8Gi。Pod job-1 请求 cpu 2、memory 4Gi：
+
+| 步骤 | 发生了什么 | 走到的代码 | `pods` 里有 job-1 | `Used`（cpu / memory） |
+| --- | --- | --- | --- | --- |
+| 0 | 初始 | — | 否 | 4 / 8Gi |
+| 1 | 第一次调度周期，PreFilter 两道检查通过 | 快照，不改用量记录 | 否 | 4 / 8Gi |
+| 2 | Reserve | 第 8 行 `addPodIfNotPresent` | 是 | 6 / 12Gi |
+| 3 | 绑定失败 | 第 23 行 `deletePodIfPresent` | 否 | 4 / 8Gi |
+| 4 | 重新出队，第二次 Reserve | 第 8 行 | 是 | 6 / 12Gi |
+| 5 | 绑定成功，informer 收到转换成 Add 的事件 | `addPod` → `addPodIfNotPresent` 的 `pods.Has` 为真，直接返回 | 是 | 6 / 12Gi |
+| 6 | job-1 跑完进入 `Succeeded`，informer 收到删除 | `deletePod` → `deletePodIfPresent` | 否 | 4 / 8Gi |
+
+各步的要点：
+
+1. 第 1 步里检查一是 cpu `4 + 2 = 6 ≤ 20`、memory `8Gi + 4Gi = 12Gi ≤ 40Gi`，检查二（只有这一个 quota）是 `6 ≤ 10`、`12Gi ≤ 20Gi`，PreFilter 本身不改用量记录；
+2. 第 2、4 步之后、绑定完成之前，下一个 Pod 的 PreFilter 拍到的快照已经是 6 / 12Gi；
+3. 第 5 步是 2.1 节说的 `FilteringResourceEventHandler` 把 `spec.nodeName` 由空变为非空的 Update 转成 Add，`addPod` 用的 Pod UID 和 Reserve 时相同，所以被 `pods` 集合挡住；
+4. 第 6 步是 apiserver 把进入终态的那次更新转成 `DELETED` 推给调度器的 informer。
+
+这个例子说明 `Used` 只在 Reserve、Unreserve 和 Pod 删除这几处变化，informer 的 Add 晚到也不会让同一个 Pod 被计两次。
 
 ## 六、PostFilter：借用 Evaluator，换掉受害者选择
 

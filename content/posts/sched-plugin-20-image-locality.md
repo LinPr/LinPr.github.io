@@ -321,6 +321,16 @@ func (iss *ImageStateSummary) Snapshot() *ImageStateSummary {
 1. **`Size` 来自第一个上报它的节点**（`addNodeImageStates` 第 9–14 行）。条目创建后，后续节点只往 `Nodes` 里加名字，不更新 `Size`。同一个镜像名在不同架构的节点上大小可能不同（多架构镜像），调度器用的是先到者的值。
 2. **`NumNodes` 是在节点自己的 `NodeInfo` 被重新快照时才刷新的。** 增量快照只复制 `Generation` 变了的 `NodeInfo`。镜像被拉到节点 B 上，B 的快照会更新；但节点 A 快照里的这个镜像的 `NumNodes` 要等 A 自己发生变化（Pod 增减、节点更新）才会刷新。不同节点看到的 `spread` 可能短暂不一致。好在 Pod 的调度、删除频繁地触发节点变化，这种不一致通常很快就会被抹平。
 
+沿用第二节的集群：50 个节点，800MiB 的 `registry.example.com/app:v3` 已经在 node-1 到 node-40 上。现在 node-41 的 kubelet 也拉完了这个镜像，第 2 点的不一致按下面五步出现、再消失：
+
+1. 拉取之前：`cache.imageStates` 里这个名字的 `Nodes` 有 40 个节点名，每个节点快照里这一项的 `NumNodes` 都是 40，有镜像的节点得 63 分（第二节表格第一行）。
+2. node-41 上报：`status.images` 多出这一项，节点 informer 的 Update 事件进入 `cache.UpdateNode`。它先用 `removeNodeImageStates` 撤掉 node-41 的旧记录，再调 `addNodeImageStates`；这个名字的条目已经存在，走 `state.Nodes.Insert(node.Name)`（第 16 行），集合变成 41 个，`Size` 不变。最后 `SetNode` 给 node-41 的 `NodeInfo` 换一个新的 `Generation`。
+3. 下一个调度周期开头的 `UpdateSnapshot`：只有 `Generation` 比上次快照新的 `NodeInfo` 会重新 `SnapshotConcrete`。node-41 在其中，它快照里的 `NumNodes` 变成 41；node-1 没有变化，快照里仍是 40。
+4. 这个周期里打分：node-41 的 `sum = 800 × 41/50 = 656MiB`，得分 `100 × (656 − 23) / 977 = 64`；node-1 仍按 40 算，得 63 分。
+5. 之后 node-1 上有 Pod 增删或节点更新，`Generation` 变化，重新快照后 `NumNodes` 变成 41，得分也变成 64。
+
+同一个镜像、同样「节点上有」，两个节点在一个周期里差了 1 分，差别只来自快照刷新的先后。这个不一致的幅度就是一个节点在 `spread` 里的分量，会随节点的下一次变化消失。
+
 ## 五、边界情况与坑
 
 数据链路清楚之后，还有几处容易误判的地方：

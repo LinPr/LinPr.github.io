@@ -162,6 +162,14 @@ func (pl *PodGroupPodsCount) getScheduledPodsCount(podGroup fwk.PodGroupInfo) (i
 
 每个 placement 试放结束后，`evaluatePlacement` 立刻调用 `placementRevertFns.revert()` 撤销 snapshot 里的 assume，所以打分时 snapshot 里的「已调度」只包含本轮之前就存在的 Pod，本轮新放的 Pod 只在 `ProposedAssignments` 里出现一次。CompositePodGroup 的情况类似，`makeCompositePodGroupAssignments` 用 `successfulLeafResults` 把子树里所有成功叶子的提议合在一起。
 
+举个例子。PodGroup `llm-train-0`（`minCount: 4`）本轮之前没有 Pod 被调度，队列里 6 个 Pod；候选 placement 是 r1、r2，各 4 个节点，r1 放得下 6 个，r2 只放得下 4 个（节点总数 8，按第 22 篇的公式两个 placement 都会被评估）：
+
+1. 评估 r1：开始时本组的 `ScheduledPodsCount()` 是 0；每放下一个 Pod，`Snapshot.AssumePod` 调用 `assumePod`，计数依次涨到 6。试放结束，`placementRevertFns.revert()` 对 6 个 Pod 逐个 `ForgetPod`，`forgetPod` 把计数退回 0；r1 的 `ProposedAssignments` 有 6 项。
+2. 评估 r2：同样从 0 涨到 4，revert 后退回 0；`ProposedAssignments` 有 4 项。
+3. 打分：`getScheduledPodsCount` 读到 0，r1 的原始分是 `0 + 6 = 6`，r2 是 `0 + 4 = 4`，归一化后分别是 100 和 66。
+
+假如打分时 snapshot 里还留着 r1 的 assume，r1 会被算成 `6 + 6 = 12`，同一批 Pod 既在「已调度」里又在 `ProposedAssignments` 里。revert 先于打分执行，保证了每个新 Pod 只计一次。
+
 注释里那句「reduce the relative difference」说的是：同样是 2 个和 1 个新 Pod 的差距，两种算法给出的结果不同：
 
 1. 组里已经有 10 个 Pod 在跑时，原始分是 12 对 11，归一化后是 100 对 91；

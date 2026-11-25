@@ -234,6 +234,29 @@ func FindPodOrder(t agv1alpha1.AppGroupTopologyList, selector string) int32 {
 
 如果手工写 status 或者自己实现 controller 时没有按 selector 排序，二分查找会漏掉存在的元素，走到第 17 行返回 `-1`。
 
+拿 2.1 节的 shop 演示一次查找。假设 controller 算出的拓扑序是 frontend 1、cart 2、catalog 3、redis 4，按约定存放时数组是这样的：
+
+| 下标 | `workload.selector` | `index` |
+| --- | --- | --- |
+| 0 | cart | 2 |
+| 1 | catalog | 3 |
+| 2 | frontend | 1 |
+| 3 | redis | 4 |
+
+查 frontend 分两步：
+
+1. `low` 0、`high` 3，`mid` 为 1，catalog 小于 frontend，第 11–12 行把 `low` 移到 2；
+2. `mid` 为 2，selector 相等，第 9–10 行返回 `index` 1。
+
+如果 status 按拓扑序存成 frontend、cart、catalog、redis，同样查 frontend：
+
+1. `mid` 为 1，cart 小于 frontend，`low` 移到 2；
+2. `mid` 为 2，catalog 小于 frontend，`low` 移到 3；
+3. `mid` 为 3，redis 大于 frontend，第 13–14 行把 `high` 移到 2；
+4. `low` 大于 `high`，循环结束，第 17 行返回 `-1`。
+
+cart、catalog、redis 在这个数组里仍然能查到 2、3、4，只有 frontend 丢了。frontend 拿到的 `-1` 比任何正常 index 都小，它照样最先出队，出队顺序看上去没有问题，这类存放错误因此很难从调度结果里察觉。
+
 {{< figure src="/images/posts/sched-plugins/26-topological-order.svg" caption="从依赖图到出队顺序：controller 按 spec.topologySortingAlgorithm 计算拓扑序，把 (selector, index) 按 selector 排好写进 status；Less 读两个 Pod 的 label，同组时二分查出 index 比大小，否则回退 PrioritySort（点击查看大图）" link="/images/posts/sched-plugins/26-topological-order.svg" >}}
 
 ## 三、源码

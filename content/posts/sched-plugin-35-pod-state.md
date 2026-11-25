@@ -163,6 +163,19 @@ DefaultPreemption 选中一个节点后，会同时制造两件事：
 1. 资源不够时，新 Pod 会被直接拒绝；
 2. 只要还放得下，`PodState` 就会把新 Pod 吸引到这个正在为抢占者腾位置的节点上，进一步压缩它的余量。
 
+#### 举个例子
+
+三个 8 核节点，node-1、node-3 各空闲 4 核，上面没有终止中或被提名的 Pod。node-2 上有 `app-1`（request 1 核）和三个优先级 0 的 `batch-1`～`batch-3`（各 request 2 核），已用 7 核、空闲 1 核。
+
+1. 优先级 1000、request 5 核的 `hi` 在三个节点上都放不下，DefaultPreemption 选中 node-2，驱逐 `batch-2`、`batch-3`（空闲 1 核加上腾出的 4 核，正好放下 5 核），并把 `hi` 提名到 node-2；
+2. 两个受害者带上 `deletionTimestamp`，但仍在 NodeInfo 里，node-2 的已请求量还是 7 核；nominator 里多了 `hi → node-2`；
+3. 这时来了优先级 0、request 1 核的 `web-low`。`hi` 的优先级不低于它，Filter 代码第 3 行成立，`hi` 被临时加进 NodeInfo：7 + 5 + 1 = 13 核，超过 8 核，node-2 在 Filter 阶段就被淘汰，`PodState` 的分数用不上；
+4. 再来优先级 2000、request 1 核的 `web-high`。`hi` 的优先级低于它，不会被加进 NodeInfo：7 + 1 = 8 核，node-2 通过 Filter；
+5. `web-high` 的打分：`score` 第 16 行算出 node-2 的原始分是 2 − 1 = 1，node-1、node-3 都是 0；`NormalizeScore` 第 14 行得到 node-2 为 (1 − 0) × 100 / 1 = 100，另两个节点 0 分；
+6. `web-high` 落到 node-2 后，`batch-2`、`batch-3` 退出，node-2 上是 `app-1` 1 核 + `batch-1` 2 核 + `web-high` 1 核，空闲 4 核，`hi` 要 5 核，又放不下了。
+
+`web-high` 本来就有资格使用这块资源，框架的硬保护对它不设防；`PodState` 却在 node-1、node-3 同样可行的情况下把它主动引到 node-2，让前一轮驱逐白做。这正是本节开头说的「与初衷相反」。
+
 in-tree 也意识到了终止中受害者的意义：DefaultPreemption 的 `PodEligibleToPreemptOthers` 在 Pod 已有提名节点、且该节点上有因抢占而终止中的低优先级 Pod 时，拒绝再次抢占（第 2–7 行），让它等这些 Pod 退出：
 
 ```go {linenos=inline}

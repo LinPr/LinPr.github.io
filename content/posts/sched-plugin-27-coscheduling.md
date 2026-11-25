@@ -317,6 +317,22 @@ func (pgMgr *PodGroupManager) GetCreationTimestamp(ctx context.Context, pod *cor
 
 `lastFailedSchedulePG` 是后来加的修正。如果一个创建得很早的大组一直放不下，它的 Pod 会因为时间戳最早而一次次排在队首，每次都失败、每次都占掉一轮调度周期，后面能放下的组被饿住。记录失败时刻之后，失败的组时间戳变成「刚才」，排到同优先级其他组的后面。Permit 整组成功时 `ClearPodGroupScheduleFailure` 清除记录，恢复按创建时间排序。
 
+举个例子。同一 namespace 里有两个 PodGroup，所有 Pod 优先级都是 0：pg-a（`minMember: 3`，10:00:00 创建，成员 a-0、a-1、a-2），pg-b（`minMember: 2`，10:02:00 创建，成员 b-0、b-1）。pg-a 的一轮失败和之后的重排是这样走的：
+
+1. a-0、a-1 先后通过 Filter，在 Permit 返回 Wait，占着资源等待；
+2. a-2 在 Filter 找不到节点，DefaultPreemption 也没有腾出位置，进入 Coscheduling 的 PostFilter（第七节）：`assigned` 为 2，`(3 - 2) / 3` 约 33%，超过默认的 10%，于是 Reject a-0、a-1，并调用 `MarkPodGroupScheduleFailure`，假设记下的失败时刻是 10:05:00；
+3. a-0、a-1 被拒后各自走 Unreserve，又记一次失败时刻，只比 10:05:00 晚几毫秒；
+4. 某个 Pod Add 事件（第八节）把 a 的三个 Pod 移出 unschedulable 队列，退避结束后进入 activeQ；调度器正忙，刚提交的 b-0、b-1 还在 activeQ 里排队，堆操作开始拿它们互相比较。
+
+第 4 步里两种写法的比较结果不同：
+
+| | a-* 的时间戳 | b-* 的时间戳 | 出队顺序 |
+| --- | --- | --- | --- |
+| 没有 `lastFailedSchedulePG` | 10:00:00（PodGroup 创建时间，第 17 行） | 10:02:00 | a-0、a-1、a-2、b-0、b-1 |
+| 有 `lastFailedSchedulePG` | 约 10:05:00（第 10–12 行先命中） | 10:02:00 | b-0、b-1、a-0、a-1、a-2 |
+
+两行的同组 Pod 都连续排列，组内按 `namespace/podname` 排（`Less` 第 14–15 行）。没有这份记录时，pg-a 会再次抢在队首、a-2 大概率再次失败；有了它，pg-b 先拿到资源，pg-a 退到后面，直到某次 Permit 整组成功才恢复用 10:00:00 排序。
+
 两个细节：
 
 1. **优先级比较在时间戳之前。** README 特意提醒「Pods in the same PodGroup with different priorities might lead to unintended behavior」。同组 Pod 优先级不同，会被其他组的 Pod 插在中间，同组相邻的假设就不成立了。
