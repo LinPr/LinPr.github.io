@@ -303,7 +303,14 @@ func (a *SchedulingAlgorithm) getCandidateNodes(preFilterOutcome preFilterOutcom
 
 ## 五、和 kubelet、DaemonSet 的关系
 
-前面讲的是调度器内的两条路径：进队列，或者只进缓存。进了缓存的那些 Pod 由 kubelet 接手，而 DaemonSet 恰好选择留在调度器这一侧。
+前面讲的是调度器内的两条路径，分流依据只有 `spec.nodeName` 是否为空：为空的进调度队列，非空的只进调度器缓存。
+
+调度器缓存和 kubelet 没有关系，两者各自 watch apiserver，读的是同一个字段：
+
+1. 调度器把 `spec.nodeName` 非空的 Pod 写进缓存，只为了算清楚每个节点上已经占用了多少资源，后续给别的 Pod 做 Filter 时要扣掉这部分；
+2. kubelet 只 watch `spec.nodeName` 等于本节点的 Pod，看到就开始准入和启动。至于这个字段是调度器通过 binding 写的，还是创建时就写好的，kubelet 不区分。
+
+**所以写了 `spec.nodeName` 的 Pod，从创建那一刻起就直接交给了 kubelet，调度器只在缓存里统计它占用的资源**。能拦住它的只剩 kubelet 自己的准入检查，这一节先看这道检查，再看 DaemonSet 为什么反而选择不写 `spec.nodeName`、留在调度器这一侧。
 
 ### 5.1 kubelet 准入复用了 Fits
 
