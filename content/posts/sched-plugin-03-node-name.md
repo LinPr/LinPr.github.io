@@ -303,14 +303,26 @@ func (a *SchedulingAlgorithm) getCandidateNodes(preFilterOutcome preFilterOutcom
 
 ## 五、和 kubelet、DaemonSet 的关系
 
-前面讲的是调度器内的两条路径，分流依据只有 `spec.nodeName` 是否为空：为空的进调度队列，非空的只进调度器缓存。
+第二节说过，写了 `spec.nodeName` 的 Pod 不进调度队列。那它是怎么跑起来的？要回答这个问题，先要分清调度器和 kubelet 各自是怎么「看到」一个 Pod 的。
 
-调度器缓存和 kubelet 没有关系，两者各自 watch apiserver，读的是同一个字段：
+两者之间没有直接通信：调度器不会通知 kubelet「这个 Pod 交给你了」，kubelet 也不会去读调度器的缓存。它们都只盯着 apiserver 上的 Pod 对象，判断依据都是 `spec.nodeName`：
 
-1. 调度器把 `spec.nodeName` 非空的 Pod 写进缓存，只为了算清楚每个节点上已经占用了多少资源，后续给别的 Pod 做 Filter 时要扣掉这部分；
-2. kubelet 只 watch `spec.nodeName` 等于本节点的 Pod，看到就开始准入和启动。至于这个字段是调度器通过 binding 写的，还是创建时就写好的，kubelet 不区分。
+| 组件 | watch 哪些 Pod | 看到之后做什么 |
+| --- | --- | --- |
+| 调度器 | 所有 Pod | `spec.nodeName` 为空：放进调度队列，选出节点后通过 binding 把节点名写进 `spec.nodeName`；非空：不调度，只记进缓存，用来统计这个节点已经占用了多少资源 |
+| kubelet | 只看 `spec.nodeName` 等于本节点名的 Pod | 做准入检查，通过后启动容器 |
 
-**所以写了 `spec.nodeName` 的 Pod，从创建那一刻起就直接交给了 kubelet，调度器只在缓存里统计它占用的资源**。能拦住它的只剩 kubelet 自己的准入检查，这一节先看这道检查，再看 DaemonSet 为什么反而选择不写 `spec.nodeName`、留在调度器这一侧。
+也就是说，**把 Pod 交给某个节点的 kubelet，本质上就是在 `spec.nodeName` 里写上这个节点名**，至于是谁写的，kubelet 不关心。用两个 Pod 对比一下：
+
+1. Pod A 创建时 `spec.nodeName` 为空：
+   - 调度器看到它，放进队列，跑 Filter、Score，选中 node-1；
+   - 调度器调用 binding，apiserver 把 `spec.nodeName` 写成 node-1；
+   - 这时 node-1 上的 kubelet 才看到 Pod A，开始准入、启动容器。
+2. Pod B 创建时就写了 `spec.nodeName: node-1`：
+   - node-1 上的 kubelet 立刻看到它，直接准入、启动容器；
+   - 调度器也看到了它，但 `spec.nodeName` 已经有值，所以不调度，只在缓存里把它的资源记到 node-1 名下。否则调度器以为 node-1 还空着，会把别的 Pod 也往上放。
+
+Pod B 从头到尾没经过 Filter：节点资源够不够、污点能不能容忍，调度器都没有检查过。能拦住它的只剩 kubelet 的准入检查，5.1 看这道检查查了什么。5.2 看 DaemonSet：它的 Pod 目标节点同样是确定的，却特意不写 `spec.nodeName`，让 Pod 走 Pod A 那条路。
 
 ### 5.1 kubelet 准入复用了 Fits
 
