@@ -1,466 +1,474 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 3338" width="1000" height="3338" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 3534" width="1000" height="3534" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
 <defs><marker id="a" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 z" fill="#94a3b8"/></marker></defs>
-<rect width="1000" height="3338" fill="#ffffff"/>
+<rect width="1000" height="3534" fill="#ffffff"/>
 <text x="500.0" y="36.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">从 kubectl apply 到容器运行：调度器与周边组件全景</text>
-<text x="500.0" y="62.0" font-size="12.5" fill="#64748b" text-anchor="middle">①~㉔ 是主路径；橙色是会重试的失败，红色是这个 Pod 到此为止；Ⓐ~Ⓖ 是外部组件，在图中对应位置标出它从哪里介入</text>
-<rect x="20" y="84" width="960" height="500.9" rx="12" fill="#f8fafc" stroke="#2563eb" stroke-width="1.4" stroke-opacity="0.55"/><rect x="20" y="84" width="6" height="500.9" rx="3" fill="#2563eb"/><text x="38" y="108" font-size="15" font-weight="700" fill="#2563eb">kube-apiserver</text><text x="178.82000000000002" y="108" font-size="12" fill="#64748b">创建 Pod 的请求链路</text>
-<rect x="36.0" y="124.0" width="140.0" height="304.1" rx="8" fill="#f1f5f9" stroke="#475569" stroke-width="1.2"/>
-<text x="48.0" y="148.5" font-size="13.5" fill="#475569" text-anchor="start" font-weight="700">① 提交 Pod</text>
+<text x="500.0" y="62.0" font-size="12.5" fill="#64748b" text-anchor="middle">①~㉔ 是主路径；橙色是会重试的失败，红色是这个 Pod 到此为止；Ⓐ~Ⓖ 虚线框是调度器之外的组件，画在它们介入的位置</text>
+<rect x="20" y="84" width="960" height="588.1" rx="12" fill="#f8fafc" stroke="#2563eb" stroke-width="1.4" stroke-opacity="0.55"/><rect x="20" y="84" width="6" height="588.1" rx="3" fill="#2563eb"/><text x="38" y="108" font-size="15" font-weight="700" fill="#2563eb">kube-apiserver</text><text x="178.82000000000002" y="108" font-size="12" fill="#64748b">创建 Pod 的请求链路</text>
+<rect x="36.0" y="124.0" width="272.0" height="61.3" rx="8" fill="#f1f5f9" stroke="#475569" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="48.0" y="148.5" font-size="13.5" fill="#475569" text-anchor="start" font-weight="700">用户 / CI</text>
 <text x="49.0" y="172.6" font-size="12.5" fill="#475569" text-anchor="start" font-weight="700">·</text>
-<text x="59.0" y="172.6" font-size="12.5" fill="#1e293b" text-anchor="start">kubectl apply，</text>
-<text x="59.0" y="190.3" font-size="12.5" fill="#1e293b" text-anchor="start">或 ReplicaSet、</text>
-<text x="59.0" y="208.1" font-size="12.5" fill="#1e293b" text-anchor="start">Job 等控制器</text>
-<text x="59.0" y="225.8" font-size="12.5" fill="#1e293b" text-anchor="start">POST pods</text>
-<text x="49.0" y="246.6" font-size="12.5" fill="#475569" text-anchor="start" font-weight="700">·</text>
-<text x="59.0" y="246.6" font-size="12.5" fill="#1e293b" text-anchor="start">此时</text>
-<text x="59.0" y="264.3" font-size="12.5" fill="#1e293b" text-anchor="start">spec.nodeName</text>
-<text x="59.0" y="282.1" font-size="12.5" fill="#1e293b" text-anchor="start">为空</text>
-<circle cx="156.0" cy="125.0" r="10" fill="#ffffff" stroke="#0d9488" stroke-width="1.4"/>
-<text x="156.0" y="129.3" font-size="12" fill="#0d9488" text-anchor="middle" font-weight="700">Ⓐ</text>
-<rect x="188.0" y="124.0" width="120.0" height="304.1" rx="8" fill="#f1f5f9" stroke="#475569" stroke-width="1.2"/>
-<text x="200.0" y="148.5" font-size="13.5" fill="#475569" text-anchor="start" font-weight="700">② 认证与鉴</text>
-<text x="200.0" y="166.1" font-size="13.5" fill="#475569" text-anchor="start" font-weight="700">权</text>
-<text x="201.0" y="190.1" font-size="12.5" fill="#475569" text-anchor="start" font-weight="700">·</text>
-<text x="211.0" y="190.1" font-size="12.5" fill="#1e293b" text-anchor="start">认证：确认请</text>
-<text x="211.0" y="207.9" font-size="12.5" fill="#1e293b" text-anchor="start">求者身份</text>
-<text x="201.0" y="228.6" font-size="12.5" fill="#475569" text-anchor="start" font-weight="700">·</text>
-<text x="211.0" y="228.6" font-size="12.5" fill="#1e293b" text-anchor="start">鉴权：RBAC</text>
-<text x="211.0" y="246.4" font-size="12.5" fill="#1e293b" text-anchor="start">判断能否</text>
-<text x="211.0" y="264.1" font-size="12.5" fill="#1e293b" text-anchor="start">create pods</text>
-<path d="M177.0,154.0 L187.0,154.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="320.0" y="124.0" width="216.0" height="304.1" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
-<text x="332.0" y="148.5" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">③ 变更准入</text>
-<text x="333.0" y="172.6" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="343.0" y="172.6" font-size="12.5" fill="#1e293b" text-anchor="start">LimitRanger：补默认</text>
-<text x="343.0" y="190.3" font-size="12.5" fill="#1e293b" text-anchor="start">requests/limits</text>
-<text x="333.0" y="211.1" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="343.0" y="211.1" font-size="12.5" fill="#1e293b" text-anchor="start">Priority：按</text>
-<text x="343.0" y="228.8" font-size="12.5" fill="#1e293b" text-anchor="start">priorityClassName 写入</text>
-<text x="343.0" y="246.6" font-size="12.5" fill="#1e293b" text-anchor="start">spec.priority 与</text>
-<text x="343.0" y="264.3" font-size="12.5" fill="#1e293b" text-anchor="start">preemptionPolicy</text>
-<text x="333.0" y="285.1" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="343.0" y="285.1" font-size="12.5" fill="#1e293b" text-anchor="start">DefaultTolerationSeconds：</text>
-<text x="343.0" y="302.8" font-size="12.5" fill="#1e293b" text-anchor="start">加 not-ready、</text>
-<text x="343.0" y="320.6" font-size="12.5" fill="#1e293b" text-anchor="start">unreachable 容忍 300s</text>
-<text x="333.0" y="341.3" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="343.0" y="341.3" font-size="12.5" fill="#1e293b" text-anchor="start">RuntimeClass：写入</text>
-<text x="343.0" y="359.1" font-size="12.5" fill="#1e293b" text-anchor="start">overhead</text>
-<text x="333.0" y="379.8" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="343.0" y="379.8" font-size="12.5" fill="#1e293b" text-anchor="start">Mutating webhook：注入</text>
-<text x="343.0" y="397.6" font-size="12.5" fill="#1e293b" text-anchor="start">sidecar、加</text>
-<text x="343.0" y="415.3" font-size="12.5" fill="#1e293b" text-anchor="start">schedulingGates 等</text>
-<circle cx="516.0" cy="125.0" r="10" fill="#ffffff" stroke="#0d9488" stroke-width="1.4"/>
-<text x="516.0" y="129.3" font-size="12" fill="#0d9488" text-anchor="middle" font-weight="700">Ⓑ</text>
-<path d="M309.0,154.0 L319.0,154.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="548.0" y="124.0" width="180.0" height="304.1" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
-<text x="560.0" y="148.5" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">④ 对象校验</text>
-<text x="561.0" y="172.6" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="571.0" y="172.6" font-size="12.5" fill="#1e293b" text-anchor="start">字段格式与取值是否合法</text>
-<text x="561.0" y="193.3" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="571.0" y="193.3" font-size="12.5" fill="#1e293b" text-anchor="start">带 schedulingGates</text>
-<text x="571.0" y="211.1" font-size="12.5" fill="#1e293b" text-anchor="start">时不能直接设置</text>
-<text x="571.0" y="228.8" font-size="12.5" fill="#1e293b" text-anchor="start">spec.nodeName</text>
-<text x="561.0" y="249.6" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="571.0" y="249.6" font-size="12.5" fill="#1e293b" text-anchor="start">创建后 spec.priority</text>
-<text x="571.0" y="267.3" font-size="12.5" fill="#1e293b" text-anchor="start">不可改，</text>
-<text x="571.0" y="285.1" font-size="12.5" fill="#1e293b" text-anchor="start">schedulingGates 只</text>
-<text x="571.0" y="302.8" font-size="12.5" fill="#1e293b" text-anchor="start">能删不能加</text>
-<path d="M537.0,154.0 L547.0,154.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="740.0" y="124.0" width="224.0" height="304.1" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
-<text x="752.0" y="148.5" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">⑤ 验证准入</text>
-<text x="753.0" y="172.6" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="763.0" y="172.6" font-size="12.5" fill="#1e293b" text-anchor="start">PodSecurity：检查安全级别</text>
-<text x="753.0" y="193.3" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="763.0" y="193.3" font-size="12.5" fill="#1e293b" text-anchor="start">ValidatingAdmissionPolicy</text>
-<text x="763.0" y="211.1" font-size="12.5" fill="#1e293b" text-anchor="start">与 Validating webhook</text>
-<text x="753.0" y="231.8" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="763.0" y="231.8" font-size="12.5" fill="#1e293b" text-anchor="start">ResourceQuota：</text>
-<text x="763.0" y="249.6" font-size="12.5" fill="#1e293b" text-anchor="start">requests/limits 计入命名空</text>
-<text x="763.0" y="267.3" font-size="12.5" fill="#1e293b" text-anchor="start">间配额，超额拒绝</text>
-<path d="M729.0,154.0 L739.0,154.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="36.0" y="442.1" width="928.0" height="33.8" rx="6" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
-<text x="48.0" y="465.6" font-size="12.5" fill="#dc2626" text-anchor="start">②~⑤ 任一步失败：请求直接返回 401/403/422 等错误，Pod 不会写入 etcd，调度器永远看不到它</text>
-<path d="M248.0,428.1 L248.0,441.1" stroke="#dc2626" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<path d="M428.0,428.1 L428.0,441.1" stroke="#dc2626" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<path d="M638.0,428.1 L638.0,441.1" stroke="#dc2626" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<path d="M852.0,428.1 L852.0,441.1" stroke="#dc2626" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="206.0" y="489.8" width="588.0" height="79.0" rx="8" fill="#f1f5f9" stroke="#475569" stroke-width="1.2"/>
-<text x="218.0" y="514.3" font-size="13.5" fill="#475569" text-anchor="start" font-weight="700">⑥ 写入 etcd</text>
-<text x="219.0" y="538.3" font-size="12.5" fill="#475569" text-anchor="start" font-weight="700">·</text>
-<text x="229.0" y="538.3" font-size="12.5" fill="#1e293b" text-anchor="start">Pod 处于 Pending，spec.nodeName 为空；调度器、kubelet、各控制器通过 watch 收到</text>
-<text x="229.0" y="556.1" font-size="12.5" fill="#1e293b" text-anchor="start">ADDED 事件</text>
-<path d="M965.0,154.0 L972.0,154.0 L972.0,529.3 L795.0,529.3" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="20" y="600.85" width="960" height="1775.8" rx="12" fill="#f8fafc" stroke="#7c3aed" stroke-width="1.4" stroke-opacity="0.55"/><rect x="20" y="600.85" width="6" height="1775.8" rx="3" fill="#7c3aed"/><text x="38" y="624.85" font-size="15" font-weight="700" fill="#7c3aed">kube-scheduler</text>
-<path d="M500.0,568.9 L500.0,639.9" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="36.0" y="640.9" width="928.0" height="120.5" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
-<text x="48.0" y="665.4" font-size="13.5" fill="#7c3aed" text-anchor="start" font-weight="700">⑦ informer 与事件处理器</text>
-<text x="49.0" y="689.4" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
-<text x="59.0" y="689.4" font-size="12.5" fill="#1e293b" text-anchor="start">Pod ADDED，spec.nodeName 为空且 schedulerName 属于本调度器的某个 Profile → 进入调度队列</text>
-<text x="49.0" y="710.1" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
-<text x="59.0" y="710.1" font-size="12.5" fill="#1e293b" text-anchor="start">已绑定的 Pod（spec.nodeName 非空）→ 只写入 cache，用来计算节点上已占用的资源</text>
-<text x="49.0" y="730.9" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
-<text x="59.0" y="730.9" font-size="12.5" fill="#1e293b" text-anchor="start">Node、PVC、PV、StorageClass、ResourceClaim 等对象变化 → 按插件的 EventsToRegister 和 QueueingHint，把相关 entity 移出</text>
-<text x="59.0" y="748.6" font-size="12.5" fill="#1e293b" text-anchor="start">unschedulableEntities</text>
-<circle cx="944.0" cy="641.9" r="10" fill="#ffffff" stroke="#0d9488" stroke-width="1.4"/>
-<text x="944.0" y="646.1" font-size="12" fill="#0d9488" text-anchor="middle" font-weight="700">Ⓔ</text>
-<circle cx="922.0" cy="641.9" r="10" fill="#ffffff" stroke="#0d9488" stroke-width="1.4"/>
-<text x="922.0" y="646.1" font-size="12" fill="#0d9488" text-anchor="middle" font-weight="700">Ⓒ</text>
-<circle cx="900.0" cy="641.9" r="10" fill="#ffffff" stroke="#0d9488" stroke-width="1.4"/>
-<text x="900.0" y="646.1" font-size="12" fill="#0d9488" text-anchor="middle" font-weight="700">Ⓑ</text>
-<path d="M141.5,761.4 L141.5,790.4" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="143.5" y="767.9" width="47.1" height="16.5" fill="#ffffff" rx="3"/>
-<text x="147.5" y="779.4" font-size="11.5" fill="#64748b" text-anchor="start">新 Pod</text>
-<rect x="36.0" y="791.4" width="211.0" height="194.6" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
-<text x="48.0" y="815.9" font-size="13.5" fill="#7c3aed" text-anchor="start" font-weight="700">⑧ PreEnqueue</text>
-<text x="49.0" y="840.0" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
-<text x="59.0" y="840.0" font-size="12.5" fill="#1e293b" text-anchor="start">SchedulingGates：</text>
-<text x="59.0" y="857.7" font-size="12.5" fill="#1e293b" text-anchor="start">spec.schedulingGates 非</text>
-<text x="59.0" y="875.5" font-size="12.5" fill="#1e293b" text-anchor="start">空就拒绝</text>
-<text x="49.0" y="896.2" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
-<text x="59.0" y="896.2" font-size="12.5" fill="#1e293b" text-anchor="start">DynamicResources 等插件</text>
-<text x="59.0" y="914.0" font-size="12.5" fill="#1e293b" text-anchor="start">也实现了 PreEnqueue</text>
-<text x="49.0" y="934.7" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
-<text x="59.0" y="934.7" font-size="12.5" fill="#1e293b" text-anchor="start">被拒绝的 Pod 以 gated 状</text>
-<text x="59.0" y="952.5" font-size="12.5" fill="#1e293b" text-anchor="start">态留在</text>
-<text x="59.0" y="970.2" font-size="12.5" fill="#1e293b" text-anchor="start">unschedulableEntities</text>
-<circle cx="227.0" cy="792.4" r="10" fill="#ffffff" stroke="#0d9488" stroke-width="1.4"/>
-<text x="227.0" y="796.7" font-size="12" fill="#0d9488" text-anchor="middle" font-weight="700">Ⓑ</text>
-<rect x="275.0" y="791.4" width="211.0" height="194.6" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
-<text x="287.0" y="815.9" font-size="13.5" fill="#7c3aed" text-anchor="start" font-weight="700">activeQ</text>
-<text x="288.0" y="840.0" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
-<text x="298.0" y="840.0" font-size="12.5" fill="#1e293b" text-anchor="start">堆，比较函数来自 QueueSort</text>
-<text x="298.0" y="857.7" font-size="12.5" fill="#1e293b" text-anchor="start">插件</text>
-<text x="288.0" y="878.5" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
-<text x="298.0" y="878.5" font-size="12.5" fill="#1e293b" text-anchor="start">PrioritySort：</text>
-<text x="298.0" y="896.2" font-size="12.5" fill="#1e293b" text-anchor="start">spec.priority 高的先出队，</text>
-<text x="298.0" y="914.0" font-size="12.5" fill="#1e293b" text-anchor="start">相同时先入队的先出</text>
-<text x="288.0" y="934.7" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
-<text x="298.0" y="934.7" font-size="12.5" fill="#1e293b" text-anchor="start">出队单位是 entity：单个</text>
-<text x="298.0" y="952.5" font-size="12.5" fill="#1e293b" text-anchor="start">Pod 或整个 PodGroup</text>
-<rect x="514.0" y="791.4" width="211.0" height="194.6" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
-<text x="526.0" y="815.9" font-size="13.5" fill="#7c3aed" text-anchor="start" font-weight="700">backoffQ</text>
-<text x="527.0" y="840.0" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
-<text x="537.0" y="840.0" font-size="12.5" fill="#1e293b" text-anchor="start">堆，按退避结束时间排序</text>
-<text x="527.0" y="860.7" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
-<text x="537.0" y="860.7" font-size="12.5" fill="#1e293b" text-anchor="start">退避时间从 1s 起随失败次数</text>
-<text x="537.0" y="878.5" font-size="12.5" fill="#1e293b" text-anchor="start">翻倍，最长 10s</text>
-<text x="527.0" y="899.2" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
-<text x="537.0" y="899.2" font-size="12.5" fill="#1e293b" text-anchor="start">每秒 flush 一次，到期的移</text>
-<text x="537.0" y="917.0" font-size="12.5" fill="#1e293b" text-anchor="start">回 activeQ</text>
-<rect x="753.0" y="791.4" width="211.0" height="194.6" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
-<text x="765.0" y="815.9" font-size="13.5" fill="#7c3aed" text-anchor="start" font-weight="700">unschedulableEntities</text>
-<text x="766.0" y="840.0" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
-<text x="776.0" y="840.0" font-size="12.5" fill="#1e293b" text-anchor="start">map，没有顺序，不会被 Pop</text>
-<text x="766.0" y="860.7" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
-<text x="776.0" y="860.7" font-size="12.5" fill="#1e293b" text-anchor="start">存放 gated 和</text>
-<text x="776.0" y="878.5" font-size="12.5" fill="#1e293b" text-anchor="start">unschedulable 两类</text>
-<text x="776.0" y="896.2" font-size="12.5" fill="#1e293b" text-anchor="start">entity</text>
-<text x="766.0" y="917.0" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
-<text x="776.0" y="917.0" font-size="12.5" fill="#1e293b" text-anchor="start">相关事件到达且</text>
-<text x="776.0" y="934.7" font-size="12.5" fill="#1e293b" text-anchor="start">QueueingHint 返回 Queue</text>
-<text x="776.0" y="952.5" font-size="12.5" fill="#1e293b" text-anchor="start">才移出</text>
-<text x="766.0" y="973.2" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
-<text x="776.0" y="973.2" font-size="12.5" fill="#1e293b" text-anchor="start">停留超过 5 分钟强制移出</text>
-<circle cx="944.0" cy="792.4" r="10" fill="#ffffff" stroke="#0d9488" stroke-width="1.4"/>
-<text x="944.0" y="796.7" font-size="12" fill="#0d9488" text-anchor="middle" font-weight="700">Ⓔ</text>
-<path d="M248.0,825.4 L274.0,825.4" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="246.0" y="808.4" width="30.0" height="16.0" fill="#ffffff" rx="3"/>
-<text x="261.0" y="819.4" font-size="11" fill="#64748b" text-anchor="middle">通过</text>
-<path d="M513.0,825.4 L487.0,825.4" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="485.0" y="808.4" width="30.0" height="16.0" fill="#ffffff" rx="3"/>
-<text x="500.0" y="819.4" font-size="11" fill="#64748b" text-anchor="middle">到期</text>
-<path d="M752.0,825.4 L726.0,825.4" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="724.0" y="808.4" width="30.0" height="16.0" fill="#ffffff" rx="3"/>
-<text x="739.0" y="819.4" font-size="11" fill="#64748b" text-anchor="middle">唤醒</text>
-<path d="M793.0,986.0 L793.0,1004.0 L466.0,1004.0 L466.0,987.0" stroke="#7c3aed" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="516.5" y="997.0" width="206.0" height="16.0" fill="#ffffff" rx="3"/>
-<text x="619.5" y="1008.0" font-size="11" fill="#7c3aed" text-anchor="middle">唤醒且已过退避期 → 直接进 activeQ</text>
-<path d="M66.0,986.0 L66.0,1026.0 L934.0,1026.0 L934.0,987.0" stroke="#ea580c" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="96.1" y="1019.0" width="159.8" height="16.0" fill="#ffffff" rx="3"/>
-<text x="176.0" y="1030.0" font-size="11" fill="#ea580c" text-anchor="middle">PreEnqueue 拒绝 → gated</text>
-<rect x="30" y="1049.95" width="936" height="954.1" rx="12" fill="#f8fafc" stroke="#2563eb" stroke-width="1.4" stroke-opacity="0.55"/><rect x="30" y="1049.95" width="6" height="954.1" rx="3" fill="#2563eb"/><text x="48" y="1073.95" font-size="15" font-weight="700" fill="#2563eb">调度周期</text><text x="118.2" y="1073.95" font-size="12" fill="#64748b">单个 goroutine 串行执行，同一时刻只处理一个 entity</text>
-<rect x="48.0" y="1090.0" width="440.0" height="79.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
-<text x="60.0" y="1114.5" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">⑨ Pop</text>
-<text x="61.0" y="1138.5" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="71.0" y="1138.5" font-size="12.5" fill="#1e293b" text-anchor="start">从 activeQ 队头取出一个 entity，标记为 in-flight，记录这期</text>
-<text x="71.0" y="1156.2" font-size="12.5" fill="#1e293b" text-anchor="start">间发生的集群事件</text>
-<path d="M108.0,1169.0 L108.0,1190.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="48.0" y="1191.0" width="440.0" height="79.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
-<text x="60.0" y="1215.5" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">⑩ 拍快照</text>
-<text x="61.0" y="1239.5" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="71.0" y="1239.5" font-size="12.5" fill="#1e293b" text-anchor="start">UpdateSnapshot：把 cache 拷成本周期只读的节点快照，包含已</text>
-<text x="71.0" y="1257.3" font-size="12.5" fill="#1e293b" text-anchor="start">assume 但还没绑定完成的 Pod</text>
-<path d="M108.0,1270.0 L108.0,1291.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="48.0" y="1292.0" width="440.0" height="117.5" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
-<text x="60.0" y="1316.5" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">⑪ PreFilter</text>
-<text x="61.0" y="1340.6" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="71.0" y="1340.6" font-size="12.5" fill="#1e293b" text-anchor="start">预计算并写入 CycleState，可返回 PreFilterResult 缩小候选节</text>
-<text x="71.0" y="1358.3" font-size="12.5" fill="#1e293b" text-anchor="start">点</text>
-<text x="61.0" y="1379.1" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="71.0" y="1379.1" font-size="12.5" fill="#1e293b" text-anchor="start">返回 UnschedulableAndUnresolvable → 跳过 Filter 和抢占，</text>
-<text x="71.0" y="1396.8" font-size="12.5" fill="#1e293b" text-anchor="start">直接进入失败处理</text>
-<path d="M108.0,1409.6 L108.0,1430.6" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="48.0" y="1431.6" width="440.0" height="120.5" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
-<text x="60.0" y="1456.1" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">⑫ Filter</text>
-<text x="61.0" y="1480.1" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="71.0" y="1480.1" font-size="12.5" fill="#1e293b" text-anchor="start">有 nominatedNodeName 时先单独试这个节点，通过就直接选它</text>
-<text x="61.0" y="1500.9" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="71.0" y="1500.9" font-size="12.5" fill="#1e293b" text-anchor="start">否则并行遍历候选节点，凑够 numFeasibleNodesToFind 个可行节</text>
-<text x="71.0" y="1518.6" font-size="12.5" fill="#1e293b" text-anchor="start">点就停</text>
-<text x="61.0" y="1539.4" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="71.0" y="1539.4" font-size="12.5" fill="#1e293b" text-anchor="start">节点上优先级不低于本 Pod 的提名 Pod，按已经在这个节点上计算</text>
-<path d="M108.0,1552.1 L108.0,1573.1" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="48.0" y="1574.1" width="440.0" height="82.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
-<text x="60.0" y="1598.6" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">⑬ PreScore / Score / NormalizeScore</text>
-<text x="61.0" y="1622.7" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="71.0" y="1622.7" font-size="12.5" fill="#1e293b" text-anchor="start">各插件打分归一化到 0~100，乘权重后加总</text>
-<text x="61.0" y="1643.4" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="71.0" y="1643.4" font-size="12.5" fill="#1e293b" text-anchor="start">取最高分节点，同分随机；只有一个可行节点时跳过打分</text>
-<path d="M108.0,1656.2 L108.0,1677.2" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="48.0" y="1678.2" width="440.0" height="99.8" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
-<text x="60.0" y="1702.7" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">⑭ assume</text>
-<text x="61.0" y="1726.7" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="71.0" y="1726.7" font-size="12.5" fill="#1e293b" text-anchor="start">把 Pod 当作已绑定写进 cache，下一个 Pod 立刻看得到它占用的资</text>
-<text x="71.0" y="1744.5" font-size="12.5" fill="#1e293b" text-anchor="start">源</text>
-<text x="61.0" y="1765.2" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="71.0" y="1765.2" font-size="12.5" fill="#1e293b" text-anchor="start">调度周期因此可以不等绑定完成</text>
-<path d="M108.0,1778.0 L108.0,1799.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="48.0" y="1800.0" width="440.0" height="61.3" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
-<text x="60.0" y="1824.5" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">⑮ Reserve</text>
-<text x="61.0" y="1848.5" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="71.0" y="1848.5" font-size="12.5" fill="#1e293b" text-anchor="start">插件预留卷、DRA 设备等，失败时按逆序调用 Unreserve</text>
-<path d="M108.0,1861.3 L108.0,1882.3" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="48.0" y="1883.3" width="440.0" height="102.8" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
-<text x="60.0" y="1907.8" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">⑯ Permit</text>
-<text x="61.0" y="1931.8" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="71.0" y="1931.8" font-size="12.5" fill="#1e293b" text-anchor="start">Allow → 进入绑定周期</text>
-<text x="61.0" y="1952.6" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="71.0" y="1952.6" font-size="12.5" fill="#1e293b" text-anchor="start">Wait → 到绑定周期里等（如 Gang 等同组 Pod 到齐）</text>
-<text x="61.0" y="1973.3" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="71.0" y="1973.3" font-size="12.5" fill="#1e293b" text-anchor="start">Reject → 失败</text>
-<rect x="572.0" y="1431.6" width="380.0" height="215.3" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
-<text x="584.0" y="1456.1" font-size="13.5" fill="#ea580c" text-anchor="start" font-weight="700">PostFilter（DefaultPreemption 抢占）</text>
-<text x="585.0" y="1480.1" font-size="12.5" fill="#ea580c" text-anchor="start" font-weight="700">·</text>
-<text x="595.0" y="1480.1" font-size="12.5" fill="#1e293b" text-anchor="start">前提：preemptionPolicy 不是 Never，且至少有一个节</text>
-<text x="595.0" y="1497.9" font-size="12.5" fill="#1e293b" text-anchor="start">点的失败码是 Unschedulable</text>
-<text x="585.0" y="1518.6" font-size="12.5" fill="#ea580c" text-anchor="start" font-weight="700">·</text>
-<text x="595.0" y="1518.6" font-size="12.5" fill="#1e293b" text-anchor="start">在这些节点上找优先级更低的 victims，尽量少驱逐、尽量</text>
-<text x="595.0" y="1536.4" font-size="12.5" fill="#1e293b" text-anchor="start">不违反 PDB</text>
-<text x="585.0" y="1557.1" font-size="12.5" fill="#ea580c" text-anchor="start" font-weight="700">·</text>
-<text x="595.0" y="1557.1" font-size="12.5" fill="#1e293b" text-anchor="start">给 victims 加 DisruptionTarget 条件，再通过 API</text>
-<text x="595.0" y="1574.9" font-size="12.5" fill="#1e293b" text-anchor="start">删除它们</text>
-<text x="585.0" y="1595.6" font-size="12.5" fill="#ea580c" text-anchor="start" font-weight="700">·</text>
-<text x="595.0" y="1595.6" font-size="12.5" fill="#1e293b" text-anchor="start">清掉目标节点上更低优先级 Pod 的 nominatedNodeName</text>
-<text x="585.0" y="1616.4" font-size="12.5" fill="#ea580c" text-anchor="start" font-weight="700">·</text>
-<text x="595.0" y="1616.4" font-size="12.5" fill="#1e293b" text-anchor="start">返回目标节点名；本轮仍算调度失败，等 victims 退出后重</text>
-<text x="595.0" y="1634.1" font-size="12.5" fill="#1e293b" text-anchor="start">新调度</text>
-<path d="M489.0,1461.6 L571.0,1461.6" stroke="#ea580c" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="491.9" y="1442.6" width="76.2" height="16.0" fill="#ffffff" rx="3"/>
-<text x="530.0" y="1453.6" font-size="11" fill="#ea580c" text-anchor="middle">0 个可行节点</text>
-<rect x="572.0" y="1686.9" width="380.0" height="173.8" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
-<text x="584.0" y="1711.4" font-size="13.5" fill="#ea580c" text-anchor="start" font-weight="700">失败处理 handleSchedulingFailure</text>
-<text x="585.0" y="1735.4" font-size="12.5" fill="#ea580c" text-anchor="start" font-weight="700">·</text>
-<text x="595.0" y="1735.4" font-size="12.5" fill="#1e293b" text-anchor="start">Unschedulable、UnschedulableAndUnresolvable →</text>
-<text x="595.0" y="1753.2" font-size="12.5" fill="#1e293b" text-anchor="start">unschedulableEntities；in-flight 期间已有相关事</text>
-<text x="595.0" y="1770.9" font-size="12.5" fill="#1e293b" text-anchor="start">件则进 backoffQ</text>
-<text x="585.0" y="1791.7" font-size="12.5" fill="#ea580c" text-anchor="start" font-weight="700">·</text>
-<text x="595.0" y="1791.7" font-size="12.5" fill="#1e293b" text-anchor="start">Error 以及绑定周期中的失败 → backoffQ</text>
-<text x="585.0" y="1812.4" font-size="12.5" fill="#ea580c" text-anchor="start" font-weight="700">·</text>
-<text x="595.0" y="1812.4" font-size="12.5" fill="#1e293b" text-anchor="start">通过 API 写回 PodScheduled=False（reason:</text>
-<text x="595.0" y="1830.2" font-size="12.5" fill="#1e293b" text-anchor="start">Unschedulable），抢占成功时同时写入</text>
-<text x="595.0" y="1847.9" font-size="12.5" fill="#1e293b" text-anchor="start">status.nominatedNodeName</text>
-<circle cx="932.0" cy="1687.9" r="10" fill="#ffffff" stroke="#0d9488" stroke-width="1.4"/>
-<text x="932.0" y="1692.2" font-size="12" fill="#0d9488" text-anchor="middle" font-weight="700">Ⓔ</text>
-<path d="M762.0,1646.9 L762.0,1685.9" stroke="#ea580c" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<path d="M489.0,1909.3 L528.0,1909.3 L528.0,1826.0 L571.0,1826.0" stroke="#ea580c" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<line x1="488.0" y1="1826.0" x2="528.0" y2="1826.0" stroke="#ea580c" stroke-width="1.6"/>
-<rect x="493.0" y="1809.0" width="30.0" height="16.0" fill="#ffffff" rx="3"/>
-<text x="508.0" y="1820.0" font-size="11" fill="#ea580c" text-anchor="middle">失败</text>
-<path d="M953.0,1773.8 L970.0,1773.8 L970.0,888.7 L965.0,888.7" stroke="#ea580c" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<path d="M436.0,986.0 L436.0,1089.0" stroke="#2563eb" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="438.0" y="1069.0" width="27.8" height="16.0" fill="#ffffff" rx="3"/>
-<text x="442.0" y="1080.0" font-size="11" fill="#2563eb" text-anchor="start">Pop</text>
-<rect x="30" y="2022.0999999999997" width="936" height="338.5" rx="12" fill="#f8fafc" stroke="#059669" stroke-width="1.4" stroke-opacity="0.55"/><rect x="30" y="2022.0999999999997" width="6" height="338.5" rx="3" fill="#059669"/><text x="48" y="2046.0999999999997" font-size="15" font-weight="700" fill="#059669">绑定周期</text><text x="118.2" y="2046.0999999999997" font-size="12" fill="#64748b">每个 Pod 单独一个 goroutine，调度周期不等它</text>
-<path d="M108.0,1986.1 L108.0,2061.1" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="48.0" y="2062.1" width="203.5" height="262.6" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
-<text x="60.0" y="2086.6" font-size="13.5" fill="#059669" text-anchor="start" font-weight="700">⑰ WaitOnPermit</text>
-<text x="61.0" y="2110.6" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
-<text x="71.0" y="2110.6" font-size="12.5" fill="#1e293b" text-anchor="start">等 Permit 返回的 Wait 被</text>
-<text x="71.0" y="2128.4" font-size="12.5" fill="#1e293b" text-anchor="start">Allow；超时或被 Reject</text>
-<text x="71.0" y="2146.1" font-size="12.5" fill="#1e293b" text-anchor="start">即失败</text>
-<rect x="281.5" y="2062.1" width="203.5" height="262.6" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
-<text x="293.5" y="2086.6" font-size="13.5" fill="#059669" text-anchor="start" font-weight="700">⑱ PreBind</text>
-<text x="294.5" y="2110.6" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
-<text x="304.5" y="2110.6" font-size="12.5" fill="#1e293b" text-anchor="start">开启</text>
-<text x="304.5" y="2128.4" font-size="12.5" fill="#1e293b" text-anchor="start">NominatedNodeNameForEx</text>
-<text x="304.5" y="2146.1" font-size="12.5" fill="#1e293b" text-anchor="start">pectation 时先写</text>
-<text x="304.5" y="2163.9" font-size="12.5" fill="#1e293b" text-anchor="start">nominatedNodeName，告诉</text>
-<text x="304.5" y="2181.6" font-size="12.5" fill="#1e293b" text-anchor="start">外部组件 Pod 将落在哪</text>
-<text x="294.5" y="2202.4" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
-<text x="304.5" y="2202.4" font-size="12.5" fill="#1e293b" text-anchor="start">VolumeBinding：绑定 PV，</text>
-<text x="304.5" y="2220.1" font-size="12.5" fill="#1e293b" text-anchor="start">或写 selected-node 注解</text>
-<text x="304.5" y="2237.9" font-size="12.5" fill="#1e293b" text-anchor="start">并等待供给</text>
-<text x="294.5" y="2258.6" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
-<text x="304.5" y="2258.6" font-size="12.5" fill="#1e293b" text-anchor="start">DynamicResources：写</text>
-<text x="304.5" y="2276.4" font-size="12.5" fill="#1e293b" text-anchor="start">ResourceClaim 的</text>
-<text x="304.5" y="2294.1" font-size="12.5" fill="#1e293b" text-anchor="start">allocation 与</text>
-<text x="304.5" y="2311.9" font-size="12.5" fill="#1e293b" text-anchor="start">reservedFor</text>
-<circle cx="465.0" cy="2063.1" r="10" fill="#ffffff" stroke="#0d9488" stroke-width="1.4"/>
-<text x="465.0" y="2067.4" font-size="12" fill="#0d9488" text-anchor="middle" font-weight="700">Ⓔ</text>
-<circle cx="443.0" cy="2063.1" r="10" fill="#ffffff" stroke="#0d9488" stroke-width="1.4"/>
-<text x="443.0" y="2067.4" font-size="12" fill="#0d9488" text-anchor="middle" font-weight="700">Ⓓ</text>
-<circle cx="421.0" cy="2063.1" r="10" fill="#ffffff" stroke="#0d9488" stroke-width="1.4"/>
-<text x="421.0" y="2067.4" font-size="12" fill="#0d9488" text-anchor="middle" font-weight="700">Ⓒ</text>
-<path d="M252.5,2092.1 L280.5,2092.1" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="515.0" y="2062.1" width="203.5" height="262.6" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
-<text x="527.0" y="2086.6" font-size="13.5" fill="#059669" text-anchor="start" font-weight="700">⑲ Bind</text>
-<text x="528.0" y="2110.6" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
-<text x="538.0" y="2110.6" font-size="12.5" fill="#1e293b" text-anchor="start">DefaultBinder：POST</text>
-<text x="538.0" y="2128.4" font-size="12.5" fill="#1e293b" text-anchor="start">pods/&lt;name&gt;/binding</text>
-<text x="528.0" y="2149.1" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
-<text x="538.0" y="2149.1" font-size="12.5" fill="#1e293b" text-anchor="start">按顺序调用，第一个不返回</text>
-<text x="538.0" y="2166.9" font-size="12.5" fill="#1e293b" text-anchor="start">Skip 的 Bind 插件生效</text>
-<path d="M486.0,2092.1 L514.0,2092.1" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="748.5" y="2062.1" width="203.5" height="262.6" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
-<text x="760.5" y="2086.6" font-size="13.5" fill="#059669" text-anchor="start" font-weight="700">⑳ PostBind</text>
-<text x="761.5" y="2110.6" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
-<text x="771.5" y="2110.6" font-size="12.5" fill="#1e293b" text-anchor="start">绑定成功后的通知与清理，不</text>
-<text x="771.5" y="2128.4" font-size="12.5" fill="#1e293b" text-anchor="start">影响结果</text>
-<path d="M719.5,2092.1 L747.5,2092.1" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<path d="M115.8,2324.6 L115.8,2340.6 L958.0,2340.6 L958.0,1890.7 L892.0,1890.7 L892.0,1861.7" stroke="#ea580c" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<line x1="349.3" y1="2324.6" x2="349.3" y2="2340.6" stroke="#ea580c" stroke-width="1.6"/>
-<line x1="582.8" y1="2324.6" x2="582.8" y2="2340.6" stroke="#ea580c" stroke-width="1.6"/>
-<rect x="266.1" y="2333.6" width="467.8" height="16.0" fill="#ffffff" rx="3"/>
-<text x="500.0" y="2344.6" font-size="11" fill="#ea580c" text-anchor="middle">⑰~⑲ 任一步失败：Unreserve，再把 Pod 从 cache 中撤销（forget），进 backoffQ</text>
-<path d="M667.6,2324.6 L667.6,2401.6" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="36.0" y="2402.6" width="928.0" height="102.8" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
-<text x="48.0" y="2427.1" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">㉑ kube-apiserver 处理 binding 子资源</text>
-<text x="49.0" y="2451.2" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="59.0" y="2451.2" font-size="12.5" fill="#1e293b" text-anchor="start">spec.schedulingGates 非空 → 拒绝绑定</text>
-<text x="49.0" y="2471.9" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="59.0" y="2471.9" font-size="12.5" fill="#1e293b" text-anchor="start">PodTopologyLabels 准入（需开启 feature gate）：把节点的 zone、region 等拓扑标签复制到 Pod</text>
-<text x="49.0" y="2492.7" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
-<text x="59.0" y="2492.7" font-size="12.5" fill="#1e293b" text-anchor="start">写入 spec.nodeName，清空 status.nominatedNodeName，置 PodScheduled=True，写回 etcd</text>
-<rect x="20" y="2531.45" width="960" height="282.6" rx="12" fill="#f8fafc" stroke="#059669" stroke-width="1.4" stroke-opacity="0.55"/><rect x="20" y="2531.45" width="6" height="282.6" rx="3" fill="#059669"/><text x="38" y="2555.45" font-size="15" font-weight="700" fill="#059669">kubelet</text><text x="111.41000000000001" y="2555.45" font-size="12" fill="#64748b">运行在被选中的节点上</text>
-<path d="M180.7,2505.4 L180.7,2570.4" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="182.7" y="2514.4" width="243.4" height="16.0" fill="#ffffff" rx="3"/>
-<text x="186.7" y="2525.4" font-size="11" fill="#64748b" text-anchor="start">kubelet watch 到 spec.nodeName=本节点</text>
-<rect x="36.0" y="2571.4" width="289.3" height="135.3" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
-<text x="48.0" y="2595.9" font-size="13.5" fill="#059669" text-anchor="start" font-weight="700">㉒ kubelet 准入</text>
-<text x="49.0" y="2620.0" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
-<text x="59.0" y="2620.0" font-size="12.5" fill="#1e293b" text-anchor="start">重新检查资源是否放得下、required</text>
-<text x="59.0" y="2637.8" font-size="12.5" fill="#1e293b" text-anchor="start">nodeAffinity、nodeName、hostPort、</text>
-<text x="59.0" y="2655.5" font-size="12.5" fill="#1e293b" text-anchor="start">NoExecute 污点</text>
-<text x="49.0" y="2676.2" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
-<text x="59.0" y="2676.2" font-size="12.5" fill="#1e293b" text-anchor="start">调度器决策和节点实际状态之间可能有时间差，</text>
-<text x="59.0" y="2694.0" font-size="12.5" fill="#1e293b" text-anchor="start">这里是最后一道检查</text>
-<rect x="355.3" y="2571.4" width="289.3" height="135.3" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
-<text x="367.3" y="2595.9" font-size="13.5" fill="#059669" text-anchor="start" font-weight="700">㉓ 准备与启动</text>
-<text x="368.3" y="2620.0" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
-<text x="378.3" y="2620.0" font-size="12.5" fill="#1e293b" text-anchor="start">DRA driver 执行</text>
-<text x="378.3" y="2637.8" font-size="12.5" fill="#1e293b" text-anchor="start">NodePrepareResources，CSI 挂载卷</text>
-<text x="368.3" y="2658.5" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
-<text x="378.3" y="2658.5" font-size="12.5" fill="#1e293b" text-anchor="start">CRI 创建 sandbox 和容器</text>
-<text x="368.3" y="2679.2" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
-<text x="378.3" y="2679.2" font-size="12.5" fill="#1e293b" text-anchor="start">phase：Pending → Running</text>
-<circle cx="624.7" cy="2572.4" r="10" fill="#ffffff" stroke="#0d9488" stroke-width="1.4"/>
-<text x="624.7" y="2576.8" font-size="12" fill="#0d9488" text-anchor="middle" font-weight="700">Ⓓ</text>
-<circle cx="602.7" cy="2572.4" r="10" fill="#ffffff" stroke="#0d9488" stroke-width="1.4"/>
-<text x="602.7" y="2576.8" font-size="12" fill="#0d9488" text-anchor="middle" font-weight="700">Ⓒ</text>
-<path d="M326.3,2601.4 L354.3,2601.4" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="674.7" y="2571.4" width="289.3" height="135.3" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
-<text x="686.7" y="2595.9" font-size="13.5" fill="#059669" text-anchor="start" font-weight="700">㉔ 运行期驱逐</text>
-<text x="687.7" y="2620.0" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
-<text x="697.7" y="2620.0" font-size="12.5" fill="#1e293b" text-anchor="start">节点内存、磁盘、PID 压力时由 kubelet</text>
-<text x="697.7" y="2637.8" font-size="12.5" fill="#1e293b" text-anchor="start">驱逐 Pod</text>
-<text x="687.7" y="2658.5" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
-<text x="697.7" y="2658.5" font-size="12.5" fill="#1e293b" text-anchor="start">排序依据：用量是否超出 requests →</text>
-<text x="697.7" y="2676.2" font-size="12.5" fill="#1e293b" text-anchor="start">spec.priority → 实际用量</text>
-<circle cx="944.0" cy="2572.4" r="10" fill="#ffffff" stroke="#0d9488" stroke-width="1.4"/>
-<text x="944.0" y="2576.8" font-size="12" fill="#0d9488" text-anchor="middle" font-weight="700">Ⓕ</text>
-<path d="M645.7,2601.4 L673.7,2601.4" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="36.0" y="2728.8" width="289.3" height="69.2" rx="6" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
-<text x="48.0" y="2752.2" font-size="12.5" fill="#dc2626" text-anchor="start">准入失败：phase=Failed，reason 如</text>
-<text x="48.0" y="2770.0" font-size="12.5" fill="#dc2626" text-anchor="start">OutOfcpu、NodeAffinity；不会重新调度，</text>
-<text x="48.0" y="2787.8" font-size="12.5" fill="#dc2626" text-anchor="start">由控制器 Ⓐ 新建 Pod</text>
-<rect x="674.7" y="2728.8" width="289.3" height="51.5" rx="6" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
-<text x="686.7" y="2752.2" font-size="12.5" fill="#dc2626" text-anchor="start">被驱逐：phase=Failed，reason=Evicted，</text>
-<text x="686.7" y="2770.0" font-size="12.5" fill="#dc2626" text-anchor="start">同样由控制器 Ⓐ 新建 Pod 重新走一遍</text>
-<path d="M180.7,2706.8 L180.7,2727.8" stroke="#dc2626" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<path d="M819.3,2706.8 L819.3,2727.8" stroke="#dc2626" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
-<rect x="20" y="2844.0" width="960" height="474.2" rx="12" fill="#f8fafc" stroke="#0d9488" stroke-width="1.4" stroke-opacity="0.55"/><rect x="20" y="2844.0" width="6" height="474.2" rx="3" fill="#0d9488"/><text x="38" y="2868.0" font-size="15" font-weight="700" fill="#0d9488">周边组件</text><text x="108.2" y="2868.0" font-size="12" fill="#64748b">不属于调度器，但决定了 Pod 能否进入、何时被唤醒、最终落在哪</text>
-<rect x="36.0" y="2884.0" width="298.7" height="117.5" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
-<text x="48.0" y="2908.5" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">Ⓐ 工作负载控制器</text>
-<text x="49.0" y="2932.6" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
-<text x="59.0" y="2932.6" font-size="12.5" fill="#1e293b" text-anchor="start">ReplicaSet、Job、StatefulSet 等创建</text>
-<text x="59.0" y="2950.3" font-size="12.5" fill="#1e293b" text-anchor="start">Pod（①）</text>
-<text x="49.0" y="2971.1" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
-<text x="59.0" y="2971.1" font-size="12.5" fill="#1e293b" text-anchor="start">Pod 失败或被删除后创建新 Pod，新 Pod 从</text>
-<text x="59.0" y="2988.8" font-size="12.5" fill="#1e293b" text-anchor="start">① 重新开始</text>
-<rect x="350.7" y="2884.0" width="298.7" height="117.5" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
-<text x="362.7" y="2908.5" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">Ⓑ gate 控制器</text>
-<text x="363.7" y="2932.6" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
-<text x="373.7" y="2932.6" font-size="12.5" fill="#1e293b" text-anchor="start">Kueue 等通过 webhook 加上</text>
-<text x="373.7" y="2950.3" font-size="12.5" fill="#1e293b" text-anchor="start">schedulingGates（③）</text>
-<text x="363.7" y="2971.1" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
-<text x="373.7" y="2971.1" font-size="12.5" fill="#1e293b" text-anchor="start">配额、依赖就绪后删除 gate → Pod 更新事</text>
-<text x="373.7" y="2988.8" font-size="12.5" fill="#1e293b" text-anchor="start">件 → ⑧ 重新判断</text>
-<rect x="665.3" y="2884.0" width="298.7" height="117.5" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
-<text x="677.3" y="2908.5" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">Ⓒ 存储控制器</text>
-<text x="678.3" y="2932.6" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
-<text x="688.3" y="2932.6" font-size="12.5" fill="#1e293b" text-anchor="start">PV controller 与</text>
-<text x="688.3" y="2950.3" font-size="12.5" fill="#1e293b" text-anchor="start">external-provisioner</text>
-<text x="678.3" y="2971.1" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
-<text x="688.3" y="2971.1" font-size="12.5" fill="#1e293b" text-anchor="start">看到 selected-node 注解后在该拓扑上供给</text>
-<text x="688.3" y="2988.8" font-size="12.5" fill="#1e293b" text-anchor="start">并绑定 PV，⑱ 的等待随之结束</text>
-<rect x="36.0" y="3015.6" width="298.7" height="153.1" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
-<text x="48.0" y="3040.1" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">Ⓓ DRA</text>
-<text x="49.0" y="3064.1" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
-<text x="59.0" y="3064.1" font-size="12.5" fill="#1e293b" text-anchor="start">ResourceClaim controller 按模板为</text>
-<text x="59.0" y="3081.9" font-size="12.5" fill="#1e293b" text-anchor="start">Pod 生成 ResourceClaim</text>
-<text x="49.0" y="3102.6" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
-<text x="59.0" y="3102.6" font-size="12.5" fill="#1e293b" text-anchor="start">DRA driver 发布 ResourceSlice，并在</text>
-<text x="59.0" y="3120.4" font-size="12.5" fill="#1e293b" text-anchor="start">㉓ 准备设备</text>
-<rect x="350.7" y="3015.6" width="298.7" height="153.1" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
-<text x="362.7" y="3040.1" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">Ⓔ Cluster Autoscaler</text>
-<text x="363.7" y="3064.1" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
-<text x="373.7" y="3064.1" font-size="12.5" fill="#1e293b" text-anchor="start">发现 PodScheduled=False、</text>
-<text x="373.7" y="3081.9" font-size="12.5" fill="#1e293b" text-anchor="start">reason=Unschedulable 的 Pod 就扩容节</text>
-<text x="373.7" y="3099.6" font-size="12.5" fill="#1e293b" text-anchor="start">点</text>
-<text x="363.7" y="3120.4" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
-<text x="373.7" y="3120.4" font-size="12.5" fill="#1e293b" text-anchor="start">参考 nominatedNodeName 避免重复扩容；</text>
-<text x="373.7" y="3138.1" font-size="12.5" fill="#1e293b" text-anchor="start">新节点的 Node Add 事件经 ⑦ 唤醒 Pod</text>
-<rect x="665.3" y="3015.6" width="298.7" height="153.1" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
-<text x="677.3" y="3040.1" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">Ⓕ 节点生命周期</text>
-<text x="678.3" y="3064.1" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
-<text x="688.3" y="3064.1" font-size="12.5" fill="#1e293b" text-anchor="start">node-lifecycle-controller：节点失联时</text>
-<text x="688.3" y="3081.9" font-size="12.5" fill="#1e293b" text-anchor="start">加 not-ready/unreachable 的</text>
-<text x="688.3" y="3099.6" font-size="12.5" fill="#1e293b" text-anchor="start">NoExecute 污点</text>
-<text x="678.3" y="3120.4" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
-<text x="688.3" y="3120.4" font-size="12.5" fill="#1e293b" text-anchor="start">taint-eviction-controller：超过</text>
-<text x="688.3" y="3138.1" font-size="12.5" fill="#1e293b" text-anchor="start">tolerationSeconds（③ 默认 300s）后删</text>
-<text x="688.3" y="3155.9" font-size="12.5" fill="#1e293b" text-anchor="start">除 Pod</text>
-<rect x="36.0" y="3182.6" width="298.7" height="117.5" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
-<text x="48.0" y="3207.1" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">Ⓖ descheduler（可选）</text>
-<text x="49.0" y="3231.2" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
-<text x="59.0" y="3231.2" font-size="12.5" fill="#1e293b" text-anchor="start">按策略驱逐已运行的 Pod（如负载不均、违反</text>
-<text x="59.0" y="3248.9" font-size="12.5" fill="#1e293b" text-anchor="start">亲和）</text>
-<text x="49.0" y="3269.7" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
-<text x="59.0" y="3269.7" font-size="12.5" fill="#1e293b" text-anchor="start">调度器自己从不迁移已绑定的 Pod，重平衡只</text>
-<text x="59.0" y="3287.4" font-size="12.5" fill="#1e293b" text-anchor="start">能靠驱逐后重建</text>
-<text x="354.7" y="3200.6" font-size="13" fill="#1e293b" text-anchor="start" font-weight="700">图例</text>
-<rect x="354.7" y="3212.6" width="155.0" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
-<text x="432.2" y="3230.1" font-size="12.5" fill="#2563eb" text-anchor="middle">主流程 / API Server</text>
-<rect x="519.7" y="3212.6" width="70.0" height="26.0" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1"/>
-<text x="554.7" y="3230.1" font-size="12.5" fill="#7c3aed" text-anchor="middle">调度队列</text>
-<rect x="599.7" y="3212.6" width="92.5" height="26.0" rx="13" fill="#ecfdf5" stroke="#059669" stroke-width="1"/>
-<text x="645.9" y="3230.1" font-size="12.5" fill="#059669" text-anchor="middle">绑定 / 节点</text>
-<rect x="702.2" y="3212.6" width="95.0" height="26.0" rx="13" fill="#fff7ed" stroke="#ea580c" stroke-width="1"/>
-<text x="749.7" y="3230.1" font-size="12.5" fill="#ea580c" text-anchor="middle">会重试的失败</text>
-<rect x="807.2" y="3212.6" width="100.0" height="26.0" rx="13" fill="#fef2f2" stroke="#dc2626" stroke-width="1"/>
-<text x="857.2" y="3230.1" font-size="12.5" fill="#dc2626" text-anchor="middle">Pod 到此为止</text>
-<rect x="354.7" y="3246.6" width="70.0" height="26.0" rx="13" fill="#f0fdfa" stroke="#0d9488" stroke-width="1" stroke-dasharray="5 4"/>
-<text x="389.7" y="3264.1" font-size="12.5" fill="#0d9488" text-anchor="middle">外部组件</text>
-<rect x="434.7" y="3246.6" width="70.0" height="26.0" rx="13" fill="#f1f5f9" stroke="#475569" stroke-width="1"/>
-<text x="469.7" y="3264.1" font-size="12.5" fill="#475569" text-anchor="middle">通用步骤</text>
+<text x="59.0" y="172.6" font-size="12.5" fill="#1e293b" text-anchor="start">kubectl apply、Helm、Argo CD 等</text>
+<rect x="320.0" y="124.0" width="408.0" height="61.3" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="332.0" y="148.5" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">Ⓑ Kueue 等的 mutating webhook</text>
+<text x="333.0" y="172.6" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
+<text x="343.0" y="172.6" font-size="12.5" fill="#1e293b" text-anchor="start">给需要排队的 Pod 加上 schedulingGates，在 ③ 中被调用</text>
+<path d="M106.0,185.3 L106.0,210.3" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<path d="M428.0,185.3 L428.0,210.3" stroke="#0d9488" stroke-width="1.6" fill="none" marker-end="url(#a)" stroke-dasharray="5 4"/>
+<rect x="36.0" y="211.3" width="140.0" height="304.1" rx="8" fill="#f1f5f9" stroke="#475569" stroke-width="1.2"/>
+<text x="48.0" y="235.8" font-size="13.5" fill="#475569" text-anchor="start" font-weight="700">① 提交 Pod</text>
+<text x="49.0" y="259.9" font-size="12.5" fill="#475569" text-anchor="start" font-weight="700">·</text>
+<text x="59.0" y="259.9" font-size="12.5" fill="#1e293b" text-anchor="start">kubectl apply，</text>
+<text x="59.0" y="277.6" font-size="12.5" fill="#1e293b" text-anchor="start">或 ReplicaSet、</text>
+<text x="59.0" y="295.4" font-size="12.5" fill="#1e293b" text-anchor="start">Job 等控制器</text>
+<text x="59.0" y="313.1" font-size="12.5" fill="#1e293b" text-anchor="start">POST pods</text>
+<text x="49.0" y="333.9" font-size="12.5" fill="#475569" text-anchor="start" font-weight="700">·</text>
+<text x="59.0" y="333.9" font-size="12.5" fill="#1e293b" text-anchor="start">此时</text>
+<text x="59.0" y="351.6" font-size="12.5" fill="#1e293b" text-anchor="start">spec.nodeName</text>
+<text x="59.0" y="369.4" font-size="12.5" fill="#1e293b" text-anchor="start">为空</text>
+<rect x="188.0" y="211.3" width="120.0" height="304.1" rx="8" fill="#f1f5f9" stroke="#475569" stroke-width="1.2"/>
+<text x="200.0" y="235.8" font-size="13.5" fill="#475569" text-anchor="start" font-weight="700">② 认证与鉴</text>
+<text x="200.0" y="253.4" font-size="13.5" fill="#475569" text-anchor="start" font-weight="700">权</text>
+<text x="201.0" y="277.4" font-size="12.5" fill="#475569" text-anchor="start" font-weight="700">·</text>
+<text x="211.0" y="277.4" font-size="12.5" fill="#1e293b" text-anchor="start">认证：确认请</text>
+<text x="211.0" y="295.2" font-size="12.5" fill="#1e293b" text-anchor="start">求者身份</text>
+<text x="201.0" y="315.9" font-size="12.5" fill="#475569" text-anchor="start" font-weight="700">·</text>
+<text x="211.0" y="315.9" font-size="12.5" fill="#1e293b" text-anchor="start">鉴权：RBAC</text>
+<text x="211.0" y="333.7" font-size="12.5" fill="#1e293b" text-anchor="start">判断能否</text>
+<text x="211.0" y="351.4" font-size="12.5" fill="#1e293b" text-anchor="start">create pods</text>
+<path d="M177.0,241.3 L187.0,241.3" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="320.0" y="211.3" width="216.0" height="304.1" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="332.0" y="235.8" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">③ 变更准入</text>
+<text x="333.0" y="259.9" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="343.0" y="259.9" font-size="12.5" fill="#1e293b" text-anchor="start">LimitRanger：补默认</text>
+<text x="343.0" y="277.6" font-size="12.5" fill="#1e293b" text-anchor="start">requests/limits</text>
+<text x="333.0" y="298.4" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="343.0" y="298.4" font-size="12.5" fill="#1e293b" text-anchor="start">Priority：按</text>
+<text x="343.0" y="316.1" font-size="12.5" fill="#1e293b" text-anchor="start">priorityClassName 写入</text>
+<text x="343.0" y="333.9" font-size="12.5" fill="#1e293b" text-anchor="start">spec.priority 与</text>
+<text x="343.0" y="351.6" font-size="12.5" fill="#1e293b" text-anchor="start">preemptionPolicy</text>
+<text x="333.0" y="372.4" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="343.0" y="372.4" font-size="12.5" fill="#1e293b" text-anchor="start">DefaultTolerationSeconds：</text>
+<text x="343.0" y="390.1" font-size="12.5" fill="#1e293b" text-anchor="start">加 not-ready、</text>
+<text x="343.0" y="407.9" font-size="12.5" fill="#1e293b" text-anchor="start">unreachable 容忍 300s</text>
+<text x="333.0" y="428.6" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="343.0" y="428.6" font-size="12.5" fill="#1e293b" text-anchor="start">RuntimeClass：写入</text>
+<text x="343.0" y="446.4" font-size="12.5" fill="#1e293b" text-anchor="start">overhead</text>
+<text x="333.0" y="467.1" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="343.0" y="467.1" font-size="12.5" fill="#1e293b" text-anchor="start">Mutating webhook：注入</text>
+<text x="343.0" y="484.9" font-size="12.5" fill="#1e293b" text-anchor="start">sidecar、加</text>
+<text x="343.0" y="502.6" font-size="12.5" fill="#1e293b" text-anchor="start">schedulingGates 等</text>
+<path d="M309.0,241.3 L319.0,241.3" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="548.0" y="211.3" width="180.0" height="304.1" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="560.0" y="235.8" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">④ 对象校验</text>
+<text x="561.0" y="259.9" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="571.0" y="259.9" font-size="12.5" fill="#1e293b" text-anchor="start">字段格式与取值是否合法</text>
+<text x="561.0" y="280.6" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="571.0" y="280.6" font-size="12.5" fill="#1e293b" text-anchor="start">带 schedulingGates</text>
+<text x="571.0" y="298.4" font-size="12.5" fill="#1e293b" text-anchor="start">时不能直接设置</text>
+<text x="571.0" y="316.1" font-size="12.5" fill="#1e293b" text-anchor="start">spec.nodeName</text>
+<text x="561.0" y="336.9" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="571.0" y="336.9" font-size="12.5" fill="#1e293b" text-anchor="start">创建后 spec.priority</text>
+<text x="571.0" y="354.6" font-size="12.5" fill="#1e293b" text-anchor="start">不可改，</text>
+<text x="571.0" y="372.4" font-size="12.5" fill="#1e293b" text-anchor="start">schedulingGates 只</text>
+<text x="571.0" y="390.1" font-size="12.5" fill="#1e293b" text-anchor="start">能删不能加</text>
+<path d="M537.0,241.3 L547.0,241.3" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="740.0" y="211.3" width="224.0" height="304.1" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="752.0" y="235.8" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">⑤ 验证准入</text>
+<text x="753.0" y="259.9" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="763.0" y="259.9" font-size="12.5" fill="#1e293b" text-anchor="start">PodSecurity：检查安全级别</text>
+<text x="753.0" y="280.6" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="763.0" y="280.6" font-size="12.5" fill="#1e293b" text-anchor="start">ValidatingAdmissionPolicy</text>
+<text x="763.0" y="298.4" font-size="12.5" fill="#1e293b" text-anchor="start">与 Validating webhook</text>
+<text x="753.0" y="319.1" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="763.0" y="319.1" font-size="12.5" fill="#1e293b" text-anchor="start">ResourceQuota：</text>
+<text x="763.0" y="336.9" font-size="12.5" fill="#1e293b" text-anchor="start">requests/limits 计入命名空</text>
+<text x="763.0" y="354.6" font-size="12.5" fill="#1e293b" text-anchor="start">间配额，超额拒绝</text>
+<path d="M729.0,241.3 L739.0,241.3" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="36.0" y="529.4" width="928.0" height="33.8" rx="6" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="48.0" y="552.9" font-size="12.5" fill="#dc2626" text-anchor="start">②~⑤ 任一步失败：请求直接返回 401/403/422 等错误，Pod 不会写入 etcd，调度器永远看不到它</text>
+<path d="M248.0,515.4 L248.0,528.4" stroke="#dc2626" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<path d="M428.0,515.4 L428.0,528.4" stroke="#dc2626" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<path d="M638.0,515.4 L638.0,528.4" stroke="#dc2626" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<path d="M852.0,515.4 L852.0,528.4" stroke="#dc2626" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="206.0" y="577.1" width="588.0" height="79.0" rx="8" fill="#f1f5f9" stroke="#475569" stroke-width="1.2"/>
+<text x="218.0" y="601.6" font-size="13.5" fill="#475569" text-anchor="start" font-weight="700">⑥ 写入 etcd</text>
+<text x="219.0" y="625.6" font-size="12.5" fill="#475569" text-anchor="start" font-weight="700">·</text>
+<text x="229.0" y="625.6" font-size="12.5" fill="#1e293b" text-anchor="start">Pod 处于 Pending，spec.nodeName 为空；调度器、kubelet、各控制器通过 watch 收到</text>
+<text x="229.0" y="643.4" font-size="12.5" fill="#1e293b" text-anchor="start">ADDED 事件</text>
+<path d="M965.0,241.3 L972.0,241.3 L972.0,616.6 L795.0,616.6" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="20" y="688.15" width="960" height="2042.2" rx="12" fill="#f8fafc" stroke="#7c3aed" stroke-width="1.4" stroke-opacity="0.55"/><rect x="20" y="688.15" width="6" height="2042.2" rx="3" fill="#7c3aed"/><text x="38" y="712.15" font-size="15" font-weight="700" fill="#7c3aed">kube-scheduler</text>
+<rect x="36.0" y="728.1" width="215.0" height="135.3" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="48.0" y="752.6" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">Ⓑ gate 控制器</text>
+<text x="49.0" y="776.7" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
+<text x="59.0" y="776.7" font-size="12.5" fill="#1e293b" text-anchor="start">Kueue 等在配额、依赖就绪后</text>
+<text x="59.0" y="794.4" font-size="12.5" fill="#1e293b" text-anchor="start">删除 schedulingGates</text>
+<text x="49.0" y="815.2" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
+<text x="59.0" y="815.2" font-size="12.5" fill="#1e293b" text-anchor="start">Pod Update 事件 → ⑧ 重</text>
+<text x="59.0" y="832.9" font-size="12.5" fill="#1e293b" text-anchor="start">新判断</text>
+<path d="M143.5,863.5 L143.5,892.5" stroke="#0d9488" stroke-width="1.6" fill="none" marker-end="url(#a)" stroke-dasharray="5 4"/>
+<rect x="265.0" y="728.1" width="215.0" height="135.3" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="277.0" y="752.6" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">Ⓒ 存储控制器</text>
+<text x="278.0" y="776.7" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
+<text x="288.0" y="776.7" font-size="12.5" fill="#1e293b" text-anchor="start">PV controller、</text>
+<text x="288.0" y="794.4" font-size="12.5" fill="#1e293b" text-anchor="start">external-provisioner 创</text>
+<text x="288.0" y="812.2" font-size="12.5" fill="#1e293b" text-anchor="start">建或绑定 PV</text>
+<text x="278.0" y="832.9" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
+<text x="288.0" y="832.9" font-size="12.5" fill="#1e293b" text-anchor="start">PV、PVC 变化唤醒等卷的 Pod</text>
+<path d="M372.5,863.5 L372.5,892.5" stroke="#0d9488" stroke-width="1.6" fill="none" marker-end="url(#a)" stroke-dasharray="5 4"/>
+<rect x="520.0" y="728.1" width="215.0" height="135.3" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="532.0" y="752.6" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">Ⓓ DRA driver</text>
+<text x="533.0" y="776.7" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
+<text x="543.0" y="776.7" font-size="12.5" fill="#1e293b" text-anchor="start">发布 ResourceSlice 描述可</text>
+<text x="543.0" y="794.4" font-size="12.5" fill="#1e293b" text-anchor="start">用设备</text>
+<text x="533.0" y="815.2" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
+<text x="543.0" y="815.2" font-size="12.5" fill="#1e293b" text-anchor="start">设备变化唤醒等设备的 Pod</text>
+<path d="M627.5,863.5 L627.5,892.5" stroke="#0d9488" stroke-width="1.6" fill="none" marker-end="url(#a)" stroke-dasharray="5 4"/>
+<rect x="749.0" y="728.1" width="215.0" height="135.3" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="761.0" y="752.6" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">Ⓔ Cluster Autoscaler</text>
+<text x="762.0" y="776.7" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
+<text x="772.0" y="776.7" font-size="12.5" fill="#1e293b" text-anchor="start">看到失败处理写的</text>
+<text x="772.0" y="794.4" font-size="12.5" fill="#1e293b" text-anchor="start">PodScheduled=False 就扩</text>
+<text x="772.0" y="812.2" font-size="12.5" fill="#1e293b" text-anchor="start">容</text>
+<text x="762.0" y="832.9" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
+<text x="772.0" y="832.9" font-size="12.5" fill="#1e293b" text-anchor="start">新节点 Node Add 事件唤醒</text>
+<text x="772.0" y="850.7" font-size="12.5" fill="#1e293b" text-anchor="start">Pod</text>
+<path d="M856.5,863.5 L856.5,892.5" stroke="#0d9488" stroke-width="1.6" fill="none" marker-end="url(#a)" stroke-dasharray="5 4"/>
+<rect x="502.0" y="707.1" width="41.0" height="16.0" fill="#ffffff" rx="3"/>
+<text x="506.0" y="718.1" font-size="11" fill="#64748b" text-anchor="start">watch</text>
+<path d="M500.0,656.1 L500.0,892.5" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="36.0" y="893.5" width="928.0" height="120.5" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="48.0" y="918.0" font-size="13.5" fill="#7c3aed" text-anchor="start" font-weight="700">⑦ informer 与事件处理器</text>
+<text x="49.0" y="942.0" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
+<text x="59.0" y="942.0" font-size="12.5" fill="#1e293b" text-anchor="start">Pod ADDED，spec.nodeName 为空且 schedulerName 属于本调度器的某个 Profile → 进入调度队列</text>
+<text x="49.0" y="962.8" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
+<text x="59.0" y="962.8" font-size="12.5" fill="#1e293b" text-anchor="start">已绑定的 Pod（spec.nodeName 非空）→ 只写入 cache，用来计算节点上已占用的资源</text>
+<text x="49.0" y="983.5" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
+<text x="59.0" y="983.5" font-size="12.5" fill="#1e293b" text-anchor="start">Node、PVC、PV、StorageClass、ResourceClaim 等对象变化 → 按插件的 EventsToRegister 和 QueueingHint，把相关 entity 移出</text>
+<text x="59.0" y="1001.2" font-size="12.5" fill="#1e293b" text-anchor="start">unschedulableEntities</text>
+<path d="M141.5,1014.0 L141.5,1043.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="143.5" y="1020.5" width="47.1" height="16.5" fill="#ffffff" rx="3"/>
+<text x="147.5" y="1032.0" font-size="11.5" fill="#64748b" text-anchor="start">新 Pod</text>
+<rect x="36.0" y="1044.0" width="211.0" height="194.6" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="48.0" y="1068.5" font-size="13.5" fill="#7c3aed" text-anchor="start" font-weight="700">⑧ PreEnqueue</text>
+<text x="49.0" y="1092.5" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
+<text x="59.0" y="1092.5" font-size="12.5" fill="#1e293b" text-anchor="start">SchedulingGates：</text>
+<text x="59.0" y="1110.3" font-size="12.5" fill="#1e293b" text-anchor="start">spec.schedulingGates 非</text>
+<text x="59.0" y="1128.0" font-size="12.5" fill="#1e293b" text-anchor="start">空就拒绝</text>
+<text x="49.0" y="1148.8" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
+<text x="59.0" y="1148.8" font-size="12.5" fill="#1e293b" text-anchor="start">DynamicResources 等插件</text>
+<text x="59.0" y="1166.5" font-size="12.5" fill="#1e293b" text-anchor="start">也实现了 PreEnqueue</text>
+<text x="49.0" y="1187.3" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
+<text x="59.0" y="1187.3" font-size="12.5" fill="#1e293b" text-anchor="start">被拒绝的 Pod 以 gated 状</text>
+<text x="59.0" y="1205.0" font-size="12.5" fill="#1e293b" text-anchor="start">态留在</text>
+<text x="59.0" y="1222.8" font-size="12.5" fill="#1e293b" text-anchor="start">unschedulableEntities</text>
+<rect x="275.0" y="1044.0" width="211.0" height="194.6" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="287.0" y="1068.5" font-size="13.5" fill="#7c3aed" text-anchor="start" font-weight="700">activeQ</text>
+<text x="288.0" y="1092.5" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
+<text x="298.0" y="1092.5" font-size="12.5" fill="#1e293b" text-anchor="start">堆，比较函数来自 QueueSort</text>
+<text x="298.0" y="1110.3" font-size="12.5" fill="#1e293b" text-anchor="start">插件</text>
+<text x="288.0" y="1131.0" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
+<text x="298.0" y="1131.0" font-size="12.5" fill="#1e293b" text-anchor="start">PrioritySort：</text>
+<text x="298.0" y="1148.8" font-size="12.5" fill="#1e293b" text-anchor="start">spec.priority 高的先出队，</text>
+<text x="298.0" y="1166.5" font-size="12.5" fill="#1e293b" text-anchor="start">相同时先入队的先出</text>
+<text x="288.0" y="1187.3" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
+<text x="298.0" y="1187.3" font-size="12.5" fill="#1e293b" text-anchor="start">出队单位是 entity：单个</text>
+<text x="298.0" y="1205.0" font-size="12.5" fill="#1e293b" text-anchor="start">Pod 或整个 PodGroup</text>
+<rect x="514.0" y="1044.0" width="211.0" height="194.6" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="526.0" y="1068.5" font-size="13.5" fill="#7c3aed" text-anchor="start" font-weight="700">backoffQ</text>
+<text x="527.0" y="1092.5" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
+<text x="537.0" y="1092.5" font-size="12.5" fill="#1e293b" text-anchor="start">堆，按退避结束时间排序</text>
+<text x="527.0" y="1113.3" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
+<text x="537.0" y="1113.3" font-size="12.5" fill="#1e293b" text-anchor="start">退避时间从 1s 起随失败次数</text>
+<text x="537.0" y="1131.0" font-size="12.5" fill="#1e293b" text-anchor="start">翻倍，最长 10s</text>
+<text x="527.0" y="1151.8" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
+<text x="537.0" y="1151.8" font-size="12.5" fill="#1e293b" text-anchor="start">每秒 flush 一次，到期的移</text>
+<text x="537.0" y="1169.5" font-size="12.5" fill="#1e293b" text-anchor="start">回 activeQ</text>
+<rect x="753.0" y="1044.0" width="211.0" height="194.6" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="765.0" y="1068.5" font-size="13.5" fill="#7c3aed" text-anchor="start" font-weight="700">unschedulableEntities</text>
+<text x="766.0" y="1092.5" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
+<text x="776.0" y="1092.5" font-size="12.5" fill="#1e293b" text-anchor="start">map，没有顺序，不会被 Pop</text>
+<text x="766.0" y="1113.3" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
+<text x="776.0" y="1113.3" font-size="12.5" fill="#1e293b" text-anchor="start">存放 gated 和</text>
+<text x="776.0" y="1131.0" font-size="12.5" fill="#1e293b" text-anchor="start">unschedulable 两类</text>
+<text x="776.0" y="1148.8" font-size="12.5" fill="#1e293b" text-anchor="start">entity</text>
+<text x="766.0" y="1169.5" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
+<text x="776.0" y="1169.5" font-size="12.5" fill="#1e293b" text-anchor="start">相关事件到达且</text>
+<text x="776.0" y="1187.3" font-size="12.5" fill="#1e293b" text-anchor="start">QueueingHint 返回 Queue</text>
+<text x="776.0" y="1205.0" font-size="12.5" fill="#1e293b" text-anchor="start">才移出</text>
+<text x="766.0" y="1225.8" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">·</text>
+<text x="776.0" y="1225.8" font-size="12.5" fill="#1e293b" text-anchor="start">停留超过 5 分钟强制移出</text>
+<path d="M248.0,1078.0 L274.0,1078.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="246.0" y="1061.0" width="30.0" height="16.0" fill="#ffffff" rx="3"/>
+<text x="261.0" y="1072.0" font-size="11" fill="#64748b" text-anchor="middle">通过</text>
+<path d="M513.0,1078.0 L487.0,1078.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="485.0" y="1061.0" width="30.0" height="16.0" fill="#ffffff" rx="3"/>
+<text x="500.0" y="1072.0" font-size="11" fill="#64748b" text-anchor="middle">到期</text>
+<path d="M752.0,1078.0 L726.0,1078.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="724.0" y="1061.0" width="30.0" height="16.0" fill="#ffffff" rx="3"/>
+<text x="739.0" y="1072.0" font-size="11" fill="#64748b" text-anchor="middle">唤醒</text>
+<path d="M793.0,1238.5 L793.0,1256.5 L466.0,1256.5 L466.0,1239.5" stroke="#7c3aed" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="516.5" y="1249.5" width="206.0" height="16.0" fill="#ffffff" rx="3"/>
+<text x="619.5" y="1260.5" font-size="11" fill="#7c3aed" text-anchor="middle">唤醒且已过退避期 → 直接进 activeQ</text>
+<path d="M66.0,1238.5 L66.0,1278.5 L934.0,1278.5 L934.0,1239.5" stroke="#ea580c" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="96.1" y="1271.5" width="159.8" height="16.0" fill="#ffffff" rx="3"/>
+<text x="176.0" y="1282.5" font-size="11" fill="#ea580c" text-anchor="middle">PreEnqueue 拒绝 → gated</text>
+<rect x="30" y="1302.55" width="936" height="954.1" rx="12" fill="#f8fafc" stroke="#2563eb" stroke-width="1.4" stroke-opacity="0.55"/><rect x="30" y="1302.55" width="6" height="954.1" rx="3" fill="#2563eb"/><text x="48" y="1326.55" font-size="15" font-weight="700" fill="#2563eb">调度周期</text><text x="118.2" y="1326.55" font-size="12" fill="#64748b">单个 goroutine 串行执行，同一时刻只处理一个 entity</text>
+<rect x="48.0" y="1342.5" width="440.0" height="79.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="60.0" y="1367.0" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">⑨ Pop</text>
+<text x="61.0" y="1391.1" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="71.0" y="1391.1" font-size="12.5" fill="#1e293b" text-anchor="start">从 activeQ 队头取出一个 entity，标记为 in-flight，记录这期</text>
+<text x="71.0" y="1408.8" font-size="12.5" fill="#1e293b" text-anchor="start">间发生的集群事件</text>
+<path d="M108.0,1421.6 L108.0,1442.6" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="48.0" y="1443.6" width="440.0" height="79.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="60.0" y="1468.1" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">⑩ 拍快照</text>
+<text x="61.0" y="1492.1" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="71.0" y="1492.1" font-size="12.5" fill="#1e293b" text-anchor="start">UpdateSnapshot：把 cache 拷成本周期只读的节点快照，包含已</text>
+<text x="71.0" y="1509.9" font-size="12.5" fill="#1e293b" text-anchor="start">assume 但还没绑定完成的 Pod</text>
+<path d="M108.0,1522.6 L108.0,1543.6" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="48.0" y="1544.6" width="440.0" height="117.5" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="60.0" y="1569.1" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">⑪ PreFilter</text>
+<text x="61.0" y="1593.2" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="71.0" y="1593.2" font-size="12.5" fill="#1e293b" text-anchor="start">预计算并写入 CycleState，可返回 PreFilterResult 缩小候选节</text>
+<text x="71.0" y="1610.9" font-size="12.5" fill="#1e293b" text-anchor="start">点</text>
+<text x="61.0" y="1631.7" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="71.0" y="1631.7" font-size="12.5" fill="#1e293b" text-anchor="start">返回 UnschedulableAndUnresolvable → 跳过 Filter 和抢占，</text>
+<text x="71.0" y="1649.4" font-size="12.5" fill="#1e293b" text-anchor="start">直接进入失败处理</text>
+<path d="M108.0,1662.2 L108.0,1683.2" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="48.0" y="1684.2" width="440.0" height="120.5" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="60.0" y="1708.7" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">⑫ Filter</text>
+<text x="61.0" y="1732.7" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="71.0" y="1732.7" font-size="12.5" fill="#1e293b" text-anchor="start">有 nominatedNodeName 时先单独试这个节点，通过就直接选它</text>
+<text x="61.0" y="1753.5" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="71.0" y="1753.5" font-size="12.5" fill="#1e293b" text-anchor="start">否则并行遍历候选节点，凑够 numFeasibleNodesToFind 个可行节</text>
+<text x="71.0" y="1771.2" font-size="12.5" fill="#1e293b" text-anchor="start">点就停</text>
+<text x="61.0" y="1792.0" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="71.0" y="1792.0" font-size="12.5" fill="#1e293b" text-anchor="start">节点上优先级不低于本 Pod 的提名 Pod，按已经在这个节点上计算</text>
+<path d="M108.0,1804.7 L108.0,1825.7" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="48.0" y="1826.7" width="440.0" height="82.0" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="60.0" y="1851.2" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">⑬ PreScore / Score / NormalizeScore</text>
+<text x="61.0" y="1875.3" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="71.0" y="1875.3" font-size="12.5" fill="#1e293b" text-anchor="start">各插件打分归一化到 0~100，乘权重后加总</text>
+<text x="61.0" y="1896.0" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="71.0" y="1896.0" font-size="12.5" fill="#1e293b" text-anchor="start">取最高分节点，同分随机；只有一个可行节点时跳过打分</text>
+<path d="M108.0,1908.8 L108.0,1929.8" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="48.0" y="1930.8" width="440.0" height="99.8" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="60.0" y="1955.3" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">⑭ assume</text>
+<text x="61.0" y="1979.3" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="71.0" y="1979.3" font-size="12.5" fill="#1e293b" text-anchor="start">把 Pod 当作已绑定写进 cache，下一个 Pod 立刻看得到它占用的资</text>
+<text x="71.0" y="1997.1" font-size="12.5" fill="#1e293b" text-anchor="start">源</text>
+<text x="61.0" y="2017.8" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="71.0" y="2017.8" font-size="12.5" fill="#1e293b" text-anchor="start">调度周期因此可以不等绑定完成</text>
+<path d="M108.0,2030.6 L108.0,2051.6" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="48.0" y="2052.6" width="440.0" height="61.3" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="60.0" y="2077.1" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">⑮ Reserve</text>
+<text x="61.0" y="2101.1" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="71.0" y="2101.1" font-size="12.5" fill="#1e293b" text-anchor="start">插件预留卷、DRA 设备等，失败时按逆序调用 Unreserve</text>
+<path d="M108.0,2113.9 L108.0,2134.9" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="48.0" y="2135.9" width="440.0" height="102.8" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="60.0" y="2160.4" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">⑯ Permit</text>
+<text x="61.0" y="2184.4" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="71.0" y="2184.4" font-size="12.5" fill="#1e293b" text-anchor="start">Allow → 进入绑定周期</text>
+<text x="61.0" y="2205.2" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="71.0" y="2205.2" font-size="12.5" fill="#1e293b" text-anchor="start">Wait → 到绑定周期里等（如 Gang 等同组 Pod 到齐）</text>
+<text x="61.0" y="2225.9" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="71.0" y="2225.9" font-size="12.5" fill="#1e293b" text-anchor="start">Reject → 失败</text>
+<rect x="572.0" y="1684.2" width="380.0" height="215.3" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="584.0" y="1708.7" font-size="13.5" fill="#ea580c" text-anchor="start" font-weight="700">PostFilter（DefaultPreemption 抢占）</text>
+<text x="585.0" y="1732.7" font-size="12.5" fill="#ea580c" text-anchor="start" font-weight="700">·</text>
+<text x="595.0" y="1732.7" font-size="12.5" fill="#1e293b" text-anchor="start">前提：preemptionPolicy 不是 Never，且至少有一个节</text>
+<text x="595.0" y="1750.5" font-size="12.5" fill="#1e293b" text-anchor="start">点的失败码是 Unschedulable</text>
+<text x="585.0" y="1771.2" font-size="12.5" fill="#ea580c" text-anchor="start" font-weight="700">·</text>
+<text x="595.0" y="1771.2" font-size="12.5" fill="#1e293b" text-anchor="start">在这些节点上找优先级更低的 victims，尽量少驱逐、尽量</text>
+<text x="595.0" y="1789.0" font-size="12.5" fill="#1e293b" text-anchor="start">不违反 PDB</text>
+<text x="585.0" y="1809.7" font-size="12.5" fill="#ea580c" text-anchor="start" font-weight="700">·</text>
+<text x="595.0" y="1809.7" font-size="12.5" fill="#1e293b" text-anchor="start">给 victims 加 DisruptionTarget 条件，再通过 API</text>
+<text x="595.0" y="1827.5" font-size="12.5" fill="#1e293b" text-anchor="start">删除它们</text>
+<text x="585.0" y="1848.2" font-size="12.5" fill="#ea580c" text-anchor="start" font-weight="700">·</text>
+<text x="595.0" y="1848.2" font-size="12.5" fill="#1e293b" text-anchor="start">清掉目标节点上更低优先级 Pod 的 nominatedNodeName</text>
+<text x="585.0" y="1869.0" font-size="12.5" fill="#ea580c" text-anchor="start" font-weight="700">·</text>
+<text x="595.0" y="1869.0" font-size="12.5" fill="#1e293b" text-anchor="start">返回目标节点名；本轮仍算调度失败，等 victims 退出后重</text>
+<text x="595.0" y="1886.7" font-size="12.5" fill="#1e293b" text-anchor="start">新调度</text>
+<path d="M489.0,1714.2 L571.0,1714.2" stroke="#ea580c" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="491.9" y="1695.2" width="76.2" height="16.0" fill="#ffffff" rx="3"/>
+<text x="530.0" y="1706.2" font-size="11" fill="#ea580c" text-anchor="middle">0 个可行节点</text>
+<rect x="572.0" y="1939.5" width="380.0" height="173.8" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="584.0" y="1964.0" font-size="13.5" fill="#ea580c" text-anchor="start" font-weight="700">失败处理 handleSchedulingFailure</text>
+<text x="585.0" y="1988.0" font-size="12.5" fill="#ea580c" text-anchor="start" font-weight="700">·</text>
+<text x="595.0" y="1988.0" font-size="12.5" fill="#1e293b" text-anchor="start">Unschedulable、UnschedulableAndUnresolvable →</text>
+<text x="595.0" y="2005.8" font-size="12.5" fill="#1e293b" text-anchor="start">unschedulableEntities；in-flight 期间已有相关事</text>
+<text x="595.0" y="2023.5" font-size="12.5" fill="#1e293b" text-anchor="start">件则进 backoffQ</text>
+<text x="585.0" y="2044.3" font-size="12.5" fill="#ea580c" text-anchor="start" font-weight="700">·</text>
+<text x="595.0" y="2044.3" font-size="12.5" fill="#1e293b" text-anchor="start">Error 以及绑定周期中的失败 → backoffQ</text>
+<text x="585.0" y="2065.0" font-size="12.5" fill="#ea580c" text-anchor="start" font-weight="700">·</text>
+<text x="595.0" y="2065.0" font-size="12.5" fill="#1e293b" text-anchor="start">通过 API 写回 PodScheduled=False（reason:</text>
+<text x="595.0" y="2082.8" font-size="12.5" fill="#1e293b" text-anchor="start">Unschedulable），抢占成功时同时写入</text>
+<text x="595.0" y="2100.5" font-size="12.5" fill="#1e293b" text-anchor="start">status.nominatedNodeName</text>
+<circle cx="932.0" cy="1940.5" r="10" fill="#ffffff" stroke="#0d9488" stroke-width="1.4"/>
+<text x="932.0" y="1944.8" font-size="12" fill="#0d9488" text-anchor="middle" font-weight="700">Ⓔ</text>
+<path d="M762.0,1899.5 L762.0,1938.5" stroke="#ea580c" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<path d="M489.0,2161.9 L528.0,2161.9 L528.0,2078.6 L571.0,2078.6" stroke="#ea580c" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<line x1="488.0" y1="2078.6" x2="528.0" y2="2078.6" stroke="#ea580c" stroke-width="1.6"/>
+<rect x="493.0" y="2061.6" width="30.0" height="16.0" fill="#ffffff" rx="3"/>
+<text x="508.0" y="2072.6" font-size="11" fill="#ea580c" text-anchor="middle">失败</text>
+<path d="M953.0,2026.4 L970.0,2026.4 L970.0,1141.3 L965.0,1141.3" stroke="#ea580c" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<path d="M436.0,1238.5 L436.0,1341.5" stroke="#2563eb" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="438.0" y="1321.5" width="27.8" height="16.0" fill="#ffffff" rx="3"/>
+<text x="442.0" y="1332.5" font-size="11" fill="#2563eb" text-anchor="start">Pop</text>
+<rect x="30" y="2274.7" width="936" height="439.6" rx="12" fill="#f8fafc" stroke="#059669" stroke-width="1.4" stroke-opacity="0.55"/><rect x="30" y="2274.7" width="6" height="439.6" rx="3" fill="#059669"/><text x="48" y="2298.7" font-size="15" font-weight="700" fill="#059669">绑定周期</text><text x="118.2" y="2298.7" font-size="12" fill="#64748b">每个 Pod 单独一个 goroutine，调度周期不等它</text>
+<path d="M108.0,2238.7 L108.0,2313.7" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="48.0" y="2314.7" width="203.5" height="262.6" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="60.0" y="2339.2" font-size="13.5" fill="#059669" text-anchor="start" font-weight="700">⑰ WaitOnPermit</text>
+<text x="61.0" y="2363.2" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
+<text x="71.0" y="2363.2" font-size="12.5" fill="#1e293b" text-anchor="start">等 Permit 返回的 Wait 被</text>
+<text x="71.0" y="2381.0" font-size="12.5" fill="#1e293b" text-anchor="start">Allow；超时或被 Reject</text>
+<text x="71.0" y="2398.8" font-size="12.5" fill="#1e293b" text-anchor="start">即失败</text>
+<rect x="281.5" y="2314.7" width="203.5" height="262.6" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="293.5" y="2339.2" font-size="13.5" fill="#059669" text-anchor="start" font-weight="700">⑱ PreBind</text>
+<text x="294.5" y="2363.2" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
+<text x="304.5" y="2363.2" font-size="12.5" fill="#1e293b" text-anchor="start">开启</text>
+<text x="304.5" y="2381.0" font-size="12.5" fill="#1e293b" text-anchor="start">NominatedNodeNameForEx</text>
+<text x="304.5" y="2398.8" font-size="12.5" fill="#1e293b" text-anchor="start">pectation 时先写</text>
+<text x="304.5" y="2416.5" font-size="12.5" fill="#1e293b" text-anchor="start">nominatedNodeName，告诉</text>
+<text x="304.5" y="2434.2" font-size="12.5" fill="#1e293b" text-anchor="start">外部组件 Pod 将落在哪</text>
+<text x="294.5" y="2455.0" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
+<text x="304.5" y="2455.0" font-size="12.5" fill="#1e293b" text-anchor="start">VolumeBinding：绑定 PV，</text>
+<text x="304.5" y="2472.8" font-size="12.5" fill="#1e293b" text-anchor="start">或写 selected-node 注解</text>
+<text x="304.5" y="2490.5" font-size="12.5" fill="#1e293b" text-anchor="start">并等待供给</text>
+<text x="294.5" y="2511.2" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
+<text x="304.5" y="2511.2" font-size="12.5" fill="#1e293b" text-anchor="start">DynamicResources：写</text>
+<text x="304.5" y="2529.0" font-size="12.5" fill="#1e293b" text-anchor="start">ResourceClaim 的</text>
+<text x="304.5" y="2546.8" font-size="12.5" fill="#1e293b" text-anchor="start">allocation 与</text>
+<text x="304.5" y="2564.5" font-size="12.5" fill="#1e293b" text-anchor="start">reservedFor</text>
+<circle cx="465.0" cy="2315.7" r="10" fill="#ffffff" stroke="#0d9488" stroke-width="1.4"/>
+<text x="465.0" y="2320.0" font-size="12" fill="#0d9488" text-anchor="middle" font-weight="700">Ⓔ</text>
+<path d="M252.5,2344.7 L280.5,2344.7" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="515.0" y="2314.7" width="203.5" height="262.6" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="527.0" y="2339.2" font-size="13.5" fill="#059669" text-anchor="start" font-weight="700">⑲ Bind</text>
+<text x="528.0" y="2363.2" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
+<text x="538.0" y="2363.2" font-size="12.5" fill="#1e293b" text-anchor="start">DefaultBinder：POST</text>
+<text x="538.0" y="2381.0" font-size="12.5" fill="#1e293b" text-anchor="start">pods/&lt;name&gt;/binding</text>
+<text x="528.0" y="2401.8" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
+<text x="538.0" y="2401.8" font-size="12.5" fill="#1e293b" text-anchor="start">按顺序调用，第一个不返回</text>
+<text x="538.0" y="2419.5" font-size="12.5" fill="#1e293b" text-anchor="start">Skip 的 Bind 插件生效</text>
+<path d="M486.0,2344.7 L514.0,2344.7" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="748.5" y="2314.7" width="203.5" height="262.6" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="760.5" y="2339.2" font-size="13.5" fill="#059669" text-anchor="start" font-weight="700">⑳ PostBind</text>
+<text x="761.5" y="2363.2" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
+<text x="771.5" y="2363.2" font-size="12.5" fill="#1e293b" text-anchor="start">绑定成功后的通知与清理，不</text>
+<text x="771.5" y="2381.0" font-size="12.5" fill="#1e293b" text-anchor="start">影响结果</text>
+<path d="M719.5,2344.7 L747.5,2344.7" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<path d="M115.8,2577.2 L115.8,2593.2 L958.0,2593.2 L958.0,2143.3 L892.0,2143.3 L892.0,2114.3" stroke="#ea580c" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<line x1="349.3" y1="2577.2" x2="349.3" y2="2593.2" stroke="#ea580c" stroke-width="1.6"/>
+<line x1="582.8" y1="2577.2" x2="582.8" y2="2593.2" stroke="#ea580c" stroke-width="1.6"/>
+<rect x="336.1" y="2586.2" width="467.8" height="16.0" fill="#ffffff" rx="3"/>
+<text x="570.0" y="2597.2" font-size="11" fill="#ea580c" text-anchor="middle">⑰~⑲ 任一步失败：Unreserve，再把 Pod 从 cache 中撤销（forget），进 backoffQ</text>
+<rect x="221.5" y="2619.2" width="403.5" height="79.0" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="233.5" y="2643.8" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">Ⓒ external-provisioner 与 PV controller</text>
+<text x="234.5" y="2667.8" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
+<text x="244.5" y="2667.8" font-size="12.5" fill="#1e293b" text-anchor="start">看到 selected-node 注解，在该节点的拓扑上供给 PV 并完成</text>
+<text x="244.5" y="2685.6" font-size="12.5" fill="#1e293b" text-anchor="start">绑定，PreBind 的等待随之结束</text>
+<path d="M301.9,2577.2 L301.9,2618.2" stroke="#0d9488" stroke-width="1.6" fill="none" marker-end="url(#a)" stroke-dasharray="5 4"/>
+<path d="M317.9,2619.2 L317.9,2578.2" stroke="#0d9488" stroke-width="1.6" fill="none" marker-end="url(#a)" stroke-dasharray="5 4"/>
+<path d="M667.6,2577.2 L667.6,2755.3" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="36.0" y="2756.3" width="928.0" height="102.8" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="48.0" y="2780.8" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">㉑ kube-apiserver 处理 binding 子资源</text>
+<text x="49.0" y="2804.9" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="59.0" y="2804.9" font-size="12.5" fill="#1e293b" text-anchor="start">spec.schedulingGates 非空 → 拒绝绑定</text>
+<text x="49.0" y="2825.6" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="59.0" y="2825.6" font-size="12.5" fill="#1e293b" text-anchor="start">PodTopologyLabels 准入（需开启 feature gate）：把节点的 zone、region 等拓扑标签复制到 Pod</text>
+<text x="49.0" y="2846.4" font-size="12.5" fill="#2563eb" text-anchor="start" font-weight="700">·</text>
+<text x="59.0" y="2846.4" font-size="12.5" fill="#1e293b" text-anchor="start">写入 spec.nodeName，清空 status.nominatedNodeName，置 PodScheduled=True，写回 etcd</text>
+<rect x="20" y="2885.1000000000004" width="960" height="579.5" rx="12" fill="#f8fafc" stroke="#059669" stroke-width="1.4" stroke-opacity="0.55"/><rect x="20" y="2885.1000000000004" width="6" height="579.5" rx="3" fill="#059669"/><text x="38" y="2909.1000000000004" font-size="15" font-weight="700" fill="#059669">节点侧</text><text x="92.15" y="2909.1000000000004" font-size="12" fill="#64748b">kubelet 运行在被选中的节点上，周围是会删除或重建 Pod 的控制器</text>
+<path d="M180.7,2859.1 L180.7,2924.1" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="182.7" y="2868.1" width="243.4" height="16.0" fill="#ffffff" rx="3"/>
+<text x="186.7" y="2879.1" font-size="11" fill="#64748b" text-anchor="start">kubelet watch 到 spec.nodeName=本节点</text>
+<rect x="36.0" y="2925.1" width="289.3" height="135.3" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="48.0" y="2949.6" font-size="13.5" fill="#059669" text-anchor="start" font-weight="700">㉒ kubelet 准入</text>
+<text x="49.0" y="2973.7" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
+<text x="59.0" y="2973.7" font-size="12.5" fill="#1e293b" text-anchor="start">重新检查资源是否放得下、required</text>
+<text x="59.0" y="2991.4" font-size="12.5" fill="#1e293b" text-anchor="start">nodeAffinity、nodeName、hostPort、</text>
+<text x="59.0" y="3009.2" font-size="12.5" fill="#1e293b" text-anchor="start">NoExecute 污点</text>
+<text x="49.0" y="3029.9" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
+<text x="59.0" y="3029.9" font-size="12.5" fill="#1e293b" text-anchor="start">调度器决策和节点实际状态之间可能有时间差，</text>
+<text x="59.0" y="3047.7" font-size="12.5" fill="#1e293b" text-anchor="start">这里是最后一道检查</text>
+<rect x="355.3" y="2925.1" width="289.3" height="135.3" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="367.3" y="2949.6" font-size="13.5" fill="#059669" text-anchor="start" font-weight="700">㉓ 准备与启动</text>
+<text x="368.3" y="2973.7" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
+<text x="378.3" y="2973.7" font-size="12.5" fill="#1e293b" text-anchor="start">DRA driver 执行</text>
+<text x="378.3" y="2991.4" font-size="12.5" fill="#1e293b" text-anchor="start">NodePrepareResources，CSI 挂载卷</text>
+<text x="368.3" y="3012.2" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
+<text x="378.3" y="3012.2" font-size="12.5" fill="#1e293b" text-anchor="start">CRI 创建 sandbox 和容器</text>
+<text x="368.3" y="3032.9" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
+<text x="378.3" y="3032.9" font-size="12.5" fill="#1e293b" text-anchor="start">phase：Pending → Running</text>
+<path d="M326.3,2955.1 L354.3,2955.1" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="674.7" y="2925.1" width="289.3" height="135.3" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="686.7" y="2949.6" font-size="13.5" fill="#059669" text-anchor="start" font-weight="700">㉔ 运行期驱逐</text>
+<text x="687.7" y="2973.7" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
+<text x="697.7" y="2973.7" font-size="12.5" fill="#1e293b" text-anchor="start">节点内存、磁盘、PID 压力时由 kubelet</text>
+<text x="697.7" y="2991.4" font-size="12.5" fill="#1e293b" text-anchor="start">驱逐 Pod</text>
+<text x="687.7" y="3012.2" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">·</text>
+<text x="697.7" y="3012.2" font-size="12.5" fill="#1e293b" text-anchor="start">排序依据：用量是否超出 requests →</text>
+<text x="697.7" y="3029.9" font-size="12.5" fill="#1e293b" text-anchor="start">spec.priority → 实际用量</text>
+<path d="M645.7,2955.1 L673.7,2955.1" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="36.0" y="3082.4" width="289.3" height="69.2" rx="6" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="48.0" y="3105.9" font-size="12.5" fill="#dc2626" text-anchor="start">准入失败：phase=Failed，reason 如</text>
+<text x="48.0" y="3123.7" font-size="12.5" fill="#dc2626" text-anchor="start">OutOfcpu、NodeAffinity；调度器不会再处</text>
+<text x="48.0" y="3141.4" font-size="12.5" fill="#dc2626" text-anchor="start">理它</text>
+<rect x="674.7" y="3082.4" width="289.3" height="33.8" rx="6" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+<text x="686.7" y="3105.9" font-size="12.5" fill="#dc2626" text-anchor="start">被驱逐：phase=Failed，reason=Evicted</text>
+<rect x="355.3" y="3082.4" width="289.3" height="99.8" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="367.3" y="3106.9" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">Ⓒ Ⓓ 节点侧驱动</text>
+<text x="368.3" y="3131.0" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
+<text x="378.3" y="3131.0" font-size="12.5" fill="#1e293b" text-anchor="start">CSI node plugin 挂载卷</text>
+<text x="368.3" y="3151.7" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
+<text x="378.3" y="3151.7" font-size="12.5" fill="#1e293b" text-anchor="start">DRA driver 执行</text>
+<text x="378.3" y="3169.5" font-size="12.5" fill="#1e293b" text-anchor="start">NodePrepareResources 准备设备</text>
+<path d="M180.7,3060.4 L180.7,3081.4" stroke="#dc2626" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<path d="M819.3,3060.4 L819.3,3081.4" stroke="#dc2626" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<path d="M510.0,3060.4 L510.0,3081.4" stroke="#0d9488" stroke-width="1.6" fill="none" marker-end="url(#a)" stroke-dasharray="5 4"/>
+<path d="M490.0,3082.4 L490.0,3061.4" stroke="#0d9488" stroke-width="1.6" fill="none" marker-end="url(#a)" stroke-dasharray="5 4"/>
+<rect x="36.0" y="3204.2" width="289.3" height="153.1" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="48.0" y="3228.7" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">Ⓕ 节点生命周期控制器</text>
+<text x="49.0" y="3252.8" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
+<text x="59.0" y="3252.8" font-size="12.5" fill="#1e293b" text-anchor="start">node-lifecycle-controller：节点失联</text>
+<text x="59.0" y="3270.5" font-size="12.5" fill="#1e293b" text-anchor="start">时加 not-ready/unreachable 的</text>
+<text x="59.0" y="3288.3" font-size="12.5" fill="#1e293b" text-anchor="start">NoExecute 污点</text>
+<text x="49.0" y="3309.0" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
+<text x="59.0" y="3309.0" font-size="12.5" fill="#1e293b" text-anchor="start">taint-eviction-controller：超过</text>
+<text x="59.0" y="3326.8" font-size="12.5" fill="#1e293b" text-anchor="start">tolerationSeconds（③ 默认 300s）后</text>
+<text x="59.0" y="3344.5" font-size="12.5" fill="#1e293b" text-anchor="start">删除 Pod</text>
+<rect x="674.7" y="3204.2" width="289.3" height="117.5" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="686.7" y="3228.7" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">Ⓖ descheduler（可选）</text>
+<text x="687.7" y="3252.8" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
+<text x="697.7" y="3252.8" font-size="12.5" fill="#1e293b" text-anchor="start">按策略驱逐已运行的 Pod，如负载不均、违</text>
+<text x="697.7" y="3270.5" font-size="12.5" fill="#1e293b" text-anchor="start">反亲和</text>
+<text x="687.7" y="3291.3" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
+<text x="697.7" y="3291.3" font-size="12.5" fill="#1e293b" text-anchor="start">调度器从不迁移已绑定的 Pod，重平衡只能</text>
+<text x="697.7" y="3309.0" font-size="12.5" fill="#1e293b" text-anchor="start">靠驱逐后重建</text>
+<rect x="36.0" y="3387.3" width="928.0" height="61.3" rx="8" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="48.0" y="3411.8" font-size="13.5" fill="#0d9488" text-anchor="start" font-weight="700">Ⓐ 工作负载控制器（ReplicaSet、Job、StatefulSet 等）</text>
+<text x="49.0" y="3435.8" font-size="12.5" fill="#0d9488" text-anchor="start" font-weight="700">·</text>
+<text x="59.0" y="3435.8" font-size="12.5" fill="#1e293b" text-anchor="start">Pod 进入 Failed 或被删除后，按期望副本数新建一个 Pod；新 Pod 与旧 Pod 无关，从 ① 重新提交、重新调度</text>
+<path d="M326.3,3117.0 L340.3,3117.0 L340.3,3386.3" stroke="#dc2626" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<path d="M673.7,3099.3 L659.7,3099.3 L659.7,3386.3" stroke="#dc2626" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<path d="M180.7,3357.3 L180.7,3386.3" stroke="#0d9488" stroke-width="1.6" fill="none" marker-end="url(#a)" stroke-dasharray="5 4"/>
+<path d="M819.3,3321.8 L819.3,3386.3" stroke="#0d9488" stroke-width="1.6" fill="none" marker-end="url(#a)" stroke-dasharray="5 4"/>
+<rect x="449.8" y="3366.3" width="100.4" height="16.0" fill="#ffffff" rx="3"/>
+<text x="500.0" y="3377.3" font-size="11" fill="#dc2626" text-anchor="middle">Pod 失败或被删除</text>
+<path d="M35.0,3417.9 L8.0,3417.9 L8.0,241.3 L35.0,241.3" stroke="#0d9488" stroke-width="1.6" fill="none" marker-end="url(#a)" stroke-dasharray="5 4"/>
+<text x="97.8" y="3506.6" font-size="13" fill="#1e293b" text-anchor="start" font-weight="700">图例</text>
+<rect x="139.7" y="3488.6" width="155.0" height="26.0" rx="13" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="217.2" y="3506.1" font-size="12.5" fill="#2563eb" text-anchor="middle">主流程 / API Server</text>
+<rect x="304.7" y="3488.6" width="70.0" height="26.0" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1"/>
+<text x="339.7" y="3506.1" font-size="12.5" fill="#7c3aed" text-anchor="middle">调度队列</text>
+<rect x="384.7" y="3488.6" width="92.5" height="26.0" rx="13" fill="#ecfdf5" stroke="#059669" stroke-width="1"/>
+<text x="430.9" y="3506.1" font-size="12.5" fill="#059669" text-anchor="middle">绑定 / 节点</text>
+<rect x="487.2" y="3488.6" width="95.0" height="26.0" rx="13" fill="#fff7ed" stroke="#ea580c" stroke-width="1"/>
+<text x="534.7" y="3506.1" font-size="12.5" fill="#ea580c" text-anchor="middle">会重试的失败</text>
+<rect x="592.2" y="3488.6" width="100.0" height="26.0" rx="13" fill="#fef2f2" stroke="#dc2626" stroke-width="1"/>
+<text x="642.2" y="3506.1" font-size="12.5" fill="#dc2626" text-anchor="middle">Pod 到此为止</text>
+<rect x="702.2" y="3488.6" width="120.0" height="26.0" rx="13" fill="#f0fdfa" stroke="#0d9488" stroke-width="1" stroke-dasharray="5 4"/>
+<text x="762.2" y="3506.1" font-size="12.5" fill="#0d9488" text-anchor="middle">调度器之外的组件</text>
+<rect x="832.2" y="3488.6" width="70.0" height="26.0" rx="13" fill="#f1f5f9" stroke="#475569" stroke-width="1"/>
+<text x="867.2" y="3506.1" font-size="12.5" fill="#475569" text-anchor="middle">通用步骤</text>
 </svg>

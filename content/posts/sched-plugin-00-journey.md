@@ -17,13 +17,13 @@ description: "系列开篇。沿着 ScheduleOne 的源码走一遍：Pod 怎么�
 
 调度器并不是孤立工作的。Pod 进入调度器之前，kube-apiserver 的准入链已经改写过它；调度器做完决定之后，还要经过 apiserver 的 binding 子资源和 kubelet 的准入才能真正运行；中间还有好几个控制器在改它依赖的对象。下面这张全景图把这条完整链路画了出来，后面 40 篇讲的插件都在图中间的 kube-scheduler 里。
 
-{{< figure src="/images/posts/sched-plugins/00-architecture.svg" link="/images/posts/sched-plugins/00-architecture.svg" caption="Pod 从提交到运行的全景：kube-apiserver 的准入链、kube-scheduler 的队列与两个周期、binding 子资源、kubelet，以及 Ⓐ~Ⓖ 七类周边组件介入的位置（点击查看大图）" >}}
+{{< figure src="/images/posts/sched-plugins/00-architecture.svg" link="/images/posts/sched-plugins/00-architecture.svg" caption="Pod 从提交到运行的全景：kube-apiserver 的准入链、kube-scheduler 的队列与两个周期、binding 子资源、kubelet，虚线框是调度器之外的组件，画在它们介入主流程的位置（点击查看大图）" >}}
 
 读图时注意三种标记：
 
 1. ①~㉔ 是一个 Pod 正常走完的主路径，从 kubectl 提交一直到容器运行；
 2. 橙色是会重试的失败，Pod 回到调度队列等下一次机会；红色是这个 Pod 到此为止，只能由控制器新建一个 Pod 重来；
-3. Ⓐ~Ⓖ 是调度器之外的组件，图中带同样字母的步骤就是它们介入的地方，比如 Ⓑ 出现在 ③ 变更准入和 ⑧ PreEnqueue 上，表示 gate 由 webhook 加上、由控制器删除。
+3. Ⓐ~Ⓖ 虚线框是调度器之外的组件，直接画在它们介入的步骤旁边，用虚线箭头连上。同一个组件可能出现两次，比如 Ⓑ：顶部的 webhook 在 ③ 给 Pod 加上 gate，调度器上方的 gate 控制器删掉 gate 后经 ⑦ 唤醒 Pod。最底部的 Ⓐ 沿左侧虚线回到 ①，表示失败或被删除的 Pod 由控制器重建、重新走一遍。
 
 **很多「调度器为什么这样做」的问题，答案其实在调度器之外**。图中跨组件的几条线索，后面的文章会反复用到：
 

@@ -132,7 +132,7 @@ def strip(c, x, y, w, s, color):
 def build():
     c = Canvas(W, 10)
     c.title("从 kubectl apply 到容器运行：调度器与周边组件全景",
-            "①~㉔ 是主路径；橙色是会重试的失败，红色是这个 Pod 到此为止；Ⓐ~Ⓖ 是外部组件，在图中对应位置标出它从哪里介入")
+            "①~㉔ 是主路径；橙色是会重试的失败，红色是这个 Pod 到此为止；Ⓐ~Ⓖ 虚线框是调度器之外的组件，画在它们介入的位置")
     y = 84
 
     # ---------------- 一、kube-apiserver：创建 ----------------
@@ -143,13 +143,13 @@ def build():
     bw = (R - L - gap * (n - 1)) / n
     boxes = [
         ("① 提交 Pod", ["kubectl apply，或 ReplicaSet、Job 等控制器 POST pods",
-                       "此时 spec.nodeName 为空"], GRAY, ("Ⓐ",)),
+                       "此时 spec.nodeName 为空"], GRAY, ()),
         ("② 认证与鉴权", ["认证：确认请求者身份", "鉴权：RBAC 判断能否 create pods"], GRAY, ()),
         ("③ 变更准入", ["LimitRanger：补默认 requests/limits",
                       "Priority：按 priorityClassName 写入 spec.priority 与 preemptionPolicy",
                       "DefaultTolerationSeconds：加 not-ready、unreachable 容忍 300s",
                       "RuntimeClass：写入 overhead",
-                      "Mutating webhook：注入 sidecar、加 schedulingGates 等"], BLUE, ("Ⓑ",)),
+                      "Mutating webhook：注入 sidecar、加 schedulingGates 等"], BLUE, ()),
         ("④ 对象校验", ["字段格式与取值是否合法",
                       "带 schedulingGates 时不能直接设置 spec.nodeName",
                       "创建后 spec.priority 不可改，schedulingGates 只能删不能加"], BLUE, ()),
@@ -159,6 +159,15 @@ def build():
     ]
     ws = [140, 120, 216, 180, 224]
     xs = [L + sum(ws[:i]) + gap * i for i in range(n)]
+    # 外部：提交者与 webhook
+    u_w = ws[0] + gap + ws[1]
+    uh = card(c, xs[0], y, u_w, "用户 / CI", ["kubectl apply、Helm、Argo CD 等"], GRAY, dash=True)
+    bh_ = card(c, xs[2], y, ws[2] + gap + ws[3], "Ⓑ Kueue 等的 mutating webhook",
+               ["给需要排队的 Pod 加上 schedulingGates，在 ③ 中被调用"], TEAL, dash=True)
+    ext_h = max(uh, bh_)
+    arrow(c, [(xs[0] + ws[0] / 2, y + uh), (xs[0] + ws[0] / 2, y + ext_h + 26 - 1)])
+    arrow(c, [(xs[2] + ws[2] / 2, y + bh_), (xs[2] + ws[2] / 2, y + ext_h + 26 - 1)], color=TEAL[0], dash=True)
+    y += ext_h + 26
     hmax = max(layout(ws[i], b[0], b[1])[2] for i, b in enumerate(boxes))
     boxes_y = y
     for i, (hd, it, col, tg) in enumerate(boxes):
@@ -185,13 +194,28 @@ def build():
     # ---------------- 二、kube-scheduler ----------------
     idx = len(c.items)
     top = y
-    arrow(c, [(W / 2, etcd_bottom), (W / 2, y + 40 - 1)])
     y += 40
+    eg2 = 14
+    cw = (R - L - 40 - eg2 * 2) / 4
+    cxs = [L, L + cw + eg2, W / 2 + 20, W / 2 + 20 + cw + eg2]
+    srcs = [
+        ("Ⓑ gate 控制器", ["Kueue 等在配额、依赖就绪后删除 schedulingGates", "Pod Update 事件 → ⑧ 重新判断"]),
+        ("Ⓒ 存储控制器", ["PV controller、external-provisioner 创建或绑定 PV", "PV、PVC 变化唤醒等卷的 Pod"]),
+        ("Ⓓ DRA driver", ["发布 ResourceSlice 描述可用设备", "设备变化唤醒等设备的 Pod"]),
+        ("Ⓔ Cluster Autoscaler", ["看到失败处理写的 PodScheduled=False 就扩容", "新节点 Node Add 事件唤醒 Pod"]),
+    ]
+    sh2 = max(layout(cw, a, b)[2] for a, b in srcs)
+    for i, (hd, it) in enumerate(srcs):
+        card(c, cxs[i], y, cw, hd, it, TEAL, dash=True, h=sh2)
+        arrow(c, [(cxs[i] + cw / 2, y + sh2), (cxs[i] + cw / 2, y + sh2 + 30 - 1)], color=TEAL[0], dash=True)
+    label(c, W / 2 + 6, y - 10, "watch", anchor="start", fs=11)
+    y += sh2 + 30
+    arrow(c, [(W / 2, etcd_bottom), (W / 2, y - 1)])
     h7 = card(c, L, y, R - L, "⑦ informer 与事件处理器",
               ["Pod ADDED，spec.nodeName 为空且 schedulerName 属于本调度器的某个 Profile → 进入调度队列",
                "已绑定的 Pod（spec.nodeName 非空）→ 只写入 cache，用来计算节点上已占用的资源",
                "Node、PVC、PV、StorageClass、ResourceClaim 等对象变化 → 按插件的 EventsToRegister 和 QueueingHint，把相关 entity 移出 unschedulableEntities"],
-              VIOLET, tags=("Ⓑ", "Ⓒ", "Ⓔ"))
+              VIOLET)
     y += h7 + 30
     # 队列四格
     gq = 28
@@ -199,7 +223,7 @@ def build():
     qboxes = [
         ("⑧ PreEnqueue", ["SchedulingGates：spec.schedulingGates 非空就拒绝",
                           "DynamicResources 等插件也实现了 PreEnqueue",
-                          "被拒绝的 Pod 以 gated 状态留在 unschedulableEntities"], VIOLET, ("Ⓑ",)),
+                          "被拒绝的 Pod 以 gated 状态留在 unschedulableEntities"], VIOLET, ()),
         ("activeQ", ["堆，比较函数来自 QueueSort 插件",
                      "PrioritySort：spec.priority 高的先出队，相同时先入队的先出",
                      "出队单位是 entity：单个 Pod 或整个 PodGroup"], VIOLET, ()),
@@ -209,7 +233,7 @@ def build():
         ("unschedulableEntities", ["map，没有顺序，不会被 Pop",
                                    "存放 gated 和 unschedulable 两类 entity",
                                    "相关事件到达且 QueueingHint 返回 Queue 才移出",
-                                   "停留超过 5 分钟强制移出"], VIOLET, ("Ⓔ",)),
+                                   "停留超过 5 分钟强制移出"], VIOLET, ()),
     ]
     qh = max(layout(qw, b[0], b[1])[2] for b in qboxes)
     qx = [L + i * (qw + gq) for i in range(4)]
@@ -318,7 +342,7 @@ def build():
         ("⑰ WaitOnPermit", ["等 Permit 返回的 Wait 被 Allow；超时或被 Reject 即失败"], ()),
         ("⑱ PreBind", ["开启 NominatedNodeNameForExpectation 时先写 nominatedNodeName，告诉外部组件 Pod 将落在哪",
                        "VolumeBinding：绑定 PV，或写 selected-node 注解并等待供给",
-                       "DynamicResources：写 ResourceClaim 的 allocation 与 reservedFor"], ("Ⓒ", "Ⓓ", "Ⓔ")),
+                       "DynamicResources：写 ResourceClaim 的 allocation 与 reservedFor"], ("Ⓔ",)),
         ("⑲ Bind", ["DefaultBinder：POST pods/<name>/binding",
                     "按顺序调用，第一个不返回 Skip 的 Bind 插件生效"], ()),
         ("⑳ PostBind", ["绑定成功后的通知与清理，不影响结果"], ()),
@@ -336,11 +360,17 @@ def build():
           color=ORANGE[0])
     for i in (1, 2):
         c.line(bx[i] + bw2 / 3, y + bh, bx[i] + bw2 / 3, yy, color=ORANGE[0], sw=1.6)
-    label(c, (bx[1] + bx[2] + bw2) / 2, yy + 4, "⑰~⑲ 任一步失败：Unreserve，再把 Pod 从 cache 中撤销（forget），进 backoffQ",
+    label(c, (bx[1] + bx[2] + bw2) / 2 + 70, yy + 4, "⑰~⑲ 任一步失败：Unreserve，再把 Pod 从 cache 中撤销（forget），进 backoffQ",
           ORANGE[0], fs=11)
     bind_x = bx[2] + bw2 * 0.75
     bind_y = y + bh
-    y = yy + 20
+    pv_y = yy + 26
+    pvh = card(c, bx[1] - 60, pv_y, bw2 + 200, "Ⓒ external-provisioner 与 PV controller",
+               ["看到 selected-node 注解，在该节点的拓扑上供给 PV 并完成绑定，PreBind 的等待随之结束"], TEAL, dash=True)
+    px = bx[1] + bw2 * 0.1
+    arrow(c, [(px, y + bh), (px, pv_y - 1)], color=TEAL[0], dash=True)
+    arrow(c, [(px + 16, pv_y), (px + 16, y + bh + 1)], color=TEAL[0], dash=True)
+    y = pv_y + pvh + 16
     panel(c, idx3, L - 6, btop, R - L + 12 - 4, y - btop, "绑定周期", GREEN, "每个 Pod 单独一个 goroutine，调度周期不等它")
     y += 16
     panel(c, idx, 20, top, 960, y - top, "kube-scheduler", VIOLET)
@@ -369,9 +399,9 @@ def build():
                            "调度器决策和节点实际状态之间可能有时间差，这里是最后一道检查"], ()),
         ("㉓ 准备与启动", ["DRA driver 执行 NodePrepareResources，CSI 挂载卷",
                         "CRI 创建 sandbox 和容器",
-                        "phase：Pending → Running"], ("Ⓒ", "Ⓓ")),
+                        "phase：Pending → Running"], ()),
         ("㉔ 运行期驱逐", ["节点内存、磁盘、PID 压力时由 kubelet 驱逐 Pod",
-                        "排序依据：用量是否超出 requests → spec.priority → 实际用量"], ("Ⓕ",)),
+                        "排序依据：用量是否超出 requests → spec.priority → 实际用量"], ()),
     ]
     kh = max(layout(kw, b[0], b[1])[2] for b in kboxes)
     kx = [L + i * (kw + kg) for i in range(3)]
@@ -380,60 +410,55 @@ def build():
         if i:
             arrow(c, [(kx[i] - kg + 1, y + 30), (kx[i] - 1, y + 30)], color=GREEN[0])
     y += kh + 22
-    r1 = strip(c, kx[0], y, kw, "准入失败：phase=Failed，reason 如 OutOfcpu、NodeAffinity；不会重新调度，由控制器 Ⓐ 新建 Pod", RED)
-    r2 = strip(c, kx[2], y, kw, "被驱逐：phase=Failed，reason=Evicted，同样由控制器 Ⓐ 新建 Pod 重新走一遍", RED)
+    r1 = strip(c, kx[0], y, kw, "准入失败：phase=Failed，reason 如 OutOfcpu、NodeAffinity；调度器不会再处理它", RED)
+    r2 = strip(c, kx[2], y, kw, "被驱逐：phase=Failed，reason=Evicted", RED)
+    dh = card(c, kx[1], y, kw, "Ⓒ Ⓓ 节点侧驱动",
+              ["CSI node plugin 挂载卷", "DRA driver 执行 NodePrepareResources 准备设备"], TEAL, dash=True)
     arrow(c, [(kx[0] + kw / 2, y - 22), (kx[0] + kw / 2, y - 1)], color=RED[0])
     arrow(c, [(kx[2] + kw / 2, y - 22), (kx[2] + kw / 2, y - 1)], color=RED[0])
-    y += max(r1, r2) + 16
-    panel(c, idx, 20, top, 960, y - top, "kubelet", GREEN, "运行在被选中的节点上")
-    y += 30
+    arrow(c, [(kx[1] + kw / 2 + 10, y - 22 + 0), (kx[1] + kw / 2 + 10, y - 1)], color=TEAL[0], dash=True)
+    arrow(c, [(kx[1] + kw / 2 - 10, y), (kx[1] + kw / 2 - 10, y - 22 + 1)], color=TEAL[0], dash=True)
+    row2_y, row2_h = y, max(r1, r2, dh)
+    y += row2_h + 22
+    fhh = card(c, kx[0], y, kw, "Ⓕ 节点生命周期控制器",
+               ["node-lifecycle-controller：节点失联时加 not-ready/unreachable 的 NoExecute 污点",
+                "taint-eviction-controller：超过 tolerationSeconds（③ 默认 300s）后删除 Pod"], TEAL, dash=True)
+    ghh = card(c, kx[2], y, kw, "Ⓖ descheduler（可选）",
+               ["按策略驱逐已运行的 Pod，如负载不均、违反亲和",
+                "调度器从不迁移已绑定的 Pod，重平衡只能靠驱逐后重建"], TEAL, dash=True)
+    row3_h = max(fhh, ghh)
+    ay_ = y + row3_h + 30
+    ahh = card(c, L, ay_, R - L, "Ⓐ 工作负载控制器（ReplicaSet、Job、StatefulSet 等）",
+               ["Pod 进入 Failed 或被删除后，按期望副本数新建一个 Pod；新 Pod 与旧 Pod 无关，从 ① 重新提交、重新调度"],
+               TEAL, dash=True)
+    # 红框与 Ⓕ Ⓖ → Ⓐ
+    g1 = kx[1] - kg / 2
+    g2 = kx[2] - kg / 2
+    arrow(c, [(kx[0] + kw + 1, row2_y + r1 / 2), (g1, row2_y + r1 / 2), (g1, ay_ - 1)], color=RED[0])
+    arrow(c, [(kx[2] - 1, row2_y + r2 / 2), (g2, row2_y + r2 / 2), (g2, ay_ - 1)], color=RED[0])
+    arrow(c, [(kx[0] + kw / 2, y + fhh), (kx[0] + kw / 2, ay_ - 1)], color=TEAL[0], dash=True)
+    arrow(c, [(kx[2] + kw / 2, y + ghh), (kx[2] + kw / 2, ay_ - 1)], color=TEAL[0], dash=True)
+    label(c, kx[1] + kw / 2, ay_ - 10, "Pod 失败或被删除", RED[0], fs=11)
+    # 回到 ①
+    lx_ = 8
+    arrow(c, [(L - 1, ay_ + ahh / 2), (lx_, ay_ + ahh / 2), (lx_, boxes_y + 30), (L - 1, boxes_y + 30)],
+          color=TEAL[0], dash=True)
+    y = ay_ + ahh + 16
+    panel(c, idx, 20, top, 960, y - top, "节点侧", GREEN, "kubelet 运行在被选中的节点上，周围是会删除或重建 Pod 的控制器")
+    y += 24
 
-    # ---------------- 五、外部组件 ----------------
-    idx = len(c.items)
-    top = y
-    y += 40
-    eg = 16
-    ew = (R - L - eg * 2) / 3
-    ext = [
-        ("Ⓐ 工作负载控制器", ["ReplicaSet、Job、StatefulSet 等创建 Pod（①）",
-                          "Pod 失败或被删除后创建新 Pod，新 Pod 从 ① 重新开始"]),
-        ("Ⓑ gate 控制器", ["Kueue 等通过 webhook 加上 schedulingGates（③）",
-                         "配额、依赖就绪后删除 gate → Pod 更新事件 → ⑧ 重新判断"]),
-        ("Ⓒ 存储控制器", ["PV controller 与 external-provisioner",
-                       "看到 selected-node 注解后在该拓扑上供给并绑定 PV，⑱ 的等待随之结束"]),
-        ("Ⓓ DRA", ["ResourceClaim controller 按模板为 Pod 生成 ResourceClaim",
-                   "DRA driver 发布 ResourceSlice，并在 ㉓ 准备设备"]),
-        ("Ⓔ Cluster Autoscaler", ["发现 PodScheduled=False、reason=Unschedulable 的 Pod 就扩容节点",
-                                  "参考 nominatedNodeName 避免重复扩容；新节点的 Node Add 事件经 ⑦ 唤醒 Pod"]),
-        ("Ⓕ 节点生命周期", ["node-lifecycle-controller：节点失联时加 not-ready/unreachable 的 NoExecute 污点",
-                         "taint-eviction-controller：超过 tolerationSeconds（③ 默认 300s）后删除 Pod"]),
-        ("Ⓖ descheduler（可选）", ["按策略驱逐已运行的 Pod（如负载不均、违反亲和）",
-                                  "调度器自己从不迁移已绑定的 Pod，重平衡只能靠驱逐后重建"]),
-    ]
-    rows = [ext[0:3], ext[3:6], ext[6:7]]
-    for row in rows:
-        rh = max(layout(ew, e[0], e[1])[2] for e in row)
-        for i, (hd, it) in enumerate(row):
-            card(c, L + i * (ew + eg), y, ew, hd, it, TEAL, dash=True, h=rh)
-        y += rh + 14
-    # 图例放在最后一行的空位
-    lx = L + ew + eg
-    ly = y - 14 - rh
+    # ---------------- 图例 ----------------
     legend = [("主流程 / API Server", BLUE, False), ("调度队列", VIOLET, False),
               ("绑定 / 节点", GREEN, False), ("会重试的失败", ORANGE, False),
-              ("Pod 到此为止", RED, False), ("外部组件", TEAL, True), ("通用步骤", GRAY, False)]
-    cx, cy = lx + 4, ly + 6
-    c.text(cx, cy + 12, "图例", 13, INK, bold=True)
-    cy += 24
-    for i, (s, col, d) in enumerate(legend):
-        ww = tw(s, 12.5) + 20
-        if cx + ww > R:
-            cx, cy = lx + 4, cy + 34
-        c.chip(cx, cy, s, col, dash=d)
-        cx += ww + 10
-    y += 4
-    panel(c, idx, 20, top, 960, y - top, "周边组件", TEAL, "不属于调度器，但决定了 Pod 能否进入、何时被唤醒、最终落在哪")
-    y += 20
+              ("Pod 到此为止", RED, False), ("调度器之外的组件", TEAL, True), ("通用步骤", GRAY, False)]
+    total = sum(tw(t, 12.5) + 20 for t, _, _ in legend) + 10 * (len(legend) - 1) + tw("图例", 13, True) + 14
+    cx = (W - total) / 2
+    c.text(cx, y + 18, "图例", 13, INK, bold=True)
+    cx += tw("图例", 13, True) + 14
+    for t, col, d in legend:
+        c.chip(cx, y, t, col, dash=d)
+        cx += tw(t, 12.5) + 30
+    y += 46
 
     c.h = int(y)
     return c
