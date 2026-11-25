@@ -43,7 +43,11 @@ func New(_ context.Context, _ runtime.Object, handle fwk.Handle) (fwk.Plugin, er
 }
 ```
 
-整个插件就是一个严格弱序：**`Less(a, b)` 为真表示 a 应该排在 b 前面。** 先比优先级，数值大的在前；优先级相等再比时间戳，早的在前（第 10–14 行）。两者都相等时 `Less(a,b)` 和 `Less(b,a)` 都为假，堆不保证它们的先后。
+整个插件就是一个严格弱序：**`Less(a, b)` 为真表示 a 应该排在 b 前面。** 比较分三步（第 10–14 行）：
+
+1. 先比优先级，数值大的在前；
+2. 优先级相等再比时间戳，早的在前；
+3. 两者都相等时 `Less(a,b)` 和 `Less(b,a)` 都为假，堆不保证它们的先后。
 
 `QueueSortPlugin` 接口只要求这一个方法：
 
@@ -139,7 +143,12 @@ PriorityClass 本身也是一样：`value` 和 `preemptionPolicy` 不可修改�
 	SystemCriticalPriority = 2 * HighestUserDefinablePriority
 ```
 
-自定义的 PriorityClass 最大是 10 亿。名字以 `system-` 开头的被保留，只能是两个内置类：`system-cluster-critical`（20 亿）和 `system-node-critical`（20 亿 + 1000）。所以不管业务侧怎么配，**CoreDNS、kube-proxy 这类用内置类的 Pod 总是排在所有业务 Pod 前面**。
+自定义的 PriorityClass 最大是 10 亿。名字以 `system-` 开头的被保留，只能是两个内置类：
+
+- `system-cluster-critical`：20 亿；
+- `system-node-critical`：20 亿 + 1000。
+
+所以不管业务侧怎么配，**CoreDNS、kube-proxy 这类用内置类的 Pod 总是排在所有业务 Pod 前面**。
 
 一个常见的配置：
 
@@ -198,7 +207,11 @@ func (p *PriorityQueue) AddUnschedulablePodIfNotPresent(ctx context.Context, pIn
 }
 ```
 
-除此之外，entity 在 `unschedulableEntities`、`backoffQ`、`activeQ` 之间移动，Pod 对象被更新，周期性刷新（`flushUnschedulableEntitiesLeftover` 改的是另一个字段 `FlushTimestamp`），都不会改 `Timestamp`。
+除此之外，下面三种情况都不会改 `Timestamp`：
+
+- entity 在 `unschedulableEntities`、`backoffQ`、`activeQ` 之间移动；
+- Pod 对象被更新；
+- 周期性刷新（`flushUnschedulableEntitiesLeftover` 改的是另一个字段 `FlushTimestamp`）。
 
 刷新的效果是：**同优先级内，失败过的 Pod 排到后面去**。下图是一个例子。
 
@@ -289,7 +302,12 @@ func (bq *backoffQueue) lessBackoffCompletedWithPriority(entity1, entity2 framew
 }
 ```
 
-退避到期时间会被 `alignToWindow` 截断到 1 秒的窗口（`backoffQOrderingWindowDuration`），**所以只有同一秒内到期的 entity 之间才按 Less 排序**（第 7–11 行：先比 `getBackoffTime`，相等才落到 `activeQLessFn`）。这个 feature 打开后，`activeQ` 为空时 `Pop` 会直接从 `backoffQ` 取，取出的顺序因此也基本符合优先级。只有 `entityErrorBackoffQ`（因 `Error` 状态退避的 entity）仍然只按到期时间排序。
+退避到期时间会被 `alignToWindow` 截断到 1 秒的窗口（`backoffQOrderingWindowDuration`），比较分两步（第 7–11 行）：
+
+1. 先比 `getBackoffTime`；
+2. 相等才落到 `activeQLessFn`。
+
+**所以只有同一秒内到期的 entity 之间才按 Less 排序**。这个 feature 打开后，`activeQ` 为空时 `Pop` 会直接从 `backoffQ` 取，取出的顺序因此也基本符合优先级。只有 `entityErrorBackoffQ`（因 `Error` 状态退避的 entity）仍然只按到期时间排序。
 
 两个堆用的是同一份 Less。这不是巧合：整个调度器只有一个 `PriorityQueue`，也就只有一份比较函数，框架对此有强校验。
 
@@ -357,7 +375,13 @@ func rankMemoryPressure(pods []*v1.Pod, stats statsFunc) {
 }
 ```
 
-内存压力下先看是否超出 request，再看 priority，再看实际用量（第 3 行的排序键顺序）。**一个 PriorityClass 同时影响了「先调度谁」「可以赶走谁」「节点紧张时先赶走谁」三件事**，设计 PriorityClass 体系时要一起考虑。
+内存压力下按三个键依次比较（第 3 行的排序键顺序）：
+
+1. 是否超出 request；
+2. priority；
+3. 实际用量。
+
+**一个 PriorityClass 同时影响了「先调度谁」「可以赶走谁」「节点紧张时先赶走谁」三件事**，设计 PriorityClass 体系时要一起考虑。
 
 三处正常路径上的用法看完了，下面是几种经常被误解的情况。
 
@@ -365,7 +389,12 @@ func rankMemoryPressure(pods []*v1.Pod, stats statsFunc) {
 
 **高优先级不等于一定先调度成功。** `PrioritySort` 只保证高优先级的 Pod 先出队、先跑调度周期。它调度失败后离开 `activeQ`，进入 `backoffQ` 或 `unschedulableEntities`，后面的低优先级 Pod 照常出队。所以一个放不下的大 Pod 不会造成队头阻塞，代价是低优先级的小 Pod 可能先把碎片资源占了，大 Pod 要靠抢占才能挤进去。
 
-**同优先级不是严格的 FIFO。** 刷新 `Timestamp` 的规则让失败过的 Pod 排到后面；调度器重启（或 leader 切换）后，队列由 informer 的全量 List 重建，所有 Pending Pod 的 `Timestamp` 都变成重建时刻，原来的先后关系就丢了。依赖「先创建先调度」的业务逻辑不可靠，需要严格顺序应当用 gate 或 `TopologicalSort` 之类的插件显式控制。
+**同优先级不是严格的 FIFO。** 原因有两个：
+
+- 刷新 `Timestamp` 的规则让失败过的 Pod 排到后面；
+- 调度器重启（或 leader 切换）后，队列由 informer 的全量 List 重建，所有 Pending Pod 的 `Timestamp` 都变成重建时刻，原来的先后关系就丢了。
+
+依赖「先创建先调度」的业务逻辑不可靠，需要严格顺序应当用 gate 或 `TopologicalSort` 之类的插件显式控制。
 
 **改 PriorityClass 不影响已有 Pod。** 删掉重建一个同名、`value` 不同的 PriorityClass，已经存在的 Pod 仍保留旧的 `spec.priority`，Pending 的 Pod 也一样。要让它们按新优先级排队，只能重建 Pod。
 

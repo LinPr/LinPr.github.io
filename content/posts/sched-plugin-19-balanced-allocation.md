@@ -181,7 +181,12 @@ func (ba *BalancedAllocation) Score(ctx context.Context, state fwk.CycleState, p
 }
 ```
 
-`ba.score` 是共享的 `resourceAllocationScorer.score`：先由 `calculateNodeAllocatableRequest` 从节点取出三个向量 `requested`（放上 Pod 之后）、`allocated`（放之前）、`allocatable`，再交给 `scorer` 函数。`NodeResourcesFit` 的三种策略只用了 `requested` 和 `allocatable`，`allocated` 这个参数就是为均衡度打分准备的：
+`ba.score` 是共享的 `resourceAllocationScorer.score`，分两步：
+
+1. 由 `calculateNodeAllocatableRequest` 从节点取出三个向量 `requested`（放上 Pod 之后）、`allocated`（放之前）、`allocatable`；
+2. 交给 `scorer` 函数。
+
+`NodeResourcesFit` 的三种策略只用了 `requested` 和 `allocatable`，`allocated` 这个参数就是为均衡度打分准备的：
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/noderesources/balanced_allocation.go
@@ -247,7 +252,12 @@ func balancedResourceScore(requested, allocatable []int64) int64 {
 }
 ```
 
-每种资源算一个请求占比（第 5–15 行），超过 1 截断为 1（节点被超额请求时）。然后计算这些占比的总体标准差：
+计算分两步：
+
+1. 每种资源算一个请求占比（第 5–15 行），超过 1 截断为 1（节点被超额请求时）；
+2. 计算这些占比的总体标准差。
+
+标准差的计算按资源数分三种情况：
 
 - 两种资源时，均值是 `(f₁+f₂)/2`，每个点到均值的距离都是 `|f₁−f₂|/2`，标准差就是 `|f₁−f₂|/2`。代码把这个特例单独写出来，省掉开方。
 - 三种及以上，按定义算。
@@ -261,7 +271,12 @@ func balancedResourceScore(requested, allocatable []int64) int64 {
 
 ### 4.2 改善量与映射
 
-如果只看「放上之后」的均衡分，图中的节点 Y（放之后 92）会胜过节点 X（放之后 85）。但 Y 原本是完美均衡的 100 分，这个偏内存的 Pod 让它变差了；X 原本 CPU 偏高、内存闲置，这个 Pod 正好把它往均衡方向拉了一把。当前实现比较的是改善量：
+如果只看「放上之后」的均衡分，图中的节点 Y（放之后 92）会胜过节点 X（放之后 85）。但两个节点的变化方向相反：
+
+- Y 原本是完美均衡的 100 分，这个偏内存的 Pod 让它变差了；
+- X 原本 CPU 偏高、内存闲置，这个 Pod 正好把它往均衡方向拉了一把。
+
+当前实现比较的是改善量：
 
 ```text {linenos=inline}
 Δ     = scoreWithPod − scoreWithoutPod        ∈ [−50, 50]

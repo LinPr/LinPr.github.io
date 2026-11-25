@@ -56,7 +56,12 @@ func (b DefaultBinder) Bind(ctx context.Context, state fwk.CycleState, p *v1.Pod
 }
 ```
 
-两条路径：`APICacher()` 非 nil（即 `SchedulerAsyncAPICalls` 开启）时，把调用交给 API dispatcher 排队执行，自己阻塞等结果（第 9–20 行）；否则直接用 clientset 同步调用（第 21–26 行）。两条路径的失败都包成 `Error` 状态返回，**从不返回 `Unschedulable`**。
+有两条路径：
+
+- `APICacher()` 非 nil（即 `SchedulerAsyncAPICalls` 开启）时，把调用交给 API dispatcher 排队执行，自己阻塞等结果（第 9–20 行）；
+- 否则直接用 clientset 同步调用（第 21–26 行）。
+
+两条路径的失败都包成 `Error` 状态返回，**从不返回 `Unschedulable`**。
 
 `Binding` 里带了 Pod 的 `UID`，这不是装饰，第二节会看到它被 API Server 当作前置条件。
 
@@ -177,11 +182,18 @@ func BindPod(ctx context.Context, cs kubernetes.Interface, binding *v1.Binding) 
 	}
 ```
 
-`prepareAssumedPod` 深拷贝 Pod，把 `spec.nodeName` 设为选中的节点；`cache.AssumePod` 把这个副本加进 cache，节点的 NodeInfo 立刻计入它的资源。下一个 Pod 的调度周期开头 `UpdateSnapshot` 时，就能看到这个节点少了这些资源。
+assume 分三步生效：
+
+1. `prepareAssumedPod` 深拷贝 Pod，把 `spec.nodeName` 设为选中的节点；
+2. `cache.AssumePod` 把这个副本加进 cache，节点的 NodeInfo 立刻计入它的资源；
+3. 下一个 Pod 的调度周期开头 `UpdateSnapshot` 时，就能看到这个节点少了这些资源。
 
 **于是调度主循环不必等 API 往返。** 一次 binding 请求通常在几毫秒到几十毫秒，如果串行等待，调度吞吐会被 API 延迟直接卡住；有了 assume，主循环处理完 Permit 就去取下一个 Pod，绑定在后台 goroutine 里并行进行。
 
-assume 也有顺序要求：先 `AssumePod`，再跑 Reserve 插件。Reserve 失败时，`UnreserveAndForgetFromCache` 对所有 Reserve 插件调用 Unreserve（包括没有执行到的那些，所以 Unreserve 必须幂等），再 `ForgetPod`。
+assume 也有顺序要求：先 `AssumePod`，再跑 Reserve 插件。Reserve 失败时，`UnreserveAndForgetFromCache` 按相反顺序回滚：
+
+1. 对所有 Reserve 插件调用 Unreserve（包括没有执行到的那些，所以 Unreserve 必须幂等）；
+2. 再 `ForgetPod`。
 
 ### 3.2 绑定 goroutine 里的各步
 
@@ -255,7 +267,12 @@ func (sched *Scheduler) bind(ctx context.Context, schedFramework framework.Frame
 }
 ```
 
-`extendersBinding` 遍历 extender，第一个 `IsBinder()` 且 `IsInterested(pod)` 的 extender 负责绑定。它出错时如果标记了 `ignorable` 就跳过，换下一个；否则返回错误。只要有 extender 接手，Bind 插件就不会被调用。源码上方挂着一个 TODO：`Move this to a Plugin`，extender 绑定是 framework 之前的遗留设计。
+`extendersBinding` 遍历 extender，第一个 `IsBinder()` 且 `IsInterested(pod)` 的 extender 负责绑定。它出错时有两种处理：
+
+- 标记了 `ignorable`，就跳过，换下一个；
+- 否则返回错误。
+
+只要有 extender 接手，Bind 插件就不会被调用。源码上方挂着一个 TODO：`Move this to a Plugin`，extender 绑定是 framework 之前的遗留设计。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/runtime/framework.go
@@ -390,7 +407,13 @@ func (sched *Scheduler) handleBindingCycleError(
 
 **如果 informer 里的 Pod 已经有 `nodeName`（第 5 行），就不再放回队列。** 此时 cache 里 assumed 的副本已经被 Forget 了，等 informer 的 Update 事件到达时，`AddPod` 走 `!ok` 分支，把它当作一个普通的已分配 Pod 加进来。资源统计在这个短暂窗口里少算了一次，但很快会自我修正。
 
-如果事件比 Forget 先到呢？那时 `AddPod` 走 assumed 分支，状态变成 Added；随后 `ForgetPod` 发现它已经不在 `assumedPods` 里，`validateAssumedPod` 报错，`handleBindingCycleError` 记录 `ForgetPod failed` 并跳过广播。cache 的状态仍然是对的。
+如果事件比 Forget 先到呢？过程分三步：
+
+1. `AddPod` 走 assumed 分支，状态变成 Added；
+2. 随后 `ForgetPod` 发现它已经不在 `assumedPods` 里，`validateAssumedPod` 报错；
+3. `handleBindingCycleError` 记录 `ForgetPod failed` 并跳过广播。
+
+cache 的状态仍然是对的。
 
 ## 六、SchedulerAsyncAPICalls：API dispatcher
 
@@ -442,9 +465,17 @@ func (cq *callQueue) merge(oldAPICall, apiCall *queuedAPICall) error {
 
 callQueue 维护三样东西：`apiCalls` 按 UID 存当前有效的调用，`callsQueue` 是等待执行的 UID 的 FIFO，`inFlightEntities` 是正在执行的 UID 集合。不变量是：**同一个对象同一时刻最多一个调用在执行**，后来的调用要么合并进去，要么覆盖，要么被丢弃。
 
-这个设计针对的是一个具体问题：绑定周期开头会 patch `nominatedNodeName`（3.2 节第 1 步），紧接着又要 binding。在同步模式下这是两次串行的 API 请求；在 dispatcher 里，如果 patch 还没来得及发出，binding 到达时直接覆盖它。**binding 会在 API Server 端清空 `nominatedNodeName`，先写再清的那次 patch 本来就是多余的。**
+这个设计针对的是一个具体问题：绑定周期开头会 patch `nominatedNodeName`（3.2 节第 1 步），紧接着又要 binding。两种模式的处理不同：
 
-relevance 的含义因此是「谁的效果能涵盖谁」。binding 涵盖了 status patch，所以 binding 到达时覆盖排队中的 patch；patch 到达时如果 binding 已在队列或执行中，patch 直接被跳过。
+- 同步模式下，这是两次串行的 API 请求；
+- 在 dispatcher 里，如果 patch 还没来得及发出，binding 到达时直接覆盖它。
+
+**binding 会在 API Server 端清空 `nominatedNodeName`，先写再清的那次 patch 本来就是多余的。**
+
+relevance 的含义因此是「谁的效果能涵盖谁」。binding 涵盖了 status patch，所以两个方向的处理是：
+
+- binding 到达时，覆盖排队中的 patch；
+- patch 到达时，如果 binding 已在队列或执行中，patch 直接被跳过。
 
 ### 6.2 执行与等待
 
@@ -462,7 +493,10 @@ relevance 的含义因此是「谁的效果能涵盖谁」。binding 涵盖了 s
 			}()
 ```
 
-`Run` 的主循环每弹出一个调用就起一个 goroutine 执行（第 4–11 行）。`finalize` 比较 map 里的 `callID`：没变就删除记录；变了说明执行期间有新调用登记进来，把 UID 重新放回队列。
+`Run` 的主循环每弹出一个调用就起一个 goroutine 执行（第 4–11 行）。`finalize` 比较 map 里的 `callID`，有两种结果：
+
+- 没变，就删除记录；
+- 变了，说明执行期间有新调用登记进来，把 UID 重新放回队列。
 
 `DefaultBinder` 在另一端调用 `WaitOnFinish`：
 
@@ -522,7 +556,10 @@ profiles:
 
 如果要彻底替换，`bind.enabled` 里只写 `MyBinder` 即可。
 
-自定义 binder 的典型用途：绑定前在 Pod 上补充注解（Binding 对象的 annotations 会被合并到 Pod 上）、把 Pod 绑定到虚拟节点后再转发到别的集群、在多集群调度器里用别的客户端写目标集群。无论哪种，都要遵守两条约定：一是失败要返回 `Error`，不要返回 `Unschedulable`，绑定阶段的失败框架会按 backoff 处理；二是不要忽略 `UID`，否则可能把决定套到同名的新 Pod 上。
+自定义 binder 的典型用途：绑定前在 Pod 上补充注解（Binding 对象的 annotations 会被合并到 Pod 上）、把 Pod 绑定到虚拟节点后再转发到别的集群、在多集群调度器里用别的客户端写目标集群。无论哪种，都要遵守两条约定：
+
+- 失败要返回 `Error`，不要返回 `Unschedulable`，绑定阶段的失败框架会按 backoff 处理；
+- 不要忽略 `UID`，否则可能把决定套到同名的新 Pod 上。
 
 ## 八、边界情况与坑
 
@@ -551,7 +588,12 @@ profiles:
 | `VolumeBinding` | PV/PVC 绑定 | PreBind |
 | `DynamicResources` | ResourceClaim 的 finalizer、status、删除扩展资源 claim | PreBind / Unreserve / PostFilter |
 
-其中 binding、失败时的 status patch、提名的写入与清理在 `SchedulerAsyncAPICalls` 开启后都走 API dispatcher；受害者的 condition patch 与删除、插件 PreBind 里的写操作仍是直接调用 clientset。这张表也说明了为什么调度器需要对这么多资源的写权限。
+`SchedulerAsyncAPICalls` 开启后，这些写操作分成两类：
+
+- binding、失败时的 status patch、提名的写入与清理，都走 API dispatcher；
+- 受害者的 condition patch 与删除、插件 PreBind 里的写操作，仍是直接调用 clientset。
+
+这张表也说明了为什么调度器需要对这么多资源的写权限。
 
 ### 9.3 吞吐与延迟
 

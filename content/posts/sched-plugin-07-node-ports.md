@@ -101,7 +101,12 @@ func GetHostPorts(pod *v1.Pod) []v1.ContainerPort {
 
 **所以清单上只有「会长期占端口」的容器。**
 
-这个函数有两个调用方：插件的 PreFilter（收集待调度 Pod 想要的端口），以及 `NodeInfo.update`（Pod 加入或离开节点时维护节点的已用端口）。两边用同一个函数，保证「想要」和「已占」的口径一致。
+这个函数有两个调用方：
+
+- 插件的 PreFilter：收集待调度 Pod 想要的端口；
+- `NodeInfo.update`：Pod 加入或离开节点时维护节点的已用端口。
+
+两边用同一个函数，保证「想要」和「已占」的口径一致。
 
 端口从哪里收集已经清楚，剩下的是各扩展点分别怎么用它。
 
@@ -154,7 +159,12 @@ func (pl *NodePorts) PreFilter(ctx context.Context, cycleState fwk.CycleState, p
 }
 ```
 
-CycleState 的 key 是 `"PreFilterNodePorts"`，值就是待调度 Pod 的端口切片（第 14–19 行）。绝大多数 Pod 没有 `hostPort`，在这里返回 `Skip`（第 16–18 行），整个调度周期里 `NodePorts` 的 Filter 一次都不会被调用。
+写进 CycleState 的这一项（第 14–19 行）：
+
+- key 是 `"PreFilterNodePorts"`；
+- 值就是待调度 Pod 的端口切片。
+
+绝大多数 Pod 没有 `hostPort`，在这里返回 `Skip`（第 16–18 行），整个调度周期里 `NodePorts` 的 Filter 一次都不会被调用。
 
 `Clone` 返回自身，`PreFilterExtensions()` 返回 `nil`。**这两个选择背后是同一个设计：CycleState 里只放待调度 Pod 自己的端口，节点的已用端口不在状态里**。抢占模拟时，`DefaultPreemption` 在克隆出来的 `NodeInfo` 上删除受害者：
 
@@ -298,9 +308,21 @@ func (h HostPortInfo) sanitize(ip, protocol *string) {
 
 端口被占是一个「资源被别人用了」的问题，和 CPU 不够性质一样：只要把占端口的 Pod 赶走，端口就释放了。所以 `NodePorts` 返回 `Unschedulable`。
 
-一个实际场景：节点上有一个低优先级的调试 Pod 占了 `hostPort: 9100`，现在要部署高优先级的 node-exporter DaemonSet，它也要 9100。DaemonSet Pod 通过节点亲和被锁定到这个节点（见上一篇的 `PreFilterResult`），`NodePorts` 返回 `Unschedulable`，`DefaultPreemption` 在这个节点上模拟删除调试 Pod，`RemovePod` 释放 9100，Filter 通过，调试 Pod 被驱逐，node-exporter 被提名到这个节点。如果 `NodePorts` 返回的是 `UnschedulableAndUnresolvable`，这个 DaemonSet Pod 会永远 Pending。
+一个实际场景：节点上有一个低优先级的调试 Pod 占了 `hostPort: 9100`，现在要部署高优先级的 node-exporter DaemonSet，它也要 9100。DaemonSet Pod 通过节点亲和被锁定到这个节点（见上一篇的 `PreFilterResult`），之后分三步：
 
-对比上一篇的 `NodeAffinity` 和下一篇的 [NodeResourcesFit](/posts/sched-plugin-08-node-resources-fit/)：前者一律不可解决，后者视情况而定（请求量超过节点总量时不可解决），`NodePorts` 则一律可解决。它不需要区分，因为端口表里的每一项都对应某个可以驱逐的 Pod。
+1. `NodePorts` 返回 `Unschedulable`；
+2. `DefaultPreemption` 在这个节点上模拟删除调试 Pod，`RemovePod` 释放 9100；
+3. Filter 通过，调试 Pod 被驱逐，node-exporter 被提名到这个节点。
+
+如果 `NodePorts` 返回的是 `UnschedulableAndUnresolvable`，这个 DaemonSet Pod 会永远 Pending。
+
+对比上一篇的 `NodeAffinity` 和下一篇的 [NodeResourcesFit](/posts/sched-plugin-08-node-resources-fit/)：
+
+- `NodeAffinity` 一律不可解决；
+- `NodeResourcesFit` 视情况而定（请求量超过节点总量时不可解决）；
+- `NodePorts` 则一律可解决。
+
+它不需要区分，因为端口表里的每一项都对应某个可以驱逐的 Pod。
 
 扩展点的行为到这里就讲完了。但被拒绝的 Pod 不会立刻重试，它要等一个「情况可能已经变了」的信号。
 
@@ -372,7 +394,12 @@ func (pl *NodePorts) isSchedulableAfterAssignedPodDeleted(logger klog.Logger, po
 
 第 1 条里还要多看一眼 `NominatedNodeName`：Filter 阶段框架会把提名到该节点、优先级不低于当前 Pod 的 Pod 临时加进 `NodeInfo` 再跑一遍（`RunFilterPluginsWithNominatedPods`），被提名的 Pod 实际上「预占」了端口，它被删除同样可能让端口空出来。
 
-第 3 条的实现很巧妙：把被删 Pod 的端口装进一张临时的 `HostPortInfo`，再用 `fitsPorts` 检查当前 Pod 能不能「放进」这张表。能放进就说明没有交集，用的是和 Filter 完全一样的冲突语义，`0.0.0.0` 的通配规则自动生效。
+第 3 条的实现很巧妙，分两步：
+
+1. 把被删 Pod 的端口装进一张临时的 `HostPortInfo`；
+2. 用 `fitsPorts` 检查当前 Pod 能不能「放进」这张表。
+
+能放进就说明没有交集，用的是和 Filter 完全一样的冲突语义，`0.0.0.0` 的通配规则自动生效。
 
 hint 没有检查被删 Pod 在哪个节点。只要端口有交集就 `Queue`，哪怕那个节点因为别的原因（比如节点亲和）根本不在当前 Pod 的候选范围里。**hint 的设计原则是宁可多唤醒，不可漏唤醒**，节点维度的精确判断留给下一次调度周期本身。
 
@@ -429,7 +456,11 @@ kubelet 会再查一遍。kubelet 准入的 `generalFilter` 复用了插件导�
 
 如果只是要从集群外访问服务，`NodePort` 类型的 Service（注意不是这个插件）由 kube-proxy 在所有节点上开放端口，不影响调度；`LoadBalancer` 和 Ingress 更进一步。**只有在需要绕开 kube-proxy、保留客户端源 IP、或者必须让流量落在本节点的 Pod 上时，`hostPort`/`hostNetwork` 才值得它带来的调度约束。**
 
-从调度器的角度看，`NodePorts` 是一个几乎零成本的插件：大部分 Pod 在 PreFilter 就 `Skip` 了；需要检查的 Pod，每个节点也只是几次 map 查找。它值得一读，是因为它用最少的代码展示了几个贯穿全系列的设计：状态放在 `NodeInfo` 还是 CycleState、失败码如何决定抢占、hint 如何用和 Filter 相同的语义精确判断「这个事件和我有没有关系」。
+从调度器的角度看，`NodePorts` 是一个几乎零成本的插件：大部分 Pod 在 PreFilter 就 `Skip` 了；需要检查的 Pod，每个节点也只是几次 map 查找。它值得一读，是因为它用最少的代码展示了几个贯穿全系列的设计：
+
+- 状态放在 `NodeInfo` 还是 CycleState；
+- 失败码如何决定抢占；
+- hint 如何用和 Filter 相同的语义精确判断「这个事件和我有没有关系」。
 
 ## 七、小结
 

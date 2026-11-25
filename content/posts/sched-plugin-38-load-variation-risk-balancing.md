@@ -84,7 +84,10 @@ func SetDefaults_LoadVariationRiskBalancingArgs(args *LoadVariationRiskBalancing
 
 两个参数的默认值都是 1.0。负数不会报错，而是在 defaulting 阶段被**静默替换**成默认值。`validation` 包里没有这个插件的校验函数，所以写了 `-2` 也能正常启动，只是行为和预期不同。插件 README 推荐 `margin=1、sensitivity=2`，和代码默认值不一样，下文会算出两者的差别。
 
-`TrimaranSpec` 的含义和默认值见上一篇 2.3 节：不写 `watcherAddress` 时默认用 metrics-server；用 Prometheus 时默认跳过 TLS 校验。
+`TrimaranSpec` 的含义和默认值见上一篇 2.3 节，要点有两条：
+
+- 不写 `watcherAddress` 时默认用 metrics-server；
+- 用 Prometheus 时默认跳过 TLS 校验。
 
 `New` 和 TLP 几乎一样：创建 Collector，创建 `PodAssignEventHandler` 并挂到 Pod informer 上。
 
@@ -158,7 +161,16 @@ func (pl *LoadVariationRiskBalancing) Score(ctx context.Context, cycleState fwk.
 }
 ```
 
-流程是：节点没有指标时得 0 分（第 7–10 行）；有指标时，CPU 和内存各算一个分（第 16–19 行、第 23–26 行）。两个都有就取**较小值**（第 30–31 行），也就是瓶颈资源决定得分；只有一个时，`max(x, 0)` 就等于那一个（第 32–33 行）；两个都没有时得 0 分。
+流程分两步：
+
+1. 节点没有指标时得 0 分（第 7–10 行）；
+2. 有指标时，CPU 和内存各算一个分（第 16–19 行、第 23–26 行）。
+
+合并时有三种情况：
+
+- 两个都有就取**较小值**（第 30–31 行），也就是瓶颈资源决定得分；
+- 只有一个时，`max(x, 0)` 就等于那一个（第 32–33 行）；
+- 两个都没有时得 0 分。
 
 Pod 的资源量由 `GetResourceRequested` 计算，它把 `container.Resources.Requests` 作为回调传给 `GetEffectiveResource`（第 3 行的 `fn` 参数）：
 
@@ -190,7 +202,13 @@ func GetEffectiveResource(pod *v1.Pod, fn func(container *v1.Container) v1.Resou
 }
 ```
 
-这是旧版 kube-scheduler 的口径：容器求和（第 6–8 行），与每个 init 容器取 max（第 10–19 行），再加 overhead（第 21–23 行）。它没有处理 sidecar（`restartPolicy: Always` 的 init 容器应该累加，而不是取 max），也不读 Pod 级 `spec.resources`。与 TLP 不同，这里用的是 **request**，不是 limit。
+这是旧版 kube-scheduler 的口径，分三步：
+
+1. 容器求和（第 6–8 行）；
+2. 与每个 init 容器取 max（第 10–19 行）；
+3. 再加 overhead（第 21–23 行）。
+
+它没有处理 sidecar（`restartPolicy: Always` 的 init 容器应该累加，而不是取 max），也不读 Pod 级 `spec.resources`。与 TLP 不同，这里用的是 **request**，不是 limit。
 
 ### 3.2 GetResourceData：从一组 Metric 里挑出均值和标准差
 
@@ -220,7 +238,12 @@ func GetResourceData(metrics []watcher.Metric, resourceType string) (avg float64
 }
 ```
 
-`AVG` 优先；没有 `AVG` 时，用 `Latest` 或空算子的值当均值；`STD` 单独取（第 9–16 行）。只要出现过该类型的任意一个指标，`isValid` 就为 true（第 17 行）。所以，**只有 STD 没有均值时，均值按 0 处理**。
+挑选规则如下：
+
+- `AVG` 优先；没有 `AVG` 时，用 `Latest` 或空算子的值当均值；`STD` 单独取（第 9–16 行）；
+- 只要出现过该类型的任意一个指标，`isValid` 就为 true（第 17 行）。
+
+所以，**只有 STD 没有均值时，均值按 0 处理**。
 
 ### 3.3 CreateResourceStats 与 GetMuSigma
 
@@ -247,7 +270,11 @@ func GetResourceData(metrics []watcher.Metric, resourceType string) (avg float64
 	rs.UsedStdev = nodeStd * rs.Capacity / 100
 ```
 
-容量取 **`Allocatable`**（第 4–5 行）。CPU 以毫核为单位（第 8 行），内存换算成 MiB（第 11–13 行的 `MegaFactor`）。百分比形式的均值和标准差乘以容量，得到绝对量（第 17–18 行）。
+换算分三步：
+
+1. 容量取 **`Allocatable`**（第 4–5 行）；
+2. CPU 以毫核为单位（第 8 行），内存换算成 MiB（第 11–13 行的 `MegaFactor`）；
+3. 百分比形式的均值和标准差乘以容量，得到绝对量（第 17–18 行）。
 
 ```go {linenos=inline}
 // pkg/trimaran/resourcestats.go
@@ -335,7 +362,12 @@ sensitivity（s）是开方次数（第 20–21 行的 `math.Pow(sigma, 1/sensit
 
 ### 4.3 等分线
 
-令 score = S，则 `μ + m·σ^(1/s) = 2(1 − S/100)`。当 s=1、m=1 时，等分线是 μ–σ 平面上斜率为 −1 的直线，正好是 KEP 里的 `M + V = c` 对角线；当 s=2 时，等分线变成 `μ = c − √σ`，在 σ 接近 0 处很陡。也就是说，σ 从 0 增加到 0.05 带来的扣分，和 μ 增加 0.22 相当。
+令 score = S，则 `μ + m·σ^(1/s) = 2(1 − S/100)`。等分线的形状取决于 s：
+
+- 当 s=1、m=1 时，等分线是 μ–σ 平面上斜率为 −1 的直线，正好是 KEP 里的 `M + V = c` 对角线；
+- 当 s=2 时，等分线变成 `μ = c − √σ`，在 σ 接近 0 处很陡。
+
+也就是说，σ 从 0 增加到 0.05 带来的扣分，和 μ 增加 0.22 相当。
 
 {{< figure src="/images/posts/sched-plugins/38-lvrb-iso-risk.svg" caption="μ–σ 平面上的等分线：实线 sensitivity=1，虚线 sensitivity=2；右侧是 4.4 节算例（点击查看大图）" link="/images/posts/sched-plugins/38-lvrb-iso-risk.svg" >}}
 
@@ -368,7 +400,10 @@ sensitivity = 2：
 
 如果只看 CPU 均值，N2（40%）比 N1（50%）空，`LeastAllocated` 类的策略会选 N2。**LVRB 在两种配置下都选了更稳定的 N1**。s=2 时，两者的差距从 5 分拉大到 9 分，风险项在总分中的权重更大。
 
-单测 `pkg/trimaran/loadvariationriskbalancing/analysis_test.go` 的 `valid data` 用例可以用来验证公式：Capacity=100、Req=10、UsedAvg=40、UsedStdev=36、m=s=1，μ = 0.5，σ' = 0.36，risk = 0.43，得 57。`loadvariationriskbalancing_test.go` 的 `CPU and Memory metrics` 用例则演示了取 min：CPU 得 67，内存 μ = 0.5 + 0.5 = 1.0、σ = 0.1，得 45，最终得 45。
+两个单测用例可以用来验证公式：
+
+- `pkg/trimaran/loadvariationriskbalancing/analysis_test.go` 的 `valid data`：Capacity=100、Req=10、UsedAvg=40、UsedStdev=36、m=s=1，μ = 0.5，σ' = 0.36，risk = 0.43，得 57；
+- `loadvariationriskbalancing_test.go` 的 `CPU and Memory metrics` 演示了取 min：CPU 得 67，内存 μ = 0.5 + 0.5 = 1.0、σ = 0.1，得 45，最终得 45。
 
 ## 五、边界情况与坑
 
@@ -392,7 +427,12 @@ LVRB 实际的分数区间往往只有 [50, 100] 左右，和其它满幅 [0, 10
 
 它没有把风险换算成「超出容量的概率」，而是把正态分布的 68–95–99.7 规则当作选择 margin 的经验依据。下一篇的 `LowRiskOverCommitment` 走得更远：用 Beta 分布拟合 [0, 1] 区间上的利用率，直接计算「超出某个阈值的概率」。Beta 分布天然有界，不会出现正态分布给利用率分配负值或超过 100% 的问题。
 
-**和 in-tree 均衡类插件的对照。** `NodeResourcesFit` 的 `LeastAllocated` 按 request 选最空的节点；`NodeResourcesBalancedAllocation` 让同一节点上 CPU 与内存的 request 占比接近（详见[《BalancedAllocation》](/posts/sched-plugin-19-balanced-allocation/)）。LVRB 是 `LeastAllocated` 的「实际用量 + 波动」版本。它对多种资源取 min，是瓶颈思路，和 BalancedAllocation 的「让各资源占比接近」并不相同：LVRB 不在乎 CPU 和内存是否均衡，只在乎最危险的那个资源。
+**和 in-tree 均衡类插件的对照。** in-tree 有两个均衡类插件：
+
+- `NodeResourcesFit` 的 `LeastAllocated` 按 request 选最空的节点；
+- `NodeResourcesBalancedAllocation` 让同一节点上 CPU 与内存的 request 占比接近（详见[《BalancedAllocation》](/posts/sched-plugin-19-balanced-allocation/)）。
+
+LVRB 是 `LeastAllocated` 的「实际用量 + 波动」版本。它对多种资源取 min，是瓶颈思路，和 BalancedAllocation 的「让各资源占比接近」并不相同：LVRB 不在乎 CPU 和内存是否均衡，只在乎最危险的那个资源。
 
 **参数怎么选。** 一个可操作的思路：先看集群中节点 CPU 标准差的分布（直接在 Prometheus 上查 `stddev_over_time(instance:node_cpu:ratio[15m])`）。如果大多数节点在 2% 到 8% 之间，s=1 时 σ' 的影响不超过 4 分，几乎可以忽略；s=2 时 σ' 落在 0.14 到 0.28 之间，影响 7 到 14 分，足以改变排序。margin 用来整体调节「波动和均值谁更重要」，但要注意 `m·σ'` 有上限 1。
 

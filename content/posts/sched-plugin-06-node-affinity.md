@@ -114,7 +114,12 @@ func (s RequiredNodeAffinity) Match(node *v1.Node) (bool, error) {
 }
 ```
 
-**先查 `nodeSelector`，不满足立刻返回；满足了再查 required 亲和，两者是 AND。**（`Match` 在第 22–32 行）`nodeSelector` 被转成 `labels.SelectorFromSet`（第 9–11 行），map 里每个键值都是一个等值条件，彼此也是 AND。
+**`nodeSelector` 和 required 亲和是 AND。** `Match`（第 22–32 行）分两步：
+
+1. 先查 `nodeSelector`，不满足立刻返回；
+2. 满足了再查 required 亲和。
+
+`nodeSelector` 被转成 `labels.SelectorFromSet`（第 9–11 行），map 里每个键值都是一个等值条件，彼此也是 AND。
 
 `nodeSelector` 只是这一层里的一个因子。required 亲和内部还有两层 AND/OR，下一节拆开。
 
@@ -157,7 +162,10 @@ func (t *nodeSelectorTerm) match(nodeLabels labels.Set, nodeFields fields.Set) (
 }
 ```
 
-遍历 term（第 10–19 行），任何一个命中就返回 `true`，这是 OR。单个 term 里 `matchExpressions` 被转成一个 `labels.Selector`（多条 requirement 叠加即 AND），`matchFields` 被转成 `fields.AndSelectors`，两者又是 AND（第 23–34 行）。
+匹配分两层：
+
+- term 之间是 OR：遍历 term（第 10–19 行），任何一个命中就返回 `true`；
+- 单个 term 内是 AND：`matchExpressions` 被转成一个 `labels.Selector`（多条 requirement 叠加即 AND），`matchFields` 被转成 `fields.AndSelectors`，两者又是 AND（第 23–34 行）。
 
 有三个细节只有读代码才看得到：
 
@@ -165,7 +173,11 @@ func (t *nodeSelectorTerm) match(nodeLabels labels.Set, nodeFields fields.Set) (
 - `matchFields` 只认 `metadata.name`。`extractNodeFields` 只往 `fields.Set` 里放了这一个键；API 校验也只允许 `In`/`NotIn`，并且必须恰好一个值。
 - 解析错误是「懒」的。名字里的 `Lazy` 指只有在没有任何 term 命中时才把解析错误返回。这是为了兼容历史上 apiserver 校验不严时存进 etcd 的非法值（校验代码里至今有 `allowInvalidLabelValueInRequiredNodeAffinity` 这样的开关）。**一个 term 写错了，不影响其他 term 正常匹配。**
 
-操作符方面，`In`/`NotIn`/`Exists`/`DoesNotExist` 对应 `selection` 包里的同名操作，`Gt`/`Lt` 会把标签值当整数比较。`NotIn` 和 `DoesNotExist` 对没有这个标签的节点返回 true，这经常被用来「排除某类节点」。
+操作符方面：
+
+- `In`/`NotIn`/`Exists`/`DoesNotExist` 对应 `selection` 包里的同名操作；
+- `Gt`/`Lt` 会把标签值当整数比较；
+- `NotIn` 和 `DoesNotExist` 对没有这个标签的节点返回 true，这经常被用来「排除某类节点」。
 
 语义到这里就完整了。下面按扩展点顺序看插件怎么用它。
 
@@ -213,7 +225,12 @@ func New(_ context.Context, plArgs runtime.Object, h fwk.Handle, fts feature.Fea
 }
 ```
 
-注意这里用的是 `NewNodeSelector`（第 13 行），不是 Pod 用的 `NewLazyErrorNodeSelector`（preferred 部分用的是 `NewPreferredSchedulingTerms`，第 18 行）。**管理员写的配置没有历史包袱，任何解析错误都会在 `ValidateNodeAffinityArgs` 阶段直接让调度器启动失败。** `NodeAffinityArgs` 只有一个字段 `AddedAffinity`，默认为空，表示所有节点都满足。
+注意这里用的解析函数：
+
+- required 部分是 `NewNodeSelector`（第 13 行），不是 Pod 用的 `NewLazyErrorNodeSelector`；
+- preferred 部分用的是 `NewPreferredSchedulingTerms`（第 18 行）。
+
+**管理员写的配置没有历史包袱，任何解析错误都会在 `ValidateNodeAffinityArgs` 阶段直接让调度器启动失败。** `NodeAffinityArgs` 只有一个字段 `AddedAffinity`，默认为空，表示所有节点都满足。
 
 一个典型用法是让第二个 Profile 只调度到特定节点池：
 
@@ -323,7 +340,15 @@ func (s *preFilterState) Clone() fwk.StateData {
 	return nil, nil
 ```
 
-它把 required 亲和里的 `metadata.name In [...]` 提取出来，和语义保持一致：term 内取交集（第 7–17 行，AND），term 间取并集（第 24 行，OR）。**只要有一个 term 不含节点名条件，那个 term 可能被任何节点命中，就不能缩小，直接返回 `nil`（第 19–23 行）。** 注意 `nodeNames` 有 `nil` 和「非 nil 但为空」两种状态，后者说明每个 term 的节点名条件内部自相矛盾，返回 `UnschedulableAndUnresolvable`（第 28–29 行），原因串 `pod affinity terms conflict`；能确定集合时返回 `PreFilterResult`（第 30–31 行）。
+它把 required 亲和里的 `metadata.name In [...]` 提取出来，和语义保持一致：
+
+- term 内取交集（第 7–17 行，AND）；
+- term 间取并集（第 24 行，OR）。
+
+**只要有一个 term 不含节点名条件，那个 term 可能被任何节点命中，就不能缩小，直接返回 `nil`（第 19–23 行）。** 注意 `nodeNames` 有 `nil` 和「非 nil 但为空」两种状态，最后的返回分两种情况：
+
+- 「非 nil 但为空」说明每个 term 的节点名条件内部自相矛盾，返回 `UnschedulableAndUnresolvable`（第 28–29 行），原因串 `pod affinity terms conflict`；
+- 能确定集合时返回 `PreFilterResult`（第 30–31 行）。
 
 `NotIn` 不参与推导：排除一个节点名并不能把候选集缩小到一个可枚举的集合。
 
@@ -441,7 +466,10 @@ func (pl *NodeAffinity) Score(ctx context.Context, state fwk.CycleState, pod *v1
 }
 ```
 
-没有 preferred 亲和的 Pod 在 PreScore 返回 `Skip`（第 7–10 行），Score 和 NormalizeScore 都不会执行，这个插件在总分里贡献 0。和 PreFilter 不同，PreScore 遇到解析错误是直接报错的（`fwk.AsStatus(err)`）：`NewPreferredSchedulingTerms` 不是 lazy 的，权重为 0 或 preference 为空的 term 会被静默跳过，但**有解析错误的 term 会让整个调度周期失败**。
+没有 preferred 亲和的 Pod 在 PreScore 返回 `Skip`（第 7–10 行），Score 和 NormalizeScore 都不会执行，这个插件在总分里贡献 0。和 PreFilter 不同，PreScore 遇到解析错误是直接报错的（`fwk.AsStatus(err)`）。`NewPreferredSchedulingTerms` 不是 lazy 的，对 term 的处理分两种：
+
+- 权重为 0 或 preference 为空的 term 会被静默跳过；
+- **有解析错误的 term 会让整个调度周期失败**。
 
 单个节点的原始分是命中 term 的权重之和（第 6–11 行逐个 term 判断，命中就把 `weight` 累加）：
 
@@ -591,7 +619,12 @@ PreFilter 和 Filter 开头都有一段 `IsPodResizeDeferred` 判断。`InPlaceP
 
 不满足时 Pod 会被 kubelet 拒绝，状态为 `Failed`，reason 是 `NodeAffinity`。kubelet 在这里还有一个特殊处理：如果唯一的失败原因是节点亲和，它会同步拉一次最新的 Node 对象再判断一遍，避免因为本地缓存的标签过期而误拒。
 
-**`metadata.name` 亲和和 `nodeName` 不是一回事。** 前者仍然经过完整的调度流程，资源、端口、污点都会检查，失败了会 Pending 并且可以抢占；后者完全不经过调度器。DaemonSet 早年用 `nodeName`，后来改为节点亲和，就是为了让 DaemonSet Pod 也能享受抢占和统一的资源判定。
+**`metadata.name` 亲和和 `nodeName` 不是一回事。**
+
+- 前者仍然经过完整的调度流程，资源、端口、污点都会检查，失败了会 Pending 并且可以抢占；
+- 后者完全不经过调度器。
+
+DaemonSet 早年用 `nodeName`，后来改为节点亲和，就是为了让 DaemonSet Pod 也能享受抢占和统一的资源判定。
 
 **节点亲和失败不能靠抢占解决，但 PreFilterResult 会把抢占圈得更小。** `kubectl describe` 里看到 `0/100 nodes are available: 99 node(s) didn't satisfy plugin(s) [NodeAffinity], 1 Insufficient cpu`，说明 PreFilter 已经把候选集缩到一个节点，抢占也只会在这一个节点上尝试。
 
@@ -599,7 +632,12 @@ PreFilter 和 Filter 开头都有一段 `IsPodResizeDeferred` 判断。`InPlaceP
 
 **修改 Pod 的亲和不会触发这个插件的 hint。** `EventsToRegister` 里没有 Pod 事件。正常 Pod 的亲和是不可变的；带 `schedulingGates` 的 Pod 允许放宽 `nodeSelector` 和亲和，但那时它还被 [SchedulingGates](/posts/sched-plugin-01-scheduling-gates/) 挡在队列外面，不需要 hint。
 
-**preferred 和 `TaintToleration` 的打分是两套归一化。** `TaintToleration` 用反向归一化（软污点越多越差），`NodeAffinity` 用正向归一化（命中权重越多越好）。两者权重分别是 3 和 2，一个节点同时有一个 `PreferNoSchedule` 污点且命中全部 preferred term，两项在总分里会部分抵消。
+**preferred 和 `TaintToleration` 的打分是两套归一化。**
+
+- `TaintToleration` 用反向归一化（软污点越多越差）；
+- `NodeAffinity` 用正向归一化（命中权重越多越好）。
+
+两者权重分别是 3 和 2，一个节点同时有一个 `PreferNoSchedule` 污点且命中全部 preferred term，两项在总分里会部分抵消。
 
 这些问题各有出处：有的在 API 校验，有的在 kubelet 准入，有的在打分公式。下面三节分别讲匹配代码放在哪里、PreFilterResult 的边界，以及一点实践建议。
 
@@ -618,7 +656,12 @@ PreFilter 和 Filter 开头都有一段 `IsPodResizeDeferred` 判断。`InPlaceP
 
 ### 5.2 PreFilterResult 的代价与边界
 
-`PreFilterResult` 是一个通用机制，任何插件都可以用它缩小候选集，但在 in-tree 插件里只有两个会返回非空结果：`NodeName`（Pod 已经带着 `spec.nodeName` 时返回这一个节点）和 `NodeAffinity`，后者是日常最常命中的。它的局限也很明显：只能从「枚举节点名」的条件里推导，`zone In [cn-a]` 这种标签条件即使只命中一个节点，也不会被推导出来。原因是调度器要从标签反查节点需要一个标签索引，而 `NodeInfo` 快照里没有这种索引，构造它的成本比直接跑 Filter 还高。
+`PreFilterResult` 是一个通用机制，任何插件都可以用它缩小候选集，但在 in-tree 插件里只有两个会返回非空结果：
+
+- `NodeName`：Pod 已经带着 `spec.nodeName` 时返回这一个节点；
+- `NodeAffinity`：日常最常命中的。
+
+它的局限也很明显：只能从「枚举节点名」的条件里推导，`zone In [cn-a]` 这种标签条件即使只命中一个节点，也不会被推导出来。原因是调度器要从标签反查节点需要一个标签索引，而 `NodeInfo` 快照里没有这种索引，构造它的成本比直接跑 Filter 还高。
 
 ### 5.3 生产建议
 

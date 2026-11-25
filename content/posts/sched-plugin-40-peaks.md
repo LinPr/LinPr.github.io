@@ -110,14 +110,26 @@ func initNodePowerModels(powerModel map[string]config.PowerModel) error {
 }
 ```
 
-逻辑是：配置里有 `NodePowerModel` 就直接用（第 4–6 行）；没有就读环境变量 `NODE_POWER_MODEL` 指向的 JSON 文件（第 7 行），格式是 `{"节点名": {"k0": …, "k1": …, "k2": …}}`。
+逻辑分两个分支：
 
-这里有一个 Go 语义上的问题。`powerModel` 是值传递进来的 map。`Decode(&powerModel)`（第 13 行）对 nil map 会新分配一个 map，并赋给函数内的局部变量；对非 nil 的空 map，则把键值写进原来那个 map。调用方传入的是 `args.NodePowerModel`：
+- 配置里有 `NodePowerModel` 就直接用（第 4–6 行）；
+- 没有就读环境变量 `NODE_POWER_MODEL` 指向的 JSON 文件（第 7 行），格式是 `{"节点名": {"k0": …, "k1": …, "k2": …}}`。
+
+这里有一个 Go 语义上的问题。`powerModel` 是值传递进来的 map。`Decode(&powerModel)`（第 13 行）的行为分两种：
+
+- 对 nil map 会新分配一个 map，并赋给函数内的局部变量；
+- 对非 nil 的空 map，则把键值写进原来那个 map。
+
+调用方传入的是 `args.NodePowerModel`：
 
 - 配置里完全不写 `NodePowerModel`：经过 v1 → 内部类型的转换（`autoConvert_v1_PeaksArgs_To_config_PeaksArgs` 是直接按指针转换的），它是 nil。文件被成功解析，但结果只存在局部变量里，函数返回后就丢了。插件拿到的仍是 nil map，所有节点都使用零值模型。
 - 配置里写 `NodePowerModel: {}`：它是一个非 nil 的空 map，文件内容会写进这个 map，插件能正常使用。单测 `TestPeaksScore` 走的就是这条路径（`NodePowerModel: map[string]pluginConfig.PowerModel{}`）。
 
-所以，如果打算用 ConfigMap 挂载模型文件、再通过环境变量引用，配置里要显式写一个空的 `NodePowerModel: {}`，否则文件被读了，但不会生效。另外，`deployment/README.md` 里给的 JSON 模板把系数写成了带引号的字符串（`"k0":"<replace with node 1 k0>"`），而 `PowerModel` 的字段是 `float64`，替换时必须写成数字，否则解码报错，`New` 失败。同目录下的 `deployment.yaml` 既没有挂载这个 ConfigMap，也没有设置 `NODE_POWER_MODEL`，需要自己补上。
+所以，用文件提供模型时有三处要注意：
+
+- 如果打算用 ConfigMap 挂载模型文件、再通过环境变量引用，配置里要显式写一个空的 `NodePowerModel: {}`，否则文件被读了，但不会生效；
+- `deployment/README.md` 里给的 JSON 模板把系数写成了带引号的字符串（`"k0":"<replace with node 1 k0>"`），而 `PowerModel` 的字段是 `float64`，替换时必须写成数字，否则解码报错，`New` 失败；
+- 同目录下的 `deployment.yaml` 既没有挂载这个 ConfigMap，也没有设置 `NODE_POWER_MODEL`，需要自己补上。
 
 找不到节点对应的模型时，使用零值：
 
@@ -259,7 +271,13 @@ score_i = 100                                            （max = min ≠ 0）
 不变（全为 0）                                            （max = min = 0）
 ```
 
-单测 `TestPeaksNormalizeScore` 覆盖了三种情况：`{0, 100}` → `{100, 0}`；`{0, 0}` → 原样不变（`NormalizeScore` 第 4–5 行提前返回）；`{100, 100}` → 都是 100（第 13–14 行）。注意第二、三种的不对称：所有节点代价都为 0 时全部得 0 分，代价相同但不为 0 时全部得 100 分。不过两者对排序都没有影响。
+单测 `TestPeaksNormalizeScore` 覆盖了三种情况：
+
+- `{0, 100}` → `{100, 0}`；
+- `{0, 0}` → 原样不变（`NormalizeScore` 第 4–5 行提前返回）；
+- `{100, 100}` → 都是 100（第 13–14 行）。
+
+注意第二、三种的不对称：所有节点代价都为 0 时全部得 0 分，代价相同但不为 0 时全部得 100 分。不过两者对排序都没有影响。
 
 ### 4.1 「代价为 0」的含义被混在一起
 
@@ -291,9 +309,19 @@ Score 在以下五种情况下都返回 0：
 
 **n3**：p = 115 > 100，原始分 0。
 
-只有 n1、n2 参与时：min = 3.172×10¹⁶，max = 3.546×10¹⁶。n1 → 100 − 100 = 0，n2 → 100 − 0 = 100。Peaks 选 n2。
+只有 n1、n2 参与时：min = 3.172×10¹⁶，max = 3.546×10¹⁶。
 
-这个结果值得细看。n1 在 0% 到 100% 的整个范围内，功耗都比 n2 低（30·e^(0.02x) < 60·e^(0.015x) 等价于 x < 138.6），按直觉它是「更节能」的机器。但 n1 已经运行在 30%，处在自己指数曲线较陡的一段；n2 只有 10%，还在平缓段。所以同样 25 个百分点，n2 多耗的电更少。Peaks 优化的是**这一次放置的边际功耗**，不是机器的能效排名。
+- n1 → 100 − 100 = 0
+- n2 → 100 − 0 = 100
+
+Peaks 选 n2。
+
+这个结果值得细看。n1 在 0% 到 100% 的整个范围内，功耗都比 n2 低（30·e^(0.02x) < 60·e^(0.015x) 等价于 x < 138.6），按直觉它是「更节能」的机器。但两者所处的曲线位置不同：
+
+- n1 已经运行在 30%，处在自己指数曲线较陡的一段；
+- n2 只有 10%，还在平缓段。
+
+所以同样 25 个百分点，n2 多耗的电更少。Peaks 优化的是**这一次放置的边际功耗**，不是机器的能效排名。
 
 三台都参与时：min = 0（n3），max = 3.546×10¹⁶。
 
@@ -307,7 +335,10 @@ Score 在以下五种情况下都返回 0：
 
 **新节点、采集失败的节点、模型没覆盖的节点都会被优先选择。** 这是 4.1 节的直接结论。在仓库给出的示例配置（`deployment/scheduler-config.yaml`）里，score 只启用了 Peaks，其它打分插件全部禁用（`disabled: '*'`），Peaks 的分数就是全部依据。
 
-一个刚加入集群、还没有被 load-watcher 采集、也没有配置模型的节点，会持续得到满分，接收所有新 Pod，直到指标出现。缓解办法是：保证模型覆盖所有节点；同时启用 TLP 或 `NodeResourcesFit` 等打分插件来稀释 Peaks 的权重，或者用 nodeAffinity 把 Peaks 调度器的 Pod 限制在已建模的节点上。
+一个刚加入集群、还没有被 load-watcher 采集、也没有配置模型的节点，会持续得到满分，接收所有新 Pod，直到指标出现。缓解办法有两条：
+
+- 保证模型覆盖所有节点；
+- 同时启用 TLP 或 `NodeResourcesFit` 等打分插件来稀释 Peaks 的权重，或者用 nodeAffinity 把 Peaks 调度器的 Pod 限制在已建模的节点上。
 
 **只考虑 CPU。** 内存、网络的功耗贡献都不在模型里，这在 KEP 的 Non-Goals 中写明了。load-watcher 的 Prometheus provider 虽然会拉取 Kepler、Scaphandre 的能耗指标（类型为 `Energy`），但 Peaks 没有使用这些实测值，只用 CPU 利用率去推理模型。
 
@@ -319,7 +350,14 @@ Score 在以下五种情况下都返回 0：
 
 ## 七、发散
 
-**功耗感知调度的几个层次。** 从粗到细大致有四层：选择能效更高的机型（离线规划），关掉空闲节点（Cluster Autoscaler / Karpenter 的缩容），调度时选择边际功耗低的节点（Peaks），以及运行时调频调压（DVFS，由内核和硬件完成）。按 KEP 自己的数据，节点空载功耗占总功耗的比例很大，所以第二层的收益通常最大。
+**功耗感知调度的几个层次。** 从粗到细大致有四层：
+
+1. 选择能效更高的机型（离线规划）；
+2. 关掉空闲节点（Cluster Autoscaler / Karpenter 的缩容）；
+3. 调度时选择边际功耗低的节点（Peaks）；
+4. 运行时调频调压（DVFS，由内核和硬件完成）。
+
+按 KEP 自己的数据，节点空载功耗占总功耗的比例很大，所以第二层的收益通常最大。
 
 Peaks 在第三层，它真正的价值在于异构集群：当能效差异来自机型而不是利用率时，它能把负载引导到高能效机器上。对于同构集群和常见的凸模型，Peaks 实际上会分散负载，和「腾空节点再关掉」的目标相反，这一点需要在启用前想清楚。
 
@@ -346,10 +384,22 @@ Peaks 在第三层，它真正的价值在于异构集群：当能效差异来�
 
 **第二层，数据在其它 API 对象和调度器自己的缓存里。** 卷相关的插件（[VolumeBinding](/posts/sched-plugin-11-volume-binding/) 等）要看 PV、PVC、StorageClass；[PodTopologySpread](/posts/sched-plugin-13-pod-topology-spread/) 和 [InterPodAffinity](/posts/sched-plugin-14-inter-pod-affinity/) 要统计全集群的 Pod 分布；[DynamicResources](/posts/sched-plugin-15-dynamic-resources/) 要和 ResourceClaim 的分配状态打交道；[GangScheduling](/posts/sched-plugin-21-gang-scheduling/) 和 out-of-tree 的 [Coscheduling](/posts/sched-plugin-27-coscheduling/)、[CapacityScheduling](/posts/sched-plugin-28-capacity-scheduling/)、[NodeResourceTopologyMatch](/posts/sched-plugin-30-node-resource-topology/) 引入了 PodGroup、ElasticQuota、NodeResourceTopology 等 CRD。
 
-这一层的难点在于一致性：CycleState 怎么存、`Clone` 怎么写、PreFilterExtensions 的 AddPod/RemovePod 怎么让抢占模拟看到正确的状态、Reserve 失败时怎么回滚。
+这一层的难点在于一致性：
+
+- CycleState 怎么存；
+- `Clone` 怎么写；
+- PreFilterExtensions 的 AddPod/RemovePod 怎么让抢占模拟看到正确的状态；
+- Reserve 失败时怎么回滚。
 
 **第三层，数据在集群之外。** Trimaran 四个插件的输入来自 Prometheus、metrics-server 和人工训练的功耗模型。这些数据有滞后、会缺失、会过期，而且调度器自己的 assume 机制看不到它们。
 
-这四篇反复遇到同一类问题：缺数据时给几分，补偿逻辑和数据窗口是否匹配，分数为 0 在归一化之后是什么含义，多个实例能否共存。它们都只做 Score，不做 Filter，原因也在这里：外部数据不可靠时，最多是放得不够好，而不是让 Pod 一直 Pending。
+这四篇反复遇到同一类问题：
+
+- 缺数据时给几分；
+- 补偿逻辑和数据窗口是否匹配；
+- 分数为 0 在归一化之后是什么含义；
+- 多个实例能否共存。
+
+它们都只做 Score，不做 Filter，原因也在这里：外部数据不可靠时，最多是放得不够好，而不是让 Pod 一直 Pending。
 
 整个调度框架的设计，就是在这三层之间划清责任：第一、二层插件负责「能不能放」，用 Status code 和 QueueingHint 跟队列协作；所有层的插件都可以参与「放哪里更好」，最后由 [DefaultBinder](/posts/sched-plugin-24-default-binder/) 写出一个 Binding。读完全部插件之后再看 `schedule_one.go`，每一个扩展点调用背后对应的是哪些问题，应该都能对上号了。

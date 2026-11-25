@@ -64,7 +64,11 @@ func WithPlugin(name string, factory runtime.PluginFactory) Option {
 }
 ```
 
-`Setup` 把这些 Option 依次作用在一张空的 `outOfTreeRegistry` 上，再通过 `scheduler.WithFrameworkOutOfTreeRegistry` 传给 `scheduler.New`，后者把它合并进 in-tree Registry（第 2–5 行）：
+从 `Setup` 到 in-tree Registry 分三步：
+
+1. `Setup` 把这些 Option 依次作用在一张空的 `outOfTreeRegistry` 上；
+2. 再通过 `scheduler.WithFrameworkOutOfTreeRegistry` 传给 `scheduler.New`；
+3. `scheduler.New` 把它合并进 in-tree Registry（第 2–5 行）：
 
 ```go {linenos=inline}
 // pkg/scheduler/scheduler.go（k8s v1.36.4）
@@ -213,7 +217,12 @@ func New(_ context.Context, _ runtime.Object, _ fwk.Handle) (fwk.Plugin, error) 
 }
 ```
 
-空结构体（第 6 行），`New`（第 11–13 行）不读参数、不持有 `Handle`，也没有对应的 Args 类型和默认值。QueueSort 插件运行在队列里，此时还没有调度周期，因此也谈不上 CycleState。
+插件本身只有两部分：
+
+- 空结构体（第 6 行）；
+- `New`（第 11–13 行）不读参数、不持有 `Handle`，也没有对应的 Args 类型和默认值。
+
+QueueSort 插件运行在队列里，此时还没有调度周期，因此也谈不上 CycleState。
 
 ### 3.2 Less：三级比较
 
@@ -406,7 +415,13 @@ func rankMemoryPressure(pods []*v1.Pod, stats statsFunc) {
 }
 ```
 
-先看用量是否超过 requests，再看优先级，最后看超出 requests 的量。BestEffort 的 requests 为 0，只要有内存用量就「超过 requests」，所以实际效果和按 QoS 驱逐相近，但依据是 requests 而不是 QoS 标签。
+排序按三级比较：
+
+1. 先看用量是否超过 requests；
+2. 再看优先级；
+3. 最后看超出 requests 的量。
+
+BestEffort 的 requests 为 0，只要有内存用量就「超过 requests」，所以实际效果和按 QoS 驱逐相近，但依据是 requests 而不是 QoS 标签。
 
 把这两件事和 QOSSort 放在一起看：QoS 在 Kubernetes 里是一个由 requests/limits 推导出来的派生属性，节点侧用它（或它的来源 requests）决定谁先牺牲；QOSSort 把同样的信号用到了调度入口，让「要求确定资源」的 Pod 先拿到资源。
 

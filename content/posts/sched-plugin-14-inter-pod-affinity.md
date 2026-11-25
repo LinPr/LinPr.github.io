@@ -107,7 +107,12 @@ func (pl *InterPodAffinity) mergeAffinityTermNamespacesIfNotEmpty(at *fwk.Affini
 }
 ```
 
-用 namespace lister 把 selector 能选中的 namespace 全部列出来并入 `Namespaces`（第 6、10–12 行），然后把 selector 置成 `Nothing()`（第 13 行）。之后拿新 Pod 的规则去匹配成千上万个已有 Pod 时，传入的 `nsLabels` 一律是 `nil`，只查集合，不再去取每个已有 Pod 的 namespace 标签。代码里反复出现的注释「The incoming pod's terms have the namespaceSelector merged into the namespaces」说的就是这件事。
+展开分两步：
+
+1. 用 namespace lister 把 selector 能选中的 namespace 全部列出来，并入 `Namespaces`（第 6、10–12 行）；
+2. 把 selector 置成 `Nothing()`（第 13 行）。
+
+之后拿新 Pod 的规则去匹配成千上万个已有 Pod 时，传入的 `nsLabels` 一律是 `nil`，只查集合，不再去取每个已有 Pod 的 namespace 标签。代码里反复出现的注释「The incoming pod's terms have the namespaceSelector merged into the namespaces」说的就是这件事。
 
 `Empty()` 返回 true 的是 `Everything()`（空 selector），这种情况不展开，保持「匹配所有 namespace」。`Nothing()` 的 `Empty()` 返回 false，会走一遍 `List`，结果为空，没有副作用。
 
@@ -179,7 +184,10 @@ func (m topologyToMatchedTermCount) update(node *v1.Node, tk string, value int64
 
 ### 3.2 两次并行扫描
 
-已有 Pod 的反亲和只需要看「有 required 反亲和 Pod 的节点」，这个列表由快照维护（第 3 行取节点，第 8–15 行逐 Pod、逐规则计数）：
+已有 Pod 的反亲和只需要看「有 required 反亲和 Pod 的节点」，这个列表由快照维护。扫描分两步：
+
+1. 从快照取出这些节点（第 3 行）；
+2. 逐 Pod、逐规则计数（第 8–15 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/filtering.go
@@ -273,7 +281,11 @@ PreFilter 把全集群的扫描一次做完，后面每个候选节点的判断�
 
 {{< figure src="/images/posts/sched-plugins/14-ipa-filter-maps.svg" caption="一个具体例子：PreFilter 产出三张拓扑计数表，Filter 按「新 Pod 亲和 → 新 Pod 反亲和 → 已有 Pod 反亲和」的顺序逐节点查表（点击查看大图）" link="/images/posts/sched-plugins/14-ipa-filter-maps.svg" >}}
 
-gate 关闭时，Filter 的主体就是三次查表（亲和在第 3–4 行，反亲和在第 9–10 行，已有 Pod 反亲和在第 14–15 行）：
+gate 关闭时，Filter 的主体就是三次查表：
+
+1. 新 Pod 的亲和（第 3–4 行）；
+2. 新 Pod 的反亲和（第 9–10 行）；
+3. 已有 Pod 的反亲和（第 14–15 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/filtering.go
@@ -332,7 +344,10 @@ func nodeTopologyMatchesAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) b
 }
 ```
 
-节点必须带齐所有亲和项的 `topologyKey`（缺一个就在第 13 行直接返回 false），并且每一项对应的拓扑对上计数都大于 0（第 3–15 行）。
+节点要同时满足两个条件：
+
+- 带齐所有亲和项的 `topologyKey`，缺一个就在第 13 行直接返回 false；
+- 每一项对应的拓扑对上计数都大于 0（第 3–15 行）。
 
 `!podsExist` 时有一个特例（第 17–19 行）：如果整个集群都没有匹配的 Pod（表为空），而新 Pod 自己满足自己的全部亲和项，就放行。典型场景是一个 Deployment 要求「所有副本在同一个 zone」——亲和项选中的就是自己这类 Pod。**没有这个特例，第一个副本永远找不到可以亲近的对象，整个 Deployment 卡死。**
 
@@ -502,13 +517,19 @@ func nodePodsSatisfyAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) bool 
 		mustEvaluateHostScopedAntiAffinity = nonHostScopedNodesContainHostScopedTerms || nodeExistsWithPodsWithOnlyHostScopedAntiAffinityTerms
 ```
 
-判断方式很巧：「有任何 required 反亲和 Pod 的节点数」大于「有非 hostname 反亲和 Pod 的节点数」，说明存在只带 hostname 反亲和 Pod 的节点；再加上扫描过程中顺带发现的 hostname 项，两者任一为真就不能 `Skip`。两个列表都是快照预先维护的，比较长度是 O(1)。
+判断方式很巧，下面两个条件任一为真就不能 `Skip`：
+
+- 「有任何 required 反亲和 Pod 的节点数」大于「有非 hostname 反亲和 Pod 的节点数」，说明存在只带 hostname 反亲和 Pod 的节点；
+- 扫描过程中顺带发现了 hostname 项。
+
+两个列表都是快照预先维护的，比较长度是 O(1)。
 
 ### 5.4 代价与收益
 
 快速路径的收益主要在两类工作负载上：只用 hostname 反亲和做「一节点一副本」的 Deployment（最常见的用法），以及集群里大量存在 hostname 反亲和 Pod 的情况。
 
-前者的新 Pod 规则全部是本机规则，`getIncomingAffinityAntiAffinityCounts` 直接返回，PreFilter 不再扫全集群 Pod；后者的已有 Pod 反亲和扫描只覆盖「有非 hostname 反亲和 Pod」的节点，匹配新 Pod 的 hostname 规则也不再往 `existingClusterWideAntiAffinityCounts` 里写「每个节点一个」的键。
+- 前者：新 Pod 规则全部是本机规则，`getIncomingAffinityAntiAffinityCounts` 直接返回，PreFilter 不再扫全集群 Pod；
+- 后者：已有 Pod 反亲和扫描只覆盖「有非 hostname 反亲和 Pod」的节点，匹配新 Pod 的 hostname 规则也不再往 `existingClusterWideAntiAffinityCounts` 里写「每个节点一个」的键。
 
 代价是 Filter 阶段的工作量上升：每个候选节点都要遍历本机上的 Pod。由于每个节点上的 Pod 数有上限（默认 110），这个代价是有界的。gate 在 1.37 是 Alpha、默认关闭，`NodeInfo.PodsWithRequiredNonHostScopedAntiAffinity` 的注释也写明了 gate 关闭时这个切片必须为空。
 
@@ -540,7 +561,12 @@ func nodePodsSatisfyAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) bool 
 	}
 ```
 
-一个被增减的 Pod 同时影响三张表（已有 Pod 的反亲和在第 2–4 行，新 Pod 的亲和与反亲和在第 14–18 行）：它自己的反亲和规则可能排斥新 Pod，它也可能被新 Pod 的亲和/反亲和规则选中。快速路径下 hostname 项不在表里，只需维护自亲和计数；本机的 hostname 检查在 Filter 中直接读 `NodeInfo`，而抢占模拟时 `NodeInfo` 本身已经被 `RemovePod`/`AddPodInfo` 修改过，自然是最新的。
+一个被增减的 Pod 同时影响三张表，分两个方向：
+
+- 它自己的反亲和规则可能排斥新 Pod，对应已有 Pod 的反亲和（第 2–4 行）；
+- 它也可能被新 Pod 的亲和/反亲和规则选中，对应新 Pod 的亲和与反亲和（第 14–18 行）。
+
+快速路径下 hostname 项不在表里，只需维护自亲和计数；本机的 hostname 检查在 Filter 中直接读 `NodeInfo`，而抢占模拟时 `NodeInfo` 本身已经被 `RemovePod`/`AddPodInfo` 修改过，自然是最新的。
 
 调用场景与上一篇相同：nominated Pod 的占位，以及抢占的「全部移除、逐个加回」。
 
@@ -564,7 +590,13 @@ type preScoreState struct {
 }
 ```
 
-对每个已有 Pod，`processExistingPod` 累加五类贡献（新 Pod 的 preferred 在第 2、4 行，已有 Pod 的 required 亲和在第 6–10 行，已有 Pod 的 preferred 在第 12、14 行），计数位置都是「已有 Pod 所在节点」的拓扑值：
+对每个已有 Pod，`processExistingPod` 累加五类贡献，计数位置都是「已有 Pod 所在节点」的拓扑值：
+
+1. 新 Pod 的 preferred 亲和（第 2 行）；
+2. 新 Pod 的 preferred 反亲和（第 4 行）；
+3. 已有 Pod 的 required 亲和（第 6–10 行）；
+4. 已有 Pod 的 preferred 亲和（第 12 行）；
+5. 已有 Pod 的 preferred 反亲和（第 14 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/scoring.go
@@ -604,7 +636,10 @@ type preScoreState struct {
 
 ### 7.3 遍历范围的优化
 
-打分要遍历哪些节点，取决于新 Pod 自己有没有 preferred 规则（第 12–18 行按 `hasConstraints` 选列表；开了 `ignorePreferredTermsOfExistingPods` 且没有 preferred 规则时，第 4–6 行直接 `Skip`）：
+打分要遍历哪些节点，取决于新 Pod 自己有没有 preferred 规则。代码分两步：
+
+1. 开了 `ignorePreferredTermsOfExistingPods` 且没有 preferred 规则时，直接 `Skip`（第 4–6 行）；
+2. 否则按 `hasConstraints` 选节点列表（第 12–18 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/interpodaffinity/scoring.go
@@ -692,7 +727,10 @@ min-max 之后分差被拉满到 0～100，再乘以权重 2。
 - 新增：新 Pod 满足新 Pod 的全部亲和项，`Queue`。新增 Pod 不可能让反亲和变得更容易满足，所以不检查反亲和。
 - 删除：被删的 Pod 匹配新 Pod 的反亲和，或者新 Pod 匹配被删 Pod 的反亲和，`Queue`。删除只可能让反亲和变得容易满足，两个方向都要看。
 
-节点事件（`isSchedulableAfterNodeChange`）只注册了 Add 和 UpdateNodeLabel。亲和项方面，新节点带了亲和项的 `topologyKey`、或者节点新获得了这个标签、或者标签值变了，返回 `Queue`。反亲和项方面，**任何新节点**都返回 `Queue`（没有拓扑标签的节点天然不受反亲和约束），节点失去反亲和的 `topologyKey` 或标签值变化也返回 `Queue`。
+节点事件（`isSchedulableAfterNodeChange`）只注册了 Add 和 UpdateNodeLabel，按规则类型分两种情况：
+
+- 亲和项：新节点带了亲和项的 `topologyKey`、或者节点新获得了这个标签、或者标签值变了，返回 `Queue`；
+- 反亲和项：**任何新节点**都返回 `Queue`（没有拓扑标签的节点天然不受反亲和约束），节点失去反亲和的 `topologyKey` 或标签值变化也返回 `Queue`。
 
 目标 Pod 自身改标签无条件返回 `Queue`：已有 Pod 的反亲和匹配的是新 Pod 的标签，标签变了，被排斥的状态可能就解除了。
 

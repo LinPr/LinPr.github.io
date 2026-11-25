@@ -81,7 +81,13 @@ type TopologyConstraint struct {
 }
 ```
 
-几个约束直接写在 API 里：最多一个 topology 项（`maxItems=1`）；整个 `schedulingConstraints` 字段不可变；没有该标签或标签值为空的节点不属于任何域。一个完整的例子：
+几个约束直接写在 API 里：
+
+- 最多一个 topology 项（`maxItems=1`）；
+- 整个 `schedulingConstraints` 字段不可变；
+- 没有该标签或标签值为空的节点不属于任何域。
+
+一个完整的例子：
 
 ```yaml {linenos=inline}
 apiVersion: scheduling.k8s.io/v1beta1
@@ -170,7 +176,13 @@ func (pl *TopologyPlacement) GeneratePlacements(ctx context.Context, state fwk.P
 }
 ```
 
-逻辑分三步（第 3–7 行、第 10–20 行、第 22–36 行）：取 topology key；找组里已调度 Pod 所在的域；按标签值把父 placement 的节点分桶。下面这张图把它会遇到的几种情况放在一起：
+逻辑分三步：
+
+1. 取 topology key（第 3–7 行）；
+2. 找组里已调度 Pod 所在的域（第 10–20 行）；
+3. 按标签值把父 placement 的节点分桶（第 22–36 行）。
+
+下面这张图把它会遇到的几种情况放在一起：
 
 {{< figure src="/images/posts/sched-plugins/22-generate.svg" link="/images/posts/sched-plugins/22-generate.svg" caption="GeneratePlacements 的五种情况：无约束、首次调度、已有 Pod 锁定域、域冲突报错、父 placement 里没有所需的域（点击查看大图）" >}}
 
@@ -223,7 +235,13 @@ func (pl *TopologyPlacement) getScheduledPodsTopologyDomain(topologyKey string, 
 
 ### 3.4 它不写任何 CycleState
 
-PodGroup 调度周期里有三层状态：`PodGroupCycleState`（整个组一份）、`PlacementCycleState`（每个候选 placement 一份）、以及每个 Pod 自己的 `CycleState`。接口允许生成插件通过 `state.PlacementState(placement).Write(...)` 给某个 placement 挂上数据，后续这个 placement 里每个 Pod 的 Filter/Score 都能通过 `GetPlacementCycleState()` 读到。
+PodGroup 调度周期里有三层状态：
+
+- `PodGroupCycleState`：整个组一份；
+- `PlacementCycleState`：每个候选 placement 一份；
+- 每个 Pod 自己的 `CycleState`。
+
+接口允许生成插件通过 `state.PlacementState(placement).Write(...)` 给某个 placement 挂上数据，后续这个 placement 里每个 Pod 的 Filter/Score 都能通过 `GetPlacementCycleState()` 读到。
 
 **TopologyPlacement 没有用这个能力，它产出的信息全在 `Nodes` 列表里。** 这也说明 placement 机制的设计目标比「按标签分组」更宽：将来的生成插件可以给 placement 附带预计算的数据（比如某个域里可用的 DRA 设备），而不仅仅是节点列表。
 
@@ -316,9 +334,18 @@ func (s *Snapshot) AssumePlacement(placement *fwk.Placement) error {
 }
 ```
 
-assume 之后，`SchedulePod` 里的 `NumNodesInPlacement`、`prefilterNodes` 里的 `ListNodesInPlacement`、以及 PreFilterResult 和 NominatedNodeName 用到的 `GetNodeInPlacement` 都只看这个 placement 的节点。**逐 Pod 算法本身一行没改，就被限定在了一个 rack 里。**
+assume 之后，下面三处都只看这个 placement 的节点：
 
-两个细节：一是 placement 里的节点必须是 snapshot 里同一个 `NodeInfo` 实例（第 20–23 行），生成插件不能自己构造或复制 NodeInfo；二是 placement 覆盖全部节点时等同于没有 placement（第 7–12 行），省去建集合的开销。
+- `SchedulePod` 里的 `NumNodesInPlacement`；
+- `prefilterNodes` 里的 `ListNodesInPlacement`；
+- PreFilterResult 和 NominatedNodeName 用到的 `GetNodeInPlacement`。
+
+**逐 Pod 算法本身一行没改，就被限定在了一个 rack 里。**
+
+两个细节：
+
+- placement 里的节点必须是 snapshot 里同一个 `NodeInfo` 实例（第 20–23 行），生成插件不能自己构造或复制 NodeInfo；
+- placement 覆盖全部节点时等同于没有 placement（第 7–12 行），省去建集合的开销。
 
 还要注意，**placement 限制的是「候选节点」，不是「插件能看到的集群」。** `RunPreFilterPlugins` 传给各插件的 `nodes` 参数来自 `SnapshotSharedLister().NodeInfos().List()`，而 `Snapshot.List()` 返回的是全部节点，所以 `PodTopologySpread`、`InterPodAffinity` 在 PreFilter 里统计已有 Pod 分布时，看到的仍是整个集群；被 placement 挡在外面的只是 Filter 和 Score 的候选节点。
 
@@ -348,7 +375,10 @@ assume 之后，`SchedulePod` 里的 `NumNodesInPlacement`、`prefilterNodes` �
 
 NNN 一般是上一轮整组抢占留下的。抢占已经在某个 rack 里腾出了位置，这一轮如果又去打分、选到另一个 rack，前面驱逐的 Pod 就白白牺牲了。代码注释承认这个取舍：「we may prefer the nominated placement over one that fits the whole gang」。快速路径还要求 `anyScheduled`，避免「这个 placement 可行只是因为之前已经有足够的 Pod 在跑，新 Pod 一个都没放上」被误当成成功。
 
-第二个设计点是数量：有 PlacementScore 插件时，要找的可行 placement 数由 `numFeasiblePlacementsToFind` 决定；没有打分插件时只找 1 个，找到第一个可行的就用（第 4–13 行）：
+第二个设计点是数量（第 4–13 行），分两种情况：
+
+- 有 PlacementScore 插件时，要找的可行 placement 数由 `numFeasiblePlacementsToFind` 决定；
+- 没有打分插件时只找 1 个，找到第一个可行的就用。
 
 ```go {linenos=inline}
 // pkg/scheduler/schedule_one_podgroup.go
@@ -402,7 +432,14 @@ func (sched *Scheduler) evaluatePlacement(ctx context.Context, schedFwk framewor
 
 ### 6.1 嵌套的拓扑：zone 里再选 rack
 
-开启 CompositePodGroup 后，拓扑约束可以分层：外层 CompositePodGroup 要求同一个 zone，内层每个 PodGroup 要求同一个 rack。`compositePodGroupSchedulingPlacementAlgorithm` 先对外层生成 zone 级 placement，`AssumePlacement(zone-a)` 之后递归调度子组；子组再调用 `RunPlacementGeneratePlugins` 时，传进来的 `allNodes` 来自 `ListNodesInPlacement()`，也就是 zone-a 的节点。TopologyPlacement 在这些节点里按 rack 分桶，自然得到「zone-a 里的 rack」。**插件本身不需要知道层级，`parentPlacement` 参数就是为此设计的。**
+开启 CompositePodGroup 后，拓扑约束可以分层：外层 CompositePodGroup 要求同一个 zone，内层每个 PodGroup 要求同一个 rack。`compositePodGroupSchedulingPlacementAlgorithm` 的处理分四步：
+
+1. 先对外层生成 zone 级 placement；
+2. `AssumePlacement(zone-a)` 之后递归调度子组；
+3. 子组再调用 `RunPlacementGeneratePlugins` 时，传进来的 `allNodes` 来自 `ListNodesInPlacement()`，也就是 zone-a 的节点；
+4. TopologyPlacement 在这些节点里按 rack 分桶，自然得到「zone-a 里的 rack」。
+
+**插件本身不需要知道层级，`parentPlacement` 参数就是为此设计的。**
 
 子组之间还有一个顺序依赖：前一个子组成功后，`assumeSubtreeWithRevert` 把它的结果 assume 进 snapshot，后一个子组在评估时就能看到前者占用的资源。这让两个子组不会同时把同一个 rack 的资源算成自己的。
 

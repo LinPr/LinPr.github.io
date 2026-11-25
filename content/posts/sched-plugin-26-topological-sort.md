@@ -188,7 +188,12 @@ KEP 用 Online Boutique（11 个 workload，P1 是前端）给出了各算法的
 | Kahn | P1, P10, P9, P8, P7, P6, P5, P4, P3, P2, P11 |
 | Reverse Kahn | P11, P2, P3, P4, P5, P6, P7, P8, P9, P10, P1 |
 
-注意方向：按「调用方 → 被调用方」建图，Kahn 算法从入度为 0 的节点开始，排在第一位的是前端 P1，也就是**调用方先出队**；Reverse Kahn 把它倒过来，叶子服务（P11 是 redis-cart）先出队。这一点在第六节还会回到。
+注意方向：按「调用方 → 被调用方」建图，两种算法的顺序正好相反：
+
+- Kahn 算法从入度为 0 的节点开始，排在第一位的是前端 P1，也就是**调用方先出队**；
+- Reverse Kahn 把它倒过来，叶子服务（P11 是 redis-cart）先出队。
+
+这一点在第六节还会回到。
 
 ### 2.3 一个容易忽略的存储约定
 
@@ -414,7 +419,13 @@ TopologicalSort 只实现 `QueueSortPlugin`，没有 `EventsToRegister`，也没
 - C：`shop/redis`，index 4，优先级 1000
 - B：不属于任何 AppGroup，优先级 500
 
-`Less(A, C)` 为 true（同组，1 <= 4）；`Less(C, B)` 为 true（跨组，1000 > 500）；`Less(B, A)` 为 true（跨组，500 > 0）。A 在 C 前、C 在 B 前、B 又在 A 前，构成一个环。
+三次比较的结果：
+
+- `Less(A, C)` 为 true（同组，1 <= 4）；
+- `Less(C, B)` 为 true（跨组，1000 > 500）；
+- `Less(B, A)` 为 true（跨组，500 > 0）。
+
+A 在 C 前、C 在 B 前、B 又在 A 前，构成一个环。
 
 {{< figure src="/images/posts/sched-plugins/26-less-cycle.svg" caption="同组按 index、跨组按优先级，拼出的 Less 会成环；同 index 的副本互判为「更小」，组内出队顺序取决于插入顺序和堆形状（点击查看大图）" link="/images/posts/sched-plugins/26-less-cycle.svg" >}}
 
@@ -459,7 +470,12 @@ NetworkOverhead 给一个 Pod 打分时，只看**这个 Pod 自己的** `depend
 
 要让 NetworkOverhead 起作用，应当让被调用方先落位，调用方再跟过去，即 redis → cart/catalog → frontend。这正是 ReverseKahn、ReverseTarjan 一类算法给出的顺序。
 
-而示例清单和 KEP 示例默认用的 `KahnSort` 给出的是 frontend 在最前：整组同时提交时，frontend 先出队，此时 cart、catalog 都还没调度，NetworkOverhead 无从参考；cart 再出队，redis 也还没调度。**拓扑序的方向需要按依赖边的语义来选，而不是默认用 KahnSort。**
+而示例清单和 KEP 示例默认用的 `KahnSort` 给出的是 frontend 在最前。整组同时提交时，出队过程是：
+
+1. frontend 先出队，此时 cart、catalog 都还没调度，NetworkOverhead 无从参考；
+2. cart 再出队，redis 也还没调度。
+
+**拓扑序的方向需要按依赖边的语义来选，而不是默认用 KahnSort。**
 
 ### 6.2 更强的顺序保证
 

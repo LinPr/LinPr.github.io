@@ -145,7 +145,12 @@ func (nc *Controller) doNoScheduleTaintingPass(ctx context.Context, nodeName str
 }
 ```
 
-这个函数把节点的状态统一翻译成 `NoSchedule` 污点：`Ready=False` 变成 `not-ready`，`MemoryPressure=True` 变成 `memory-pressure`（第 6–15 行的映射），`spec.unschedulable=true` 变成 `unschedulable`（第 16–22 行）。**这样做的好处是只需要一种机制（污点与容忍）就能表达「哪些 Pod 可以无视节点的某种状态」。** DaemonSet 控制器给它创建的每个 Pod 都加上了一组默认容忍，其中就有这一条（第 2–6 行）：
+这个函数把节点的状态统一翻译成 `NoSchedule` 污点：
+
+- 节点条件：`Ready=False` 变成 `not-ready`，`MemoryPressure=True` 变成 `memory-pressure`（第 6–15 行的映射）；
+- cordon：`spec.unschedulable=true` 变成 `unschedulable`（第 16–22 行）。
+
+**这样做的好处是只需要一种机制（污点与容忍）就能表达「哪些 Pod 可以无视节点的某种状态」。** DaemonSet 控制器给它创建的每个 Pod 都加上了一组默认容忍，其中就有这一条（第 2–6 行）：
 
 ```go {linenos=inline}
 // pkg/controller/daemon/util/daemonset_util.go
@@ -170,7 +175,13 @@ func (nc *Controller) doNoScheduleTaintingPass(ctx context.Context, nodeName str
 
 而 Filter 里用「容忍那个污点」作为例外条件，是为了让两份表示的语义一致：一个 Pod 如果能容忍 `unschedulable` 污点，那么在 ② 之后它能通过 `TaintToleration`，在 ② 之前它也应该能通过 `NodeUnschedulable`。注释写的就是这个意思：「If pod tolerate unschedulable taint, it's also tolerate `node.Spec.Unschedulable`」。
 
-构造的污点没有 `Value`，所以以下容忍都能生效：`operator: Exists` 且 key 为 `node.kubernetes.io/unschedulable`；`operator: Equal`、key 相同、`value` 为空；以及 key 为空、`operator: Exists` 的「容忍一切」。effect 必须为空或 `NoSchedule`，写成 `NoExecute` 的容忍不算。
+构造的污点没有 `Value`，所以以下三种容忍都能生效：
+
+- `operator: Exists` 且 key 为 `node.kubernetes.io/unschedulable`；
+- `operator: Equal`、key 相同、`value` 为空；
+- key 为空、`operator: Exists` 的「容忍一切」。
+
+effect 必须为空或 `NoSchedule`，写成 `NoExecute` 的容忍不算。
 
 两份表示、一段异步窗口，解释了 Filter 为什么两边都要看。接下来看反向的动作：uncordon 之后，被拒绝的 Pod 是怎么被叫回队列的。
 
@@ -238,7 +249,12 @@ func (pl *NodeUnschedulable) isSchedulableAfterNodeChange(logger klog.Logger, po
 }
 ```
 
-**只有两种情况返回 `Queue`：节点从 cordon 变为 uncordon；新增了一个没被 cordon 的节点**（第 11–15 行的两个条件）。其他的污点变化（比如有人给节点加了别的污点）返回 `QueueSkip`。hint 只看事件里的节点，不看 Pod 被哪个节点拒绝过，所以集群里任何一个节点 uncordon，所有被 `NodeUnschedulable` 拒绝过的 Pod 都会被唤醒一次。
+**只有两种情况返回 `Queue`**（第 11–15 行的两个条件）：
+
+- 节点从 cordon 变为 uncordon；
+- 新增了一个没被 cordon 的节点。
+
+其他的污点变化（比如有人给节点加了别的污点）返回 `QueueSkip`。hint 只看事件里的节点，不看 Pod 被哪个节点拒绝过，所以集群里任何一个节点 uncordon，所有被 `NodeUnschedulable` 拒绝过的 Pod 都会被唤醒一次。
 
 `util.As` 转换失败时返回 `Queue` 加错误，这是所有 hint 函数的惯例：拿不准就唤醒，宁可多跑一次调度周期，也不让 Pod 卡死。
 
@@ -301,7 +317,11 @@ func (pl *NodeUnschedulable) isSchedulableAfterTargetPodTolerationChange(logger 
 
 污点与容忍出现后，社区做了一次统一（TaintNodesByCondition）：节点状态全部由 node-lifecycle-controller 翻译成 `NoSchedule` 污点，例外规则全部改成容忍，调度器只需要一个 `TaintToleration` 插件就能处理所有情况。上面 `doNoScheduleTaintingPass` 里的映射表就是这次统一的产物，那批按条件过滤的谓词随之删除，`ErrReasonUnknownCondition` 就是那时的遗留。
 
-**`spec.unschedulable` 没有被同样删除，因为它是 kubectl cordon、各种运维工具和云厂商节点池管理的公共接口，改不动。** 于是留下了现在的结构：运维操作写 spec，控制器补污点，调度器用 `NodeUnschedulable` 守住异步窗口，并用同一个容忍作为例外条件，保持两边语义一致。
+**`spec.unschedulable` 没有被同样删除，因为它是 kubectl cordon、各种运维工具和云厂商节点池管理的公共接口，改不动。** 于是留下了现在的结构：
+
+- 运维操作写 spec；
+- 控制器补污点；
+- 调度器用 `NodeUnschedulable` 守住异步窗口，并用同一个容忍作为例外条件，保持两边语义一致。
 
 对生产环境的启示是：
 

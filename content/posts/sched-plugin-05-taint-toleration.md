@@ -133,7 +133,12 @@ const (
 )
 ```
 
-两个 feature gate 快照和前两篇一样：`InPlacePodVerticalScalingSchedulerPreemption` 打开时，被推迟扩容的 Pod 在 PreFilter 返回 `Skip`、Filter 直接放行，已经在节点上运行的 Pod 不受新污点影响；`TaintTolerationComparisonOperators` 透传给匹配函数。`handle` 字段被保存了但没有被使用。对普通 Pod，PreFilter 返回 `nil, nil`。
+两个 feature gate 快照和前两篇一样：
+
+- `InPlacePodVerticalScalingSchedulerPreemption`：打开时，被推迟扩容的 Pod 在 PreFilter 返回 `Skip`、Filter 直接放行，已经在节点上运行的 Pod 不受新污点影响；
+- `TaintTolerationComparisonOperators`：透传给匹配函数。
+
+`handle` 字段被保存了但没有被使用。对普通 Pod，PreFilter 返回 `nil, nil`。
 
 Filter：
 
@@ -181,7 +186,18 @@ func FindMatchingUntoleratedTaint(logger klog.Logger, taints []v1.Taint, tolerat
 }
 ```
 
-流程是：先按 effect 过滤，只留下 `NoSchedule` 和 `NoExecute`（`DoNotScheduleTaintsFilterFunc` 第 5 行）；再逐个检查是否被 Pod 的某个容忍覆盖（第 4–8 行）；遇到第一个不被容忍的就返回（第 6 行）。Filter 本身先调这个函数（第 9–14 行），不被容忍时返回失败（第 17 行）。时间复杂度是 O(污点数 × 容忍数)，两者通常都是个位数，没有任何预计算，所以插件的 PreFilter 不往 CycleState 里写东西。
+匹配流程分三步：
+
+1. 先按 effect 过滤，只留下 `NoSchedule` 和 `NoExecute`（`DoNotScheduleTaintsFilterFunc` 第 5 行）；
+2. 再逐个检查是否被 Pod 的某个容忍覆盖（第 4–8 行）；
+3. 遇到第一个不被容忍的就返回（第 6 行）。
+
+Filter 本身分两步：
+
+1. 先调这个函数（第 9–14 行）；
+2. 不被容忍时返回失败（第 17 行）。
+
+时间复杂度是 O(污点数 × 容忍数)，两者通常都是个位数，没有任何预计算，所以插件的 PreFilter 不往 CycleState 里写东西。
 
 {{< figure src="/images/posts/sched-plugins/05-taint-filter-score.svg" link="/images/posts/sched-plugins/05-taint-filter-score.svg" caption="同一组节点污点，按 effect 分给 Filter 和 Score：Filter 只看 NoSchedule/NoExecute，Score 只数不被容忍的 PreferNoSchedule（点击查看大图）" >}}
 
@@ -191,7 +207,12 @@ func FindMatchingUntoleratedTaint(logger klog.Logger, taints []v1.Taint, tolerat
 
 **`NoSchedule` 和 `NoExecute` 在调度时没有区别。** 两者都会淘汰节点，且失败码相同。区别只在 Pod 已经运行之后。
 
-**失败原因字符串和常量不一致。** Filter 返回的是字面量 `node(s) had untolerated taint(s)`（第 17 行），而导出的常量 `ErrReasonNotMatch` 是 `node(s) had taints that the pod didn't tolerate`（第 15 行）。在整个代码库里，这个常量只被 kubelet 使用（`pkg/kubelet/lifecycle/predicate.go` 的准入检查和 `kubelet.go` 里的已知拒绝原因列表）。
+**失败原因字符串和常量不一致。** 两者分别是：
+
+- Filter 返回的是字面量 `node(s) had untolerated taint(s)`（第 17 行）；
+- 导出的常量 `ErrReasonNotMatch` 是 `node(s) had taints that the pod didn't tolerate`（第 15 行）。
+
+在整个代码库里，这个常量只被 kubelet 使用（`pkg/kubelet/lifecycle/predicate.go` 的准入检查和 `kubelet.go` 里的已知拒绝原因列表）。
 
 所以用 `didn't tolerate` 去搜调度器事件是搜不到的，调度器的事件里是 `untolerated taint(s)`；后者出现在 kubelet 拒绝 Pod 的消息里。
 
@@ -240,7 +261,12 @@ func (pl *TaintToleration) PreScore(ctx context.Context, cycleState fwk.CycleSta
 }
 ```
 
-CycleState 的 key 是 `PreScoreTaintToleration`（第 13 行拼出来的），值是 Pod 容忍里 effect 为空或 `PreferNoSchedule` 的子集（第 13–22 行挑出，第 25–32 行写进状态）。**effect 为 `NoSchedule` 的容忍反正匹配不上 `PreferNoSchedule` 污点（规则 1），提前剔除只是为了让每个节点的 Score 少做几次比较**：PreScore 每个调度周期跑一次，Score 每个可行节点跑一次。
+写进 CycleState 的这一项：
+
+- key 是 `PreScoreTaintToleration`（第 13 行拼出来的）；
+- 值是 Pod 容忍里 effect 为空或 `PreferNoSchedule` 的子集（第 13–22 行挑出，第 25–32 行写进状态）。
+
+**effect 为 `NoSchedule` 的容忍反正匹配不上 `PreferNoSchedule` 污点（规则 1），提前剔除只是为了让每个节点的 Score 少做几次比较**：PreScore 每个调度周期跑一次，Score 每个可行节点跑一次。
 
 `Clone` 直接返回自身，不做拷贝。CycleState 在抢占模拟时会被克隆，共享同一份数据安全的前提是 PreScore 写入之后再也没人修改它。这个切片只依赖 Pod 本身，不依赖节点上的 Pod，确实是不变的。
 
@@ -280,7 +306,10 @@ func (pl *TaintToleration) NormalizeScore(ctx context.Context, _ fwk.CycleState,
 }
 ```
 
-Score 的原始分是「不被容忍的 `PreferNoSchedule` 污点个数」（第 3–15 行数出这个数），越大越差。框架要求最终分数越大越好，所以 NormalizeScore 用 `reverse=true` 翻转（第 26 行）：
+打分分两步：
+
+1. Score 的原始分是「不被容忍的 `PreferNoSchedule` 污点个数」（第 3–15 行数出这个数），越大越差；
+2. 框架要求最终分数越大越好，所以 NormalizeScore 用 `reverse=true` 翻转（第 26 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/helper/normalize_score.go
@@ -315,7 +344,11 @@ func DefaultNormalizeScore(maxPriority int64, reverse bool, scores fwk.NodeScore
 }
 ```
 
-**公式是 `100 − 100 × raw / max(raw)`，整数除法向下取整**（第 22–25 行；`maxCount` 在第 3–8 行求出）。框架随后乘以权重 3。
+**公式是 `100 − 100 × raw / max(raw)`，整数除法向下取整**，计算分三步：
+
+1. 求出 `maxCount`（第 3–8 行）；
+2. 按公式算出每个节点的分数（第 22–25 行）；
+3. 框架随后乘以权重 3。
 
 {{< figure src="/images/posts/sched-plugins/05-taint-score-and-roles.svg" link="/images/posts/sched-plugins/05-taint-score-and-roles.svg" caption="左：四个可行节点的软污点打分算例；右：NoSchedule、PreferNoSchedule、NoExecute 在调度器、kubelet、taint-eviction-controller 之间的分工（点击查看大图）" >}}
 
@@ -332,7 +365,10 @@ func DefaultNormalizeScore(maxPriority int64, reverse bool, scores fwk.NodeScore
 
 ### 4.3 归一化的两个反直觉之处
 
-**它不是 min-max 归一化。** 分母是最大值，下界固定为 0。所有可行节点都有 1 个不被容忍的软污点时，`max = 1`，每个节点都是 `100 − 100 = 0` 分；所有节点都没有软污点时，走 `maxCount == 0` 分支，每个节点都是 100 分。
+**它不是 min-max 归一化。** 分母是最大值，下界固定为 0。看两种极端情况：
+
+- 所有可行节点都有 1 个不被容忍的软污点时，`max = 1`，每个节点都是 `100 − 100 = 0` 分；
+- 所有节点都没有软污点时，走 `maxCount == 0` 分支，每个节点都是 100 分。
 
 这两种情况下节点之间都没有差别，插件对选择没有影响，这是正确的。但在 V(10) 日志 `Plugin scored node for pod` 里查看各插件的加权分时，会看到同样的「没有差别」对应着 0 分和 300 分两种绝对值，不要据此判断节点好坏。
 
@@ -381,7 +417,11 @@ func (pl *TaintToleration) isSchedulableAfterNodeChange(logger klog.Logger, pod 
 }
 ```
 
-节点事件复用了 Filter 的判断，只是分别作用在旧节点（第 16–18 行）和新节点（第 20 行）上。**只有当这个 Pod 之前过不去、现在过得去时，才返回 `Queue`**（第 22–25 行）。
+节点事件复用了 Filter 的判断，分三步：
+
+1. 作用在旧节点上（第 16–18 行）；
+2. 作用在新节点上（第 20 行）；
+3. **只有当这个 Pod 之前过不去、现在过得去时，才返回 `Queue`**（第 22–25 行）。
 
 由此可以推出两种情况：
 
@@ -429,7 +469,10 @@ func (pl *TaintToleration) isSchedulableAfterTargetPodTolerationChange(logger kl
 	}
 ```
 
-只看 `NoExecute`（第 6 行），而且跳过静态 Pod（第 3 行）。**`NoSchedule` 是调度层面的约定，Pod 既然没有经过调度器，就不受它约束**；`NoExecute` 是「不容忍就不能在这里运行」，kubelet 不接纳这样的 Pod，否则它刚启动就会被驱逐。静态 Pod 由节点本地的清单文件管理，通常是控制面组件，不能因为节点被打了污点就拒绝启动。
+这段检查有两条规则：
+
+- 只看 `NoExecute`（第 6 行）。**`NoSchedule` 是调度层面的约定，Pod 既然没有经过调度器，就不受它约束**；`NoExecute` 是「不容忍就不能在这里运行」，kubelet 不接纳这样的 Pod，否则它刚启动就会被驱逐。
+- 跳过静态 Pod（第 3 行）。静态 Pod 由节点本地的清单文件管理，通常是控制面组件，不能因为节点被打了污点就拒绝启动。
 
 ### 6.2 taint-eviction-controller
 
@@ -488,7 +531,10 @@ func getNoExecuteTaints(taints []v1.Taint) []v1.Taint {
 
 ### 6.3 一个推论：not-ready 为什么有两个污点
 
-node-lifecycle-controller 在节点 `Ready=False` 时会打两个同名污点：`doNoScheduleTaintingPass` 打 `node.kubernetes.io/not-ready:NoSchedule`，`doNoExecuteTaintingPass` 打 `node.kubernetes.io/not-ready:NoExecute`。
+node-lifecycle-controller 在节点 `Ready=False` 时会打两个同名污点：
+
+- `doNoScheduleTaintingPass` 打 `node.kubernetes.io/not-ready:NoSchedule`；
+- `doNoExecuteTaintingPass` 打 `node.kubernetes.io/not-ready:NoExecute`。
 
 结合上面的分工就能理解为什么需要两个。每个 Pod 默认都容忍 `not-ready:NoExecute`（300 秒）。如果只有 `NoExecute` 版本，调度器的 Filter 会认为这些 Pod 容忍 not-ready 节点，新 Pod 就可能被调度到一个已经失联的节点上，再在 5 分钟后被驱逐。
 
@@ -524,7 +570,13 @@ node-lifecycle-controller 在节点 `Ready=False` 时会打两个同名污点：
 
 ## 八、发散
 
-**三种 effect 的组合是一个两维矩阵的投影。** 污点要表达的其实是两个维度：调度时是硬约束还是软约束，运行时是否驱逐。`NoSchedule` 是「硬、不驱逐」，`PreferNoSchedule` 是「软、不驱逐」，`NoExecute` 是「硬、驱逐」。缺少的「软、驱逐」组合在语义上不成立（软约束允许调度上来，驱逐却要求不能在上面运行）。理解了这一点，就不会再去找「软的 NoExecute」。
+**三种 effect 的组合是一个两维矩阵的投影。** 污点要表达的其实是两个维度：调度时是硬约束还是软约束，运行时是否驱逐。三种 effect 各占一格：
+
+- `NoSchedule` 是「硬、不驱逐」；
+- `PreferNoSchedule` 是「软、不驱逐」；
+- `NoExecute` 是「硬、驱逐」。
+
+缺少的「软、驱逐」组合在语义上不成立（软约束允许调度上来，驱逐却要求不能在上面运行）。理解了这一点，就不会再去找「软的 NoExecute」。
 
 **动态资源的设备污点走了同一条路。** DRA 引入了 `DRADeviceTaints`，设备也可以有污点，ResourceClaim 里可以写容忍，kube-controller-manager 里对应地多了一个 `device-taint-eviction-controller`。模式与节点污点完全一致：调度器负责「能不能分配」，控制器负责「已分配的要不要回收」。第 15 篇讲 `DynamicResources` 时会看到对应代码。
 

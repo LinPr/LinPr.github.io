@@ -85,7 +85,12 @@ type Policy struct {
 }
 ```
 
-两个字段的含义要合在一起读：优先级低于 `MinimumPreemptablePriority` 的抢占者，需要等受害者被调度满 `TolerationSeconds` 秒之后才能抢它；优先级达到门槛的抢占者不受限制。`TolerationSeconds` 为负数表示永远等不到。
+两个字段的含义要合在一起读：
+
+- 优先级低于 `MinimumPreemptablePriority` 的抢占者，需要等受害者被调度满 `TolerationSeconds` 秒之后才能抢它；
+- 优先级达到门槛的抢占者不受限制。
+
+`TolerationSeconds` 为负数表示永远等不到。
 
 解析函数很直白：
 
@@ -122,7 +127,12 @@ func parsePreemptionTolerationPolicy(
 }
 ```
 
-默认值是 `value + 1`（第 9 行）和 `0`（第 20 行）。两个都不写时，任何比受害者优先级高的抢占者都满足门槛，行为与默认抢占完全一致，所以把插件换上去不会改变没有加 annotation 的 `PriorityClass` 的行为。
+两个字段的默认值：
+
+- `MinimumPreemptablePriority` 默认是 `value + 1`（第 9 行）；
+- `TolerationSeconds` 默认是 `0`（第 20 行）。
+
+两个都不写时，任何比受害者优先级高的抢占者都满足门槛，行为与默认抢占完全一致，所以把插件换上去不会改变没有加 annotation 的 `PriorityClass` 的行为。
 
 用 KEP 的两个场景对应：
 
@@ -331,7 +341,13 @@ func (pl *PreemptionToleration) PostFilter(ctx context.Context, state fwk.CycleS
 	// ...
 ```
 
-全部移除候选受害者（第 4–8 行）、跑一遍 Filter 确认放得下（第 18–20 行）、按「先违反 PDB 的、再不违反的」两轮（第 31 行），各自按优先级从高到低逐个赦免（第 25–27 行）。被豁免的 Pod 始终留在节点副本上，Filter 判断时它们占着资源。所以一个节点上如果大部分低优先级 Pod 都处于容忍期，移除剩下的也腾不出足够空间，这个节点会在 Filter 一步失败，不成为候选。
+流程分三步：
+
+1. 全部移除候选受害者（第 4–8 行）；
+2. 跑一遍 Filter 确认放得下（第 18–20 行）；
+3. 按「先违反 PDB 的、再不违反的」两轮（第 31 行），各自按优先级从高到低逐个赦免（第 25–27 行）。
+
+被豁免的 Pod 始终留在节点副本上，Filter 判断时它们占着资源。所以一个节点上如果大部分低优先级 Pod 都处于容忍期，移除剩下的也腾不出足够空间，这个节点会在 Filter 一步失败，不成为候选。
 
 这里有一个值得多想一步的地方：容忍期的判断发生在「全部移除」之前，是一个硬筛选，而不是赦免阶段的偏好。即便驱逐一个容忍期内的 Pod 就能让抢占者放下，插件也不会这么做，而是去别的节点找；所有节点都找不到，抢占就失败。容忍策略的优先级高于「尽量让高优先级 Pod 调度成功」。
 
@@ -353,7 +369,10 @@ func (pl *PreemptionToleration) PostFilter(ctx context.Context, state fwk.CycleS
 type PreemptionTolerationArgs schedconfig.DefaultPreemptionArgs
 ```
 
-默认值和校验也直接调 in-tree 的：`SetDefaults_PreemptionTolerationArgs` 调用 `SetDefaults_DefaultPreemptionArgs`，得到 `minCandidateNodesPercentage: 10`、`minCandidateNodesAbsolute: 100`；`New` 里调用 `validation.ValidateDefaultPreemptionArgs`。
+默认值和校验也直接调 in-tree 的：
+
+- `SetDefaults_PreemptionTolerationArgs` 调用 `SetDefaults_DefaultPreemptionArgs`，得到 `minCandidateNodesPercentage: 10`、`minCandidateNodesAbsolute: 100`；
+- `New` 里调用 `validation.ValidateDefaultPreemptionArgs`。
 
 所以「找多少个候选节点」这件事，`PreemptionToleration` 和 `DefaultPreemption` 完全一样：从随机偏移开始，找到 `max(节点数 × 10%, 100)`（不超过节点数）个候选就停。
 
@@ -369,7 +388,10 @@ type PreemptionTolerationArgs schedconfig.DefaultPreemptionArgs
 | PodGroup | 开启相关 gate 时对 PodGroup 内的 Pod 直接返回 `Unschedulable`，交给整组抢占 | 不感知 |
 | 返回消息 | 统一加前缀 `preemption: ` | 原样返回 Evaluator 的消息 |
 
-第三行影响最实际。`DefaultPreemption` 认为「提名节点上有正在因抢占而退出的 Pod，就先别再抢」；`PreemptionToleration` 认为「提名节点上有任何正在退出的低优先级 Pod，就先别再抢」。
+第三行影响最实际：
+
+- `DefaultPreemption` 认为「提名节点上有正在因抢占而退出的 Pod，就先别再抢」；
+- `PreemptionToleration` 认为「提名节点上有任何正在退出的低优先级 Pod，就先别再抢」。
 
 后者在一个有大量 Pod 正被滚动更新的节点上，会让已提名的抢占者在这段时间里放弃重新评估，即便它的提名节点已经因为别的原因不再合适（`UnschedulableAndUnresolvable` 的情况除外，代码对此单独放行）。
 

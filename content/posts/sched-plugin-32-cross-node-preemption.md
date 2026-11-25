@@ -64,7 +64,11 @@ scheduled due to "cross node" constraints such as PodTopologySpread and PodAntiA
 			},
 ```
 
-用 YAML 的语言说：抢占者 `p` 带 `foo` 标签、优先级 100，要求按 zone 分布、`maxSkew: 1`、`whenUnsatisfiable: DoNotSchedule`（第 3–4 行）。zone1 的 node-a、node-b 各有一个带 `foo` 的低优先级 Pod（第 6–7 行）；zone2 只有 node-x，它的 `pods` 容量是 1（第 13 行的 `Capacity(onePodRes)`），已经被一个优先级同为 100 的 `pod-x`（第 8 行）占满。
+用 YAML 的语言说，场景里有三方：
+
+- 抢占者 `p` 带 `foo` 标签、优先级 100，要求按 zone 分布、`maxSkew: 1`、`whenUnsatisfiable: DoNotSchedule`（第 3–4 行）；
+- zone1 的 node-a、node-b 各有一个带 `foo` 的低优先级 Pod（第 6–7 行）；
+- zone2 只有 node-x，它的 `pods` 容量是 1（第 13 行的 `Capacity(onePodRes)`），已经被一个优先级同为 100 的 `pod-x`（第 8 行）占满。
 
 {{< figure src="/images/posts/sched-plugins/32-why-cross-node.svg" link="/images/posts/sched-plugins/32-why-cross-node.svg" caption="zone1 的 foo 计数来自两个节点，单节点抢占每次只能移除其中一个；只有同时移除 pod-a 与 pod-b，p 才能放进 zone1（点击查看大图）" >}}
 
@@ -86,7 +90,11 @@ scheduled due to "cross node" constraints such as PodTopologySpread and PodAntiA
 
 ### 2.1 PostFilter 的实现
 
-PostFilter 本身只做一层包装：调用 `preempt`（第 4 行），把拿到的提名节点组装成 `PostFilterResult`（第 12 行），提名节点为空字符串时转成 `Unschedulable`（第 9–10 行）。
+PostFilter 本身只做一层包装，分三步：
+
+1. 调用 `preempt`（第 4 行）；
+2. 提名节点为空字符串时转成 `Unschedulable`（第 9–10 行）；
+3. 否则把拿到的提名节点组装成 `PostFilterResult`（第 12 行）。
 
 ```go {linenos=inline}
 // pkg/crossnodepreemption/cross_node_preemption.go（已注释）
@@ -152,7 +160,10 @@ func FindCandidates(ctx context.Context, state *framework.CycleState, pod *v1.Po
 }
 ```
 
-`nodesWherePreemptionMightHelp` 排除 Filter 状态为 `UnschedulableAndUnresolvable` 的节点（第 6 行），其余都算潜在节点。然后在所有潜在节点上收集优先级低于抢占者的 Pod，交给 DFS：
+找候选分两步：
+
+1. `nodesWherePreemptionMightHelp` 排除 Filter 状态为 `UnschedulableAndUnresolvable` 的节点（第 6 行），其余都算潜在节点；
+2. 在所有潜在节点上收集优先级低于抢占者的 Pod，交给 DFS：
 
 ```go {linenos=inline}
 // pkg/crossnodepreemption/cross_node_preemption.go（已注释）
@@ -194,7 +205,12 @@ func dfs(pods []*v1.Pod, i int, path []*v1.Pod, result *[]dp.Candidate, f dryRun
 }
 ```
 
-`dfs` 是最朴素的子集枚举：每个 Pod 选或不选（第 34–36 行），递归到底时对当前子集调用一次 `dryRunOnePass`（第 29–31 行）。注释写得很坦白：`We have 2^len(pods) choices in total.`（第 18 行）
+`dfs` 是最朴素的子集枚举，只有两条规则：
+
+- 每个 Pod 选或不选（第 34–36 行）；
+- 递归到底时对当前子集调用一次 `dryRunOnePass`（第 29–31 行）。
+
+注释写得很坦白：`We have 2^len(pods) choices in total.`（第 18 行）
 
 `append(path, pods[i])` 这种写法在 Go 里有一个经典隐患：如果 `path` 的底层数组还有空余容量，两个分支会共享底层数组，后一个分支的 `append` 可能覆盖前一个分支已经保存的元素。
 
@@ -269,7 +285,10 @@ func (s *candidate) Victims() *extenderv1.Victims {
 }
 ```
 
-`name` 是提名节点，`victims` 是一组分布在多个节点上的 Pod（第 3–4 行）。这在语义上已经超出了 `Victims` 结构原本的含义，它在 extender 协议里表示「这个节点上要驱逐的 Pod」。`NumPDBViolations` 固定为 0（第 11 行），PDB 完全没有参与。
+几个字段的含义：
+
+- `name` 是提名节点，`victims` 是一组分布在多个节点上的 Pod（第 3–4 行）。这在语义上已经超出了 `Victims` 结构原本的含义，它在 extender 协议里表示「这个节点上要驱逐的 Pod」；
+- `NumPDBViolations` 固定为 0（第 11 行），PDB 完全没有参与。
 
 ## 三、为什么只是示例
 
@@ -277,7 +296,12 @@ func (s *candidate) Victims() *extenderv1.Victims {
 
 ### 3.1 复杂度
 
-第一层是搜索空间。叶子数是 2ⁿ，n 是所有潜在节点上低优先级 Pod 的总数。每个叶子还要克隆若干个 `NodeInfo`、克隆一次 CycleState、对每个受害者跑一遍所有插件的 RemovePod 回调、再对每个受影响节点跑一遍完整的 Filter 链。
+第一层是搜索空间。叶子数是 2ⁿ，n 是所有潜在节点上低优先级 Pod 的总数。每个叶子还要做四件事：
+
+1. 克隆若干个 `NodeInfo`；
+2. 克隆一次 CycleState；
+3. 对每个受害者跑一遍所有插件的 RemovePod 回调；
+4. 对每个受影响节点跑一遍完整的 Filter 链。
 
 n 的规模不是节点内的 Pod 数，而是整个集群（排除 `UnschedulableAndUnresolvable` 节点后）的低优先级 Pod 数。n = 20 时子集数是 1,048,576；n = 30 时是 1,073,741,824。一个几十个节点、跑着批处理作业的集群，n 轻易就是几百。
 
@@ -381,7 +405,13 @@ type Interface interface {
 
 技术上，`SelectVictimsOnNode` 返回的 `[]*v1.Pod` 并没有被检查是否都在这个节点上，执行阶段的 `prepareCandidate` 会逐个驱逐列表里的 Pod，不管它们在哪。
 
-所以一个插件可以在 `SelectVictimsOnNode` 里从快照中读取其他节点的 Pod，对它们调用 `RunPreFilterExtensionRemovePod`（传入那个节点的 `NodeInfo`，但不修改它），然后把它们一起作为受害者返回。拓扑类插件的跨节点计数都在 CycleState 里，Filter 在目标节点上会看到正确的结果。
+所以一个插件可以在 `SelectVictimsOnNode` 里分三步绕过限制：
+
+1. 从快照中读取其他节点的 Pod；
+2. 对它们调用 `RunPreFilterExtensionRemovePod`（传入那个节点的 `NodeInfo`，但不修改它）；
+3. 把它们一起作为受害者返回。
+
+拓扑类插件的跨节点计数都在 CycleState 里，Filter 在目标节点上会看到正确的结果。
 
 但这种做法处处违背接口的约定：
 
@@ -447,7 +477,10 @@ type DomainVictim struct {
 // preemption where a preemptor is a pod group and the domain is the whole cluster.
 ```
 
-它的算法值得和 CrossNodePreemption 对照：先把全集群所有可抢的受害者一次性移除，调用整组调度函数确认能放下；然后按重要性从高到低逐个加回，加回后整组仍能放下就赦免，否则确定为受害者。
+它的算法值得和 CrossNodePreemption 对照，分两步：
+
+1. 把全集群所有可抢的受害者一次性移除，调用整组调度函数确认能放下；
+2. 按重要性从高到低逐个加回，加回后整组仍能放下就赦免，否则确定为受害者。
 
 **这是一个贪心的「全部移除、逐个赦免」，复杂度是 O(n) 次整组调度尝试，而不是 2ⁿ。** 它得到的不一定是全局最少的受害者集合，但是一个「去掉任何一个都不行」的极小集合，在实践中足够好。
 

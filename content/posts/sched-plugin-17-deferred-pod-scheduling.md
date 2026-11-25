@@ -19,7 +19,12 @@ description: "原地扩容放不下时会被 kubelet 标记为 Deferred，新 ga
 
 ## 一、问题：原地扩容放不下怎么办
 
-原地扩缩容允许直接修改运行中 Pod 的 `resources`，不用重建 Pod。kubelet 收到修改后先做准入：节点剩余资源够，就分配并让容器运行时调整 cgroup；不够，就把这次 resize 标记为**推迟**：
+原地扩缩容允许直接修改运行中 Pod 的 `resources`，不用重建 Pod。kubelet 收到修改后先做准入，有两种结果：
+
+- 节点剩余资源够，就分配并让容器运行时调整 cgroup；
+- 不够，就把这次 resize 标记为**推迟**。
+
+对应的状态定义如下：
 
 ```go {linenos=inline}
 // staging/src/k8s.io/api/core/v1/types.go
@@ -32,7 +37,12 @@ description: "原地扩容放不下时会被 kubelet 标记为 Deferred，新 ga
 	PodReasonInfeasible = "Infeasible"
 ```
 
-`Infeasible`（第 8 行）是节点总容量都放不下，再等也没用；`Deferred`（第 4 行）是「理论上放得下，但现在被其它 Pod 占着」。被推迟的 resize 会留在 kubelet 的 pending 列表里，等节点上有 Pod 退出、资源被释放时重试。
+两种「放不下」的含义不同：
+
+- `Infeasible`（第 8 行）是节点总容量都放不下，再等也没用；
+- `Deferred`（第 4 行）是「理论上放得下，但现在被其它 Pod 占着」。
+
+被推迟的 resize 会留在 kubelet 的 pending 列表里，等节点上有 Pod 退出、资源被释放时重试。
 
 问题在于：资源可能永远不会被释放。节点上的其它 Pod 都在正常运行，没有理由退出。一个高优先级的数据库 Pod 想把内存从 8Gi 扩到 16Gi，节点上挤满了低优先级的批处理任务，它就会一直卡在 `Deferred`。
 
@@ -97,7 +107,13 @@ Pod 卡在 `Deferred`，调度器要接手。第一步是让它重新回到队�
 	}
 ```
 
-三个状态转换对应三个动作：进入 Deferred 时入队（第 7–11 行），离开 Deferred（kubelet 完成了 resize，或者用户撤回了修改）时出队（第 12–16 行），持续 Deferred 期间 spec 再变（比如用户把目标值又改大了）时更新队列里的副本（第 17–20 行）。`addPod`（调度器重启后 informer 首次同步）和 `deletePod` 也有对应处理。注意 `updateAssignedPodInCache` 照常执行（第 23 行）：这个 Pod 同时存在于缓存和队列中，这一点后面会再提到。
+三个状态转换对应三个动作：
+
+- 进入 Deferred 时入队（第 7–11 行）；
+- 离开 Deferred（kubelet 完成了 resize，或者用户撤回了修改）时出队（第 12–16 行）；
+- 持续 Deferred 期间 spec 再变（比如用户把目标值又改大了）时更新队列里的副本（第 17–20 行）。
+
+`addPod`（调度器重启后 informer 首次同步）和 `deletePod` 也有对应处理。注意 `updateAssignedPodInCache` 照常执行（第 23 行）：这个 Pod 同时存在于缓存和队列中，这一点后面会再提到。
 
 队列侧，Deferred 的 Pod 被强制当作单个 Pod 处理（第 7–9 行），即使它属于某个 PodGroup：
 
@@ -116,7 +132,11 @@ func (p *PriorityQueue) isPodGroupMember(pod *v1.Pod) bool {
 }
 ```
 
-失败处理侧，`handleSchedulingFailure` 原本有一个保护：如果 informer 里的 Pod 已经有了 `spec.nodeName`（比如 extender 绑定超时但实际成功了），就不再放回队列。Deferred 的 Pod 天生有 `nodeName`，所以这个保护要绕开；同时它也不应该被设置 `nominatedNodeName`、不应该改 `PodScheduled` 条件，函数在入队之后直接返回（第 5–7 行）：
+失败处理侧，`handleSchedulingFailure` 原本有一个保护：如果 informer 里的 Pod 已经有了 `spec.nodeName`（比如 extender 绑定超时但实际成功了），就不再放回队列。Deferred 的 Pod 天生有 `nodeName`，所以对它的处理有三处不同：
+
+- 这个保护要绕开；
+- 它不应该被设置 `nominatedNodeName`；
+- 不应该改 `PodScheduled` 条件，函数在入队之后直接返回（第 5–7 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/schedule_one.go
@@ -159,7 +179,11 @@ Pod 就这样回到了队列。接下来的问题是：它走一遍调度周期�
 	}
 ```
 
-道理很直接：Pod 不换节点，节点亲和、污点、端口、卷、拓扑分布、Pod 间亲和在它绑定时都已经检查过了，现在唯一变化的是资源需求。`NodeName` 没有 PreFilter，不在 Skip 之列，它的 Filter 负责把候选范围收缩到 Pod 当前所在的节点（其它节点返回 `UnschedulableAndUnresolvable`）。`NodeResourcesFit` 负责资源判断。再加上本文的主角，这次调度周期里真正干活的只有三个 Filter。
+道理很直接：Pod 不换节点，节点亲和、污点、端口、卷、拓扑分布、Pod 间亲和在它绑定时都已经检查过了，现在唯一变化的是资源需求。这次调度周期里真正干活的只有三个 Filter：
+
+- `NodeName`：没有 PreFilter，不在 Skip 之列，它的 Filter 负责把候选范围收缩到 Pod 当前所在的节点（其它节点返回 `UnschedulableAndUnresolvable`）；
+- `NodeResourcesFit`：负责资源判断；
+- 本文的主角 `DeferredPodScheduling`。
 
 PostFilter 也做了同样的分工：`DynamicResources` 的 PostFilter（释放闲置 ResourceClaim）对 Deferred Pod 直接返回 `Unschedulable`，只让 `DefaultPreemption` 工作。
 
@@ -206,13 +230,16 @@ func adjustDeltasToAccomodateCacheDiscrepancy(opts ResourceRequestsOptions, podR
 - victim-1 低优先级，请求 200m；
 - preemptor 已分配 100m，spec 改成 300m。
 
-第一步，缓存里 preemptor 按 300m 计，节点 requested = 500m。
+计算分三步：
 
-第二步，Filter 时 delta = 300 − 300 = 0，`0 > 300 − 500` 成立，返回 `Insufficient cpu`。
+1. 缓存里 preemptor 按 300m 计，节点 requested = 500m；
+2. Filter 时 delta = 300 − 300 = 0，`0 > 300 − 500` 成立，返回 `Insufficient cpu`；
+3. 抢占模拟中移除 victim-1，requested 降到 300m，`0 > 0` 不成立，放得下。于是 victim-1 被驱逐。
 
-第三步，抢占模拟中移除 victim-1，requested 降到 300m，`0 > 0` 不成立，放得下。于是 victim-1 被驱逐。
+`NodeResourcesFit` 的 QueueingHint 也做了相应调整：对 Deferred Pod，其它节点上的 Pod 删除、缩容、节点变化一律 `QueueSkip`，只有同一节点上的事件才可能 `Queue`。gate 开启时它还多注册了两个扩容事件，都需要重新评估是否要抢占：
 
-`NodeResourcesFit` 的 QueueingHint 也做了相应调整：对 Deferred Pod，其它节点上的 Pod 删除、缩容、节点变化一律 `QueueSkip`，只有同一节点上的事件才可能 `Queue`。gate 开启时它还多注册了两个扩容事件：同节点其它 Pod 扩容（抢走了 Deferred Pod 等待的余量）和目标 Pod 自身再扩容，都需要重新评估是否要抢占。
+- 同节点其它 Pod 扩容（抢走了 Deferred Pod 等待的余量）；
+- 目标 Pod 自身再扩容。
 
 ## 五、插件源码
 
@@ -261,7 +288,10 @@ func (pl *DeferredPodScheduling) Filter(ctx context.Context, _ fwk.CycleState, p
 }
 ```
 
-Filter 的两个检查（第 12–14 行、第 16–18 行）。第一个与 `NodeName` 插件重复，作为防御。第二个读的是 KEP-5836 在 Node 上新增的 spec 字段：
+Filter 的两个检查：
+
+1. 第一个（第 12–14 行）与 `NodeName` 插件重复，作为防御；
+2. 第二个（第 16–18 行）读的是 KEP-5836 在 Node 上新增的 spec 字段：
 
 ```go {linenos=inline}
 // pkg/apis/core/types.go
@@ -426,7 +456,11 @@ func (pl *DeferredPodScheduling) EventsToRegister(_ context.Context) ([]fwk.Clus
 
 两个 hint 的开头都先检查 gate 和 `IsPodResizeDeferred`，对普通 Pod 一律 `QueueSkip`，因为普通 Pod 不可能被这个插件拒绝。
 
-集成测试 `TestDeferredResizeNodePreemptionPolicy` 的三个子用例对应三种情况：禁止策略生效不会唤醒 Pod，撤掉禁止策略会让 Pod 的调度尝试次数增加，其它节点的策略变化不会唤醒 Pod。
+集成测试 `TestDeferredResizeNodePreemptionPolicy` 的三个子用例对应三种情况：
+
+- 禁止策略生效不会唤醒 Pod；
+- 撤掉禁止策略会让 Pod 的调度尝试次数增加；
+- 其它节点的策略变化不会唤醒 Pod。
 
 事件注册到此为止。剩下的是一些不看代码不容易想到的边界。
 
@@ -458,7 +492,10 @@ Vertical Pod Autoscaler 的 `InPlaceOrRecreate` 更新模式会先尝试原地�
 
 ### 8.3 运维侧的开关
 
-`DisableResizePreemption` 给了运维一个节点级的「不要因为扩容而驱逐」的开关。适合的场景包括：节点上跑着不能被打断的任务（比如正在做检查点的训练作业）、节点即将下线维护时不希望产生额外的驱逐。由于它是所有者列表，配合自动化工具使用时，每个工具只管理自己的那一项，不会互相覆盖。
+`DisableResizePreemption` 给了运维一个节点级的「不要因为扩容而驱逐」的开关。适合的场景包括：
+
+- 节点上跑着不能被打断的任务（比如正在做检查点的训练作业）；
+- 节点即将下线维护时不希望产生额外的驱逐。由于它是所有者列表，配合自动化工具使用时，每个工具只管理自己的那一项，不会互相覆盖。
 
 ## 小结
 

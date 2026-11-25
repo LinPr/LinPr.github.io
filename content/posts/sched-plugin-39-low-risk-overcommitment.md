@@ -154,7 +154,12 @@ func (s *PodResourcesStateData) Clone() fwk.StateData {
 }
 ```
 
-PreScore 每个调度周期只执行一次：计算 Pod 的 request 和 limit（口径与上一篇的 `GetEffectiveResource` 相同：容器求和、与 init 容器取 max、加 overhead），再用 `SetMaxLimits` 保证每种资源的 limit 不小于 request（第 4–7 行）。没写 CPU limit 的容器，limit 被视为等于 request，而不是无穷大。
+PreScore 每个调度周期只执行一次，分两步：
+
+1. 计算 Pod 的 request 和 limit（口径与上一篇的 `GetEffectiveResource` 相同：容器求和、与 init 容器取 max、加 overhead）；
+2. 用 `SetMaxLimits` 保证每种资源的 limit 不小于 request（第 4–7 行）。
+
+没写 CPU limit 的容器，limit 被视为等于 request，而不是无穷大。
 
 `Clone` 直接返回自身。这样做是安全的，因为数据写入后只读不改，抢占模拟时复制 CycleState 也不需要深拷贝。Score 读不到这个 key 时（比如 PreScore 被跳过），会现场重新计算一遍，不会报错。
 
@@ -184,7 +189,10 @@ Score 本身很短：两个提前返回，剩下的交给 `computeRank`（第 17
 	return score, fwk.NewStatus(fwk.Success, "")
 ```
 
-Score 有两个提前返回 0 分的出口：BestEffort Pod，以及节点没有指标。前者对所有节点都给 0 分，相当于这个插件对 BestEffort Pod **保持中立**，不影响排序；后者是让这个节点在这一维垫底。
+Score 有两个提前返回 0 分的出口：
+
+- BestEffort Pod：对所有节点都给 0 分，相当于这个插件对 BestEffort Pod **保持中立**，不影响排序；
+- 节点没有指标：让这个节点在这一维垫底。
 
 ```go {linenos=inline}
 // pkg/trimaran/lowriskovercommitment/lowriskovercommitment.go
@@ -201,7 +209,10 @@ func (pl *LowRiskOverCommitment) computeRank(logger klog.Logger, metrics []watch
 }
 ```
 
-`GetNodeRequestsAndLimits` 遍历 `NodeInfo` 里的所有 Pod，最后把待调度 Pod 也加进去（第 2 行的 `append(podsOnNode, pod)`），在加它之前保存一份「不含本 Pod」的快照（第 6–10 行）：
+`GetNodeRequestsAndLimits` 做了两件事：
+
+1. 遍历 `NodeInfo` 里的所有 Pod，最后把待调度 Pod 也加进去（第 2 行的 `append(podsOnNode, pod)`）；
+2. 在加它之前保存一份「不含本 Pod」的快照（第 6–10 行）：
 
 ```go {linenos=inline}
 // pkg/trimaran/resourcestats.go
@@ -235,7 +246,13 @@ func (pl *LowRiskOverCommitment) computeRank(logger klog.Logger, metrics []watch
 	setMin(&nodeRequestMinusPod.Memory, capMem)
 ```
 
-得到五个量，下文记为：C = Allocatable，R / L = 含本 Pod 的 request / limit 之和，R⁻ / L⁻ = 不含本 Pod 的版本。R 和 R⁻ 被截到不超过 C（第 25–29 行），L 和 L⁻ 不截断。
+得到五个量，下文记为：
+
+- C = Allocatable；
+- R / L = 含本 Pod 的 request / limit 之和；
+- R⁻ / L⁻ = 不含本 Pod 的版本。
+
+R 和 R⁻ 被截到不超过 C（第 25–29 行），L 和 L⁻ 不截断。
 
 `NodeInfo` 来自调度器的快照，**包含已经 assume 但还没绑定完成的 Pod**。所以这一半数据没有 TLP 那种滞后问题，上一个刚被放到这个节点的 Pod，下一个周期就能看到。这也是 LROC 不需要 `PodAssignEventHandler` 的原因。
 
@@ -262,7 +279,12 @@ riskLimit = (L − C) / (L − R)    当 L > C
           = 0                     当 L ≤ C
 ```
 
-分母 L − R 是「所有 Pod 能在 request 之上额外突发的总量」，分子 L − C 是「其中节点容量兜不住的部分」。比值在 (0, 1] 内：limit 刚超过容量时接近 0；R = C，也就是 request 已经占满时，突发量全部兜不住，值为 1。因为 R ≤ C < L，分母恒为正，不会出现除零。
+分母 L − R 是「所有 Pod 能在 request 之上额外突发的总量」，分子 L − C 是「其中节点容量兜不住的部分」。比值在 (0, 1] 内，两端分别是：
+
+- limit 刚超过容量时接近 0；
+- R = C，也就是 request 已经占满时，突发量全部兜不住，值为 1。
+
+因为 R ≤ C < L，分母恒为正，不会出现除零。
 
 这个量只依赖 Pod spec，含义是**最坏情况下突发量的落空比例**。注意它用的是含本 Pod 的 R 和 L，衡量的是「放上去之后」的状态。
 
@@ -310,7 +332,12 @@ riskLimit = (L − C) / (L − R)    当 L > C
 
 分步来看。
 
-第一步，μ 和 σ。用 `CreateResourceStats` 时传入的是零 request（第 3–4 行的 `zeroRequest`），所以 μ 就是节点实际平均用量占 Allocatable 的比例，不加本 Pod。σ 先乘以 `√smoothingWindowSize`（第 9 行）。原因是：如果观测到的序列是对 n 个独立样本做滑动平均得到的，平均值的方差是原始方差的 1/n，标准差是 1/√n；乘以 √n 可以把标准差还原到原始尺度。Prometheus 的 `instance:node_cpu:ratio` 这类 recording rule 本身就是在若干分钟窗口上算出的速率，默认值 5 对应的就是这种平滑。
+第一步，μ 和 σ，各有一处处理：
+
+- 用 `CreateResourceStats` 时传入的是零 request（第 3–4 行的 `zeroRequest`），所以 μ 就是节点实际平均用量占 Allocatable 的比例，不加本 Pod；
+- σ 先乘以 `√smoothingWindowSize`（第 9 行）。
+
+σ 要放大的原因是：如果观测到的序列是对 n 个独立样本做滑动平均得到的，平均值的方差是原始方差的 1/n，标准差是 1/√n；乘以 √n 可以把标准差还原到原始尺度。Prometheus 的 `instance:node_cpu:ratio` 这类 recording rule 本身就是在若干分钟窗口上算出的速率，默认值 5 对应的就是这种平滑。
 
 第二步，限制 σ 不超过 Beta 分布允许的最大值。[0, 1] 上均值为 μ 的分布，方差最大是 μ(1 − μ)，此时概率质量全部集中在 0 和 1 两点。`GetMaxVariance` 返回这个上界，代码再乘以 0.99 后开方，作为 σ 的上限（第 11 行），保证下一步矩匹配一定有解（α、β > 0）。
 
@@ -372,7 +399,11 @@ func ComputeProbability(mu, sigma, threshold float64) (float64, *BetaDistributio
 
 为什么用这个阈值？新 Pod 被调度上来后，它的 request 是要被保证的。如果已有 Pod 的实际用量已经超过了它们自己的 request 总和，超出的那部分就是在借用「未分配」的容量，而新 Pod 的 request 正好要占用这部分容量。所以**1 − allocProb 就是「新 Pod 会和已有 Pod 的突发负载争抢」的概率**。
 
-几个特殊情况：μ = 0 时直接认为概率为 1；σ = 0 时退化成确定值，μ ≤ 阈值取 1，否则取 0（第 4–9 行）；矩匹配失败时返回 0（风险为 1，第 13–15 行）。
+有三种特殊情况：
+
+- μ = 0 时直接认为概率为 1；
+- σ = 0 时退化成确定值，μ ≤ 阈值取 1，否则取 0（第 4–9 行）；
+- 矩匹配失败时返回 0（风险为 1，第 13–15 行）。
 
 第五步，按 limit 做条件化。如果已有 Pod 的 limit 之和 L⁻ 小于容量，那么它们的用量不可能超过 L⁻/C（CPU 会被节流，内存会被 OOM kill）。这时实际用量的分布应该在 L⁻/C 处被截断：
 
@@ -380,7 +411,10 @@ func ComputeProbability(mu, sigma, threshold float64) (float64, *BetaDistributio
 P(X ≤ R⁻/C | X ≤ L⁻/C) = P(X ≤ R⁻/C) / P(X ≤ L⁻/C)      （R⁻ ≤ L⁻）
 ```
 
-代码就是做了这个除法，然后截到 [0, 1]（上面 riskLoad 代码第 26–27 行）。L⁻ = 0 时（节点上只有 BestEffort Pod，或者没有 Pod），代码注释写的是「zero over zero」，直接令 allocProb = 1（第 21–22 行）。
+代码分两种情况：
+
+- 一般情况下做了这个除法，然后截到 [0, 1]（上面 riskLoad 代码第 26–27 行）；
+- L⁻ = 0 时（节点上只有 BestEffort Pod，或者没有 Pod），代码注释写的是「zero over zero」，直接令 allocProb = 1（第 21–22 行）。
 
 第六步，`riskLoad = 1 − allocProb`。
 
@@ -388,7 +422,10 @@ P(X ≤ R⁻/C | X ≤ L⁻/C) = P(X ≤ R⁻/C) / P(X ≤ L⁻/C)      （R⁻ 
 
 ### 5.3 合成
 
-两部分算完，按权重合成（第 3–5 行），再把 CPU 和内存两个结果取较差者（`computeRank` 里的 `rank := 1 - max(riskCPU, riskMemory)`）。
+两部分算完，分两步合成：
+
+1. 按权重合成（第 3–5 行）；
+2. 把 CPU 和内存两个结果取较差者（`computeRank` 里的 `rank := 1 - max(riskCPU, riskMemory)`）。
 
 ```go {linenos=inline}
 // pkg/trimaran/lowriskovercommitment/lowriskovercommitment.go
@@ -433,7 +470,11 @@ score = round(100 × rank)
 - riskLoad：μ = 0.30，σ = 0.03 × √5 = 0.0671，ν = 0.21 / 0.0045 − 1 = 45.67，α = 13.70，β = 31.97。阈值 1500/4000 = 0.375，P(X ≤ 0.375) = 0.8644。L⁻ = 6000 ≥ C，不做条件化。riskLoad = 0.1356。
 - totalRisk = 0.5 × 0.6 + 0.5 × 0.1356 = 0.3678
 
-**内存（两节点相同）：** L = 11Gi < 16Gi，riskLimit = 0。μ = 0.30，σ = 0.02 × √5 = 0.0447，Beta(31.2, 72.8)，阈值 8/16 = 0.5，P(X ≤ 0.5) 几乎为 1，riskLoad ≈ 0，totalRisk ≈ 0。
+**内存（两节点相同）：**
+
+- riskLimit：L = 11Gi < 16Gi，riskLimit = 0。
+- riskLoad：μ = 0.30，σ = 0.02 × √5 = 0.0447，Beta(31.2, 72.8)，阈值 8/16 = 0.5，P(X ≤ 0.5) 几乎为 1，riskLoad ≈ 0。
+- totalRisk ≈ 0。
 
 **结果：**
 
@@ -442,9 +483,20 @@ score = round(100 × rank)
 
 LROC 选 A。B 的负载更低、request 更少，但已有 Pod 的 limit 之和已经是容量的 1.5 倍（6000m 对 4000m），再放一个 limit 1 核的 Pod 后达到 1.75 倍，最坏情况下有 60% 的突发量没有着落。A 的负载更高，但 limit 没有超卖，唯一的风险来自「当前负载有 13.6% 的概率越过已分配 request」。
 
-**平滑窗口的影响。** 如果把 A 的 `smoothingWindowSize` 设成 1，σ = 0.04，Beta(59.6, 89.4)，P(X ≤ 0.5) = 0.9930，riskLoad 只有 0.0070，是默认值下的约二十分之一。尾部概率对 σ 非常敏感，这个参数要按指标的实际平滑方式来设，不能随便填。
+**平滑窗口的影响。** 如果把 A 的 `smoothingWindowSize` 设成 1：
 
-单测 `TestLowRiskOverCommitment_computeRisk` 的 `test-cpu-1` 用例可以用来检验对公式的理解：C = 4000、L = 3000，riskLimit = 0；μ = 0.8、σ = 0，阈值 R⁻/C = 0.25，μ 大于阈值，allocProb = 0；此时虽然 L⁻ < C，但 σ = 0 时 `fitDistribution` 为 nil，不做条件化。riskLoad = 1，totalRisk = 0.5 × 0 + 0.5 × 1 = 0.5，与断言一致。
+1. σ = 0.04，Beta(59.6, 89.4)；
+2. P(X ≤ 0.5) = 0.9930；
+3. riskLoad 只有 0.0070，是默认值下的约二十分之一。
+
+尾部概率对 σ 非常敏感，这个参数要按指标的实际平滑方式来设，不能随便填。
+
+单测 `TestLowRiskOverCommitment_computeRisk` 的 `test-cpu-1` 用例可以用来检验对公式的理解：
+
+1. C = 4000、L = 3000，riskLimit = 0；
+2. μ = 0.8、σ = 0，阈值 R⁻/C = 0.25，μ 大于阈值，allocProb = 0；
+3. 此时虽然 L⁻ < C，但 σ = 0 时 `fitDistribution` 为 nil，不做条件化；
+4. riskLoad = 1，totalRisk = 0.5 × 0 + 0.5 × 1 = 0.5，与断言一致。
 
 ## 七、边界情况与坑
 

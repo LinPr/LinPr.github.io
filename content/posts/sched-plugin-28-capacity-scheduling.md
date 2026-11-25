@@ -36,7 +36,12 @@ profiles:
       - name: "*"
 ```
 
-`multiPoint` 把它注册到它实现的所有扩展点；`postFilter` 一段再把默认的 `DefaultPreemption` 关掉。原因后面会讲：`CapacityScheduling` 自带一套抢占，两套抢占同时开着，`DefaultPreemption` 会按纯优先级去驱逐 Pod，完全不理会配额。插件 README 标注的成熟度是 Beta。
+配置分两段：
+
+- `multiPoint` 把它注册到它实现的所有扩展点；
+- `postFilter` 一段再把默认的 `DefaultPreemption` 关掉。
+
+原因后面会讲：`CapacityScheduling` 自带一套抢占，两套抢占同时开着，`DefaultPreemption` 会按纯优先级去驱逐 Pod，完全不理会配额。插件 README 标注的成熟度是 Beta。
 
 ## 一、它要解决什么问题
 
@@ -299,7 +304,11 @@ func (s *ElasticQuotaSnapshotState) Clone() fwk.StateData {
 }
 ```
 
-`PreFilterState` 写入后不再被修改，返回自身就够了（第 3–5 行）。快照则不同：抢占模拟时，`Evaluator.DryRunPreemption` 会为每个候选节点调用一次 `state.Clone()`，然后在副本上反复「移除受害者、加回受害者」。每一次移除和加回都会经过 `RunPreFilterExtensionRemovePod`/`AddPod` 回调到插件，改动快照里对应 Namespace 的 `Used`。
+`PreFilterState` 写入后不再被修改，返回自身就够了（第 3–5 行）。快照则不同，抢占模拟时它会被反复改动：
+
+1. `Evaluator.DryRunPreemption` 为每个候选节点调用一次 `state.Clone()`；
+2. 在副本上反复「移除受害者、加回受害者」；
+3. 每一次移除和加回都会经过 `RunPreFilterExtensionRemovePod`/`AddPod` 回调到插件，改动快照里对应 Namespace 的 `Used`。
 
 不同节点的模拟是并行的，快照必须深拷贝，否则节点之间会相互污染。
 
@@ -386,7 +395,12 @@ func cmp2(x1, x2, y *framework.Resource, bound int64) bool {
 }
 ```
 
-语义是「`x1 + x2` 在任一维度上超过 `y`，就返回 true」。四个固定维度总是参与比较（第 3–17 行）；扩展资源（GPU 之类）只比较 `x1` 里出现的（第 19–27 行），`y` 里没有定义时用 `bound` 兜底。调用方传入的 `bound` 是：
+语义是「`x1 + x2` 在任一维度上超过 `y`，就返回 true」。比较的维度分两类：
+
+- 四个固定维度总是参与比较（第 3–17 行）；
+- 扩展资源（GPU 之类）只比较 `x1` 里出现的，`y` 里没有定义时用 `bound` 兜底（第 19–27 行）。
+
+调用方传入的 `bound` 是：
 
 ```go {linenos=inline}
 // pkg/capacityscheduling/elasticquota.go
@@ -541,7 +555,12 @@ func (e ElasticQuotaInfos) aggregatedUsedOverMinWith(podRequest framework.Resour
 }
 ```
 
-第一道是常规的单租户上限（第 2–4 行）。第二道决定了这个插件的整体形态（第 6–8 行）：**所有配额内 Pod 的用量总和，永远不能超过所有 `min` 之和**。「借用」借的只是其他租户暂时没用上的 `min`，借不到 `min` 总池子之外的资源。
+两道检查：
+
+- 第一道是常规的单租户上限（第 2–4 行）；
+- 第二道决定了这个插件的整体形态（第 6–8 行）：**所有配额内 Pod 的用量总和，永远不能超过所有 `min` 之和**。
+
+「借用」借的只是其他租户暂时没用上的 `min`，借不到 `min` 总池子之外的资源。
 
 假如所有 `min` 加起来只有集群容量的一半，另一半对配额内的 Pod 不可见，即便 `max` 写得很大也没用；只有没有 `ElasticQuota` 的 Namespace 能用到这部分。
 
@@ -704,7 +723,12 @@ func (p *preemptor) GetOffsetAndNumCandidates(n int32) (int32, int32) {
 4. 受害者数量最少；
 5. 最高优先级受害者启动最晚。
 
-`GetOffsetAndNumCandidates` 返回 `(0, n)`：从第一个节点开始，要求的候选数等于全部潜在节点数。`DefaultPreemption` 默认只要 `max(10% 节点数, 100)` 个候选，并从随机偏移开始，找够就停；`CapacityScheduling` 则会把所有节点都模拟一遍。大集群里，这让一次抢占的耗时随节点数线性增长。
+`GetOffsetAndNumCandidates` 返回 `(0, n)`：从第一个节点开始，要求的候选数等于全部潜在节点数。两者的差别：
+
+- `DefaultPreemption` 默认只要 `max(10% 节点数, 100)` 个候选，并从随机偏移开始，找够就停；
+- `CapacityScheduling` 则会把所有节点都模拟一遍。
+
+大集群里，这让一次抢占的耗时随节点数线性增长。
 
 ### 6.2 PodEligibleToPreemptOthers：别重复抢
 
@@ -876,11 +900,21 @@ func (p *preemptor) GetOffsetAndNumCandidates(n int32) (int32, int32) {
 	}
 ```
 
-加回后 Filter 不通过（第 8–14 行），这个 Pod 必须走；Filter 通过但配额检查不通过（第 16–22 行），也必须走。两者都通过，才赦免。和 `DefaultPreemption` 相比，多出来的正是第二个 `if`。
+每个候选受害者加回后有三种结果：
+
+- Filter 不通过（第 8–14 行），这个 Pod 必须走；
+- Filter 通过但配额检查不通过（第 16–22 行），也必须走；
+- 两者都通过，才赦免。
+
+和 `DefaultPreemption` 相比，多出来的正是第二个 `if`。
 
 第二个 `if` 里用的是含 nominated Pod 的两个和，而赦免前的那次检查只用了 `podReq`。这两个检查口径不一致会导致一个边角情况。
 
-如果其他 nominated Pod 的请求量使得「移除所有候选后」配额仍然超限，那么第一个被尝试赦免的 Pod 在 Filter 不通过时已经被 `removePod` 一次，接着配额检查又不通过，会对同一个 Pod 再 `removePod` 一次。`NodeInfo.RemovePod` 找不到 Pod 会返回 `no corresponding pod ... in pods of node` 错误，这个节点的模拟会以 `Error` 结束。
+如果其他 nominated Pod 的请求量使得「移除所有候选后」配额仍然超限，第一个被尝试赦免的 Pod 会经历：
+
+1. Filter 不通过，被 `removePod` 一次；
+2. 接着配额检查又不通过，对同一个 Pod 再 `removePod` 一次；
+3. `NodeInfo.RemovePod` 找不到 Pod，返回 `no corresponding pod ... in pods of node` 错误，这个节点的模拟以 `Error` 结束。
 
 这种组合在实际中并不常见，但排查抢占报错时值得知道这条路径。
 
@@ -920,7 +954,11 @@ B 的判定：`2 + 2 = 4`，不大于 `min` 4，处于「`min` 被占用」状�
 
 这个算例还能说明 PreFilter 为什么要计入 nominated Pod。b2 被提名到 node2 之后、绑定之前，假设 a3 已经退出，A 回到 4，B 记录的用量仍是 2（只有 b1）。
 
-此时 a4 进入调度：检查一 `4 + 2 = 6 ≤ 6` 通过；检查二里，b2 属于 B，B 的 `Used` 2 没有超过 `min`，所以 b2 的 2 CPU 计入 `nominatedPodsReqWithPodReq`，结果是 `ΣUsed 6 + b2 的 2 + a4 的 2 = 10 > 8`，a4 被拒。
+此时 a4 进入调度：
+
+1. 检查一 `4 + 2 = 6 ≤ 6` 通过；
+2. 检查二里，b2 属于 B，B 的 `Used` 2 没有超过 `min`，所以 b2 的 2 CPU 计入 `nominatedPodsReqWithPodReq`；
+3. 结果是 `ΣUsed 6 + b2 的 2 + a4 的 2 = 10 > 8`，a4 被拒。
 
 如果不计入 b2，`6 + 2 = 8 ≤ 8` 会放行，a4 就把 B 刚回收、b2 正等着的那份资源抢走了。
 
@@ -1006,7 +1044,12 @@ var defaultQueueingHintFn = func(_ klog.Logger, _ *v1.Pod, _, _ interface{}) (fw
 
 这意味着调度器进程里实际有两个 `ElasticQuota` informer：插件自己通过 controller-runtime 建的那个（用于维护用量记录），和框架为事件建的 dynamic informer（只用于入队）。
 
-两者独立同步，理论上存在「入队事件先到、插件的用量记录后更新」的窗口：Pod 被唤醒、拿到的仍是旧的 `min`/`max`，再次被拒。由于后续的用量记录更新不再产生新的入队事件，这个 Pod 只能等下一次 Pod 删除，或者 5 分钟的 unschedulable 超时（`DefaultPodMaxInUnschedulablePodsDuration`）把它刷回队列。
+两者独立同步，理论上存在「入队事件先到、插件的用量记录后更新」的窗口：
+
+1. Pod 被唤醒、拿到的仍是旧的 `min`/`max`，再次被拒；
+2. 后续的用量记录更新不再产生新的入队事件。
+
+这个 Pod 只能等下一次 Pod 删除，或者 5 分钟的 unschedulable 超时（`DefaultPodMaxInUnschedulablePodsDuration`）把它刷回队列。
 
 没有注册 Pod 的 Add/Update 看起来会漏掉一种情况：PreFilter 的拒绝可能只是因为计入了别人的 nominated Pod，后来那个 Pod 的提名被清除或换了节点，这在 API 上是一次 Pod 更新。
 

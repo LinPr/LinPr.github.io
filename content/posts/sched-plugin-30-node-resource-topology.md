@@ -34,9 +34,15 @@ kubelet 里的 Topology Manager 负责让一个 Pod 拿到的 CPU、内存、设
 | `restricted` | 拒绝准入 |
 | `single-numa-node` | 只接受「全部资源来自一个 NUMA 节点」的结果，否则拒绝 |
 
-作用域（`topologyManagerScope`）决定对齐的粒度：`container`（默认）逐个容器对齐，不同容器可以落在不同 NUMA 节点；`pod` 把整个 Pod 当成一个整体，所有容器必须落在同一组 NUMA 节点上。
+作用域（`topologyManagerScope`）决定对齐的粒度，有两种：
 
-被拒绝的 Pod 状态是 `TopologyAffinityError`，它已经绑定到节点上，不会再回到调度队列。如果由 ReplicaSet 管理，控制器会新建一个 Pod，调度器又只看节点总量，很可能把它再次放到同一个节点，形成循环。
+- `container`（默认）逐个容器对齐，不同容器可以落在不同 NUMA 节点；
+- `pod` 把整个 Pod 当成一个整体，所有容器必须落在同一组 NUMA 节点上。
+
+被拒绝的 Pod 状态是 `TopologyAffinityError`，它已经绑定到节点上，不会再回到调度队列。如果由 ReplicaSet 管理，会出现：
+
+1. 控制器新建一个 Pod；
+2. 调度器又只看节点总量，很可能把它再次放到同一个节点，形成循环。
 
 ### 1.2 调度器为什么看不见
 
@@ -154,7 +160,10 @@ func TopologyManagerFromNodeResourceTopology(lh logr.Logger, nodeTopology *topol
 }
 ```
 
-默认值是 `scope=container`、`policy=none`、`maxNUMANodes=8`，与 kubelet 一致。先读已废弃的 `topologyPolicies`（如 `SingleNUMANodeContainerLevel`，第 6 行），再用顶层 `attributes` 中的 `topologyManagerPolicy`、`topologyManagerScope`、`topologyManagerMaxNUMANodes` 覆盖（第 8 行）。
+默认值是 `scope=container`、`policy=none`、`maxNUMANodes=8`，与 kubelet 一致。解析分两步：
+
+1. 先读已废弃的 `topologyPolicies`（如 `SingleNUMANodeContainerLevel`，第 6 行）；
+2. 再用顶层 `attributes` 中的 `topologyManagerPolicy`、`topologyManagerScope`、`topologyManagerMaxNUMANodes` 覆盖（第 8 行）。
 
 代理没有上报这些属性时，节点会被当成 `policy=none`，Filter 直接放行。这是部署时最常见的「插件装了却不起作用」的原因。
 
@@ -258,7 +267,10 @@ func (tm *TopologyMatch) PreFilter(ctx context.Context, cycleState fwk.CycleStat
 
 PreFilter 不做任何判定，不缩小节点集合，也不返回 `Skip`。它存在的唯一理由是注释说的：实现 `PreFilterExtensions`，从而在抢占模拟时收到 `AddPod`/`RemovePod` 回调。
 
-DefaultPreemption 在某个节点上模拟「驱逐这些受害者后能否放下」时，会对每个受害者调用 `RemovePod`，插件把它压入 CycleState 里的受害者栈；回滚时调用 `AddPod`，从栈里弹出。
+DefaultPreemption 在某个节点上模拟「驱逐这些受害者后能否放下」时，插件的两个回调这样配合：
+
+- 对每个受害者调用 `RemovePod`，插件把它压入 CycleState 里的受害者栈；
+- 回滚时调用 `AddPod`，从栈里弹出。
 
 `Clone` 做深拷贝，是因为抢占会为每个候选节点克隆一份 CycleState 并发模拟，各节点的受害者集合不能互相污染。抢占关闭时，三个方法都直接返回，CycleState 里没有这个 key。
 
@@ -466,7 +478,12 @@ func singleNUMAContainerLevelHandler(lh logr.Logger, pod *v1.Pod, info *filterIn
 }
 ```
 
-这段完全对应 kubelet `scope_container.go` 的行为：先 init 容器（第 6–15 行）、后 app 容器（第 17 行起）逐个准入，每个 app 容器选定 zone 后扣减，后面的容器看到的是扣减后的余量。扣减作用在本次 Filter 新建的 `NUMANodeList` 上（`createNUMANodeList` 每次重新生成），不会污染缓存。
+这段完全对应 kubelet `scope_container.go` 的行为：
+
+1. 先 init 容器逐个准入（第 6–15 行）；
+2. 后 app 容器逐个准入（第 17 行起），每个 app 容器选定 zone 后扣减，后面的容器看到的是扣减后的余量。
+
+扣减作用在本次 Filter 新建的 `NUMANodeList` 上（`createNUMANodeList` 每次重新生成），不会污染缓存。
 
 失败原因有三种：`cannot align init container`、`cannot align sidecar container`（`GetInitContainerKind` 根据 `restartPolicy: Always` 区分）、`cannot align container`。
 
@@ -491,7 +508,11 @@ func singleNUMAPodLevelHandler(lh logr.Logger, pod *v1.Pod, info *filterInfo) *f
 }
 ```
 
-`GetPodEffectiveRequest`（第 3 行；实现在 `pkg/util/resource.go`）对 app 容器求和、对 init 容器取最大值，两者再取较大者，最后加上 `Overhead`。
+`GetPodEffectiveRequest`（第 3 行；实现在 `pkg/util/resource.go`）分三步算：
+
+1. 对 app 容器求和、对 init 容器取最大值；
+2. 两者再取较大者；
+3. 最后加上 `Overhead`。
 
 上图下半部分是同一个 Pod 在两种作用域下的不同结论：两个各要 4 CPU 的容器，在 6+5 的余量下 container 作用域能放，pod 作用域放不下。这也说明了为什么作用域必须从 NRT 读，而不能由插件假设。
 
@@ -580,7 +601,12 @@ func leastAllocatedScore(requested, numaCapacity resource.Quantity) int64 {
 }
 ```
 
-`MostAllocated` 是 `requested * 100 / numaCapacity`；`BalancedAllocation` 算各资源 `requested / capacity` 的比例，用 gonum 的 `stat.Variance`（无偏样本方差，除以 n−1）求方差，分数为 `(1 − 方差) × 100`。几处与 in-tree `NodeResourcesFit` 不同：
+另外两种策略：
+
+- `MostAllocated` 是 `requested * 100 / numaCapacity`；
+- `BalancedAllocation` 算各资源 `requested / capacity` 的比例，用 gonum 的 `stat.Variance`（无偏样本方差，除以 n−1）求方差，分数为 `(1 − 方差) × 100`。
+
+几处与 in-tree `NodeResourcesFit` 不同：
 
 - 分母是 zone 的 `Available`，不是容量。同样是「剩余比例」，in-tree 算的是 `(allocatable − 已请求 − 本 Pod) / allocatable`，这里算的是 `(available − 本 Pod) / available`，与 zone 已经用了多少无关；
 - 只遍历 Pod 请求了的资源，权重表里有但 Pod 没请求的资源不参与；
@@ -641,7 +667,10 @@ func normalizeScore(numaNodesCount int, isMinAvgDistance bool, highestNUMAID int
 }
 ```
 
-从 1 个 zone 开始枚举组合（第 3–4 行，`gonum` 的 `combin.Combinations`），找到能放下的最小组合数；同样组合数下，再用 zone 的 `costs`（即 ACPI SLIT 距离）计算组合内的平均距离，等于所有同规模组合中的最小平均距离时额外加半档分。
+计算分两步：
+
+1. 从 1 个 zone 开始枚举组合（第 3–4 行，`gonum` 的 `combin.Combinations`），找到能放下的最小组合数；
+2. 同样组合数下，再用 zone 的 `costs`（即 ACPI SLIT 距离）计算组合内的平均距离，等于所有同规模组合中的最小平均距离时额外加半档分。
 
 算例：`topologyManagerMaxNUMANodes` 没上报时取默认 8，每档 `100/8 = 12` 分。
 
@@ -775,7 +804,11 @@ func checkPodFingerprintForNode(lh logr.Logger, objs []podData, nodeName, pfpExp
 
 这道校验就是整个缓存设计的关键：它把「NRT 新不新」这个无法直接判断的问题，转换成了「两边的 Pod 集合是否相同」。
 
-`resyncMethod` 决定指纹的口径：`All` 计入所有 Pod；`OnlyExclusiveResources` 只计入持有独占资源的 Pod（整数核的 Guaranteed CPU、Guaranteed 的内存/hugepages、NRT 中出现的设备）；默认 `Autodetect` 读 NRT 属性 `nodeTopologyPodsFingerprintMethod`，值为 `with-exclusive-resources` 时用后者，否则用前者。
+`resyncMethod` 决定指纹的口径，有三种取值：
+
+- `All` 计入所有 Pod；
+- `OnlyExclusiveResources` 只计入持有独占资源的 Pod（整数核的 Guaranteed CPU、Guaranteed 的内存/hugepages、NRT 中出现的设备）；
+- 默认 `Autodetect` 读 NRT 属性 `nodeTopologyPodsFingerprintMethod`，值为 `with-exclusive-resources` 时用后者，否则用前者。
 
 两边口径必须一致，否则指纹永远对不上，节点永远无法 Flush。
 
@@ -874,7 +907,11 @@ func (ov *OverReserve) processNRTEvent(nrtEv NRTEvent, lh logr.Logger) int {
 
 `GetNRTPostPodsEviction` 只归还受害者中独占资源的部分（跳过普通 init 容器，保留 sidecar），按 NUMA 累加回 `Available`，任何一项超过 `Allocatable` 就整体放弃。
 
-这套机制有三个前提：只有 OverReserve 实现了 `GetCachedNUMAPlacementInfo`，Passthrough 和 DiscardReserved 返回 nil；代理必须上报放置数据；只解码 `single-numa-node` 策略的节点。
+这套机制有三个前提：
+
+- 只有 OverReserve 实现了 `GetCachedNUMAPlacementInfo`，Passthrough 和 DiscardReserved 返回 nil；
+- 代理必须上报放置数据；
+- 只解码 `single-numa-node` 策略的节点。
 
 任何一个不满足，Filter 就退化为不考虑受害者的普通判定。抢占关闭时更简单：`RemovePod` 什么都不做，模拟驱逐后 NRT 不变，被 NRT 拒绝的节点永远不会成为抢占候选。
 
@@ -892,7 +929,11 @@ func (tm *TopologyMatch) Reserve(ctx context.Context, state fwk.CycleState, pod 
 }
 ```
 
-OverReserve 的 `PostBind` 是空实现，预留一直保留到 Flush；DiscardReserved 在 PostBind 时删除预留；Passthrough 全部为空。
+三种模式的 `PostBind` 各不相同：
+
+- OverReserve 的 `PostBind` 是空实现，预留一直保留到 Flush；
+- DiscardReserved 在 PostBind 时删除预留；
+- Passthrough 全部为空。
 
 被这个插件拒绝的 Pod 靠下面三类事件重新入队：
 

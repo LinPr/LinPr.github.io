@@ -40,7 +40,12 @@ profiles:
           scoringStrategy: "Lowest"
 ```
 
-这是 `manifests/nodemetadata/scheduler-config.yaml` 中的第二个示例：节点用 annotation 标注每小时成本（第 13–14 行），越便宜的节点得分越高。Pod 通过 `schedulerName: cost-aware-scheduler`（第 4 行）选择这个 Profile。数据来源就是调度器 snapshot 里的 Node 对象，不需要额外的 informer 或 CRD，外部系统更新 annotation 后，下一个调度周期就能看到。
+这是 `manifests/nodemetadata/scheduler-config.yaml` 中的第二个示例，分两端看：
+
+- 节点用 annotation 标注每小时成本（第 13–14 行），越便宜的节点得分越高；
+- Pod 通过 `schedulerName: cost-aware-scheduler`（第 4 行）选择这个 Profile。
+
+数据来源就是调度器 snapshot 里的 Node 对象，不需要额外的 informer 或 CRD，外部系统更新 annotation 后，下一个调度周期就能看到。
 
 这套配置能写什么，取决于参数结构的定义和校验，下一节看这两个。
 
@@ -179,11 +184,26 @@ func (nm *NodeMetadata) parseTimestampValue(value string) (int64, error) {
 }
 ```
 
-两条路径的共同思路是：**把「偏好方向」编码到原始分的符号里，让归一化永远是「原始分越大越好」。** `Lowest` 取负（第 10–13 行），`Newest` 用负的年龄（第 30–33 行），于是归一化代码不需要知道策略是什么。
+两条路径的共同思路是：**把「偏好方向」编码到原始分的符号里，让归一化永远是「原始分越大越好」。** 具体有两处：
 
-数值路径用 `ParseFloat` 接受小数（第 3 行），再用 `int64(numValue)` 转换（第 9 行）。**Go 的浮点到整数转换是向零截断，不是四舍五入。** KEP 的 Known limitations 写的是「numeric values are rounded before scoring」，与代码不符，以代码为准：1.2 和 1.7 都变成 1。
+- `Lowest` 取负（第 10–13 行）；
+- `Newest` 用负的年龄（第 30–33 行）。
 
-时间戳路径先按 `TimestampFormat` 解析（第 21 行），再算 Score 时刻距离时间戳的秒数（第 27 行），未来的时间戳会得到负的年龄，`Newest` 下反而得分最高。每个节点调用一次 `time.Since`，同一轮打分里各节点的「现在」相差微秒级，不影响秒级精度。每个节点调用一次 `time.Since`，同一轮打分里各节点的「现在」相差微秒级，不影响秒级精度。
+于是归一化代码不需要知道策略是什么。
+
+数值路径分两步：
+
+1. 用 `ParseFloat` 接受小数（第 3 行）；
+2. 再用 `int64(numValue)` 转换（第 9 行）。
+
+**Go 的浮点到整数转换是向零截断，不是四舍五入。** KEP 的 Known limitations 写的是「numeric values are rounded before scoring」，与代码不符，以代码为准：1.2 和 1.7 都变成 1。
+
+时间戳路径也分两步：
+
+1. 先按 `TimestampFormat` 解析（第 21 行）；
+2. 再算 Score 时刻距离时间戳的秒数（第 27 行），未来的时间戳会得到负的年龄，`Newest` 下反而得分最高。
+
+每个节点调用一次 `time.Since`，同一轮打分里各节点的「现在」相差微秒级，不影响秒级精度。
 
 ### 3.3 NormalizeScore：为无效节点预留 0 分
 

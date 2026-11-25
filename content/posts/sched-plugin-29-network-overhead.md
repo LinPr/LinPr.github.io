@@ -192,7 +192,10 @@ const (
 
 代价是有向的：z1→z2 和 z2→z1 是两条记录，要分别写。也没有节点级别的条目：KEP 的假设是同一 zone 内节点之间的网络是均匀的，插件对同 zone 一律记 1，不查表。
 
-`weights` 可以并存多套，插件参数 `weightsName` 选用其中一套。名字为 `NetperfCosts` 的那套约定由 networktopology controller 根据 netperf 测量结果（存放在 `configmapName` 指向的 ConfigMap 里）自动维护；其它名字（默认 `UserDefined`）视为手工填写。
+`weights` 可以并存多套，插件参数 `weightsName` 选用其中一套。按名字分两类：
+
+- 名字为 `NetperfCosts` 的那套，约定由 networktopology controller 根据 netperf 测量结果（存放在 `configmapName` 指向的 ConfigMap 里）自动维护；
+- 其它名字（默认 `UserDefined`）视为手工填写。
 
 这个区别会影响插件是否对代价表排序，见 3.3 节。
 
@@ -430,7 +433,11 @@ func GetScheduledList(pods []*v1.Pod) ScheduledList {
 }
 ```
 
-有三处细节：lister 不按 namespace 过滤，任何 namespace 里带同名 AppGroup label 的 Pod 都会被算进来；它不看 Pod phase，已经 `Succeeded`/`Failed` 但对象还在的 Pod 照样参与计算；它读的是 informer，即 API Server 已经确认绑定的 Pod，调度器缓存里已 assume、尚未完成绑定的 Pod 不在其中。
+有三处细节：
+
+- lister 不按 namespace 过滤，任何 namespace 里带同名 AppGroup label 的 Pod 都会被算进来；
+- 它不看 Pod phase，已经 `Succeeded`/`Failed` 但对象还在的 Pod 照样参与计算；
+- 它读的是 informer，即 API Server 已经确认绑定的 Pod，调度器缓存里已 assume、尚未完成绑定的 Pod 不在其中。
 
 后半段对快照里的**每一个节点**（而不是 PreFilter 参数 `nodes`）构造代价表、计算满足/违反数和累计代价：
 
@@ -512,9 +519,15 @@ func (no *NetworkOverhead) populateCostMap(
 }
 ```
 
-查找全部是二分：`FindTopologyKey` 在 `topologyList` 上按 key 二分（第 14 行），`FindOriginCosts` 在 `originList` 上按 origin 二分（第 22 行）。
+查找全部是二分：
 
-二分要求有序，手工填写的代价表不一定有序，所以在 `weightsName` 不是 `NetperfCosts` 时，PreFilter 开头的 `sortNetworkTopologyCosts` 先按 `topologyKey` 排一次，`populateCostMap` 再对 `originList` 按 origin 排序；`NetperfCosts` 则信任 controller 已经排好。
+- `FindTopologyKey` 在 `topologyList` 上按 key 二分（第 14 行）；
+- `FindOriginCosts` 在 `originList` 上按 origin 二分（第 22 行）。
+
+二分要求有序，手工填写的代价表不一定有序，所以按 `weightsName` 分两种情况：
+
+- 不是 `NetperfCosts` 时，PreFilter 开头的 `sortNetworkTopologyCosts` 先按 `topologyKey` 排一次，`populateCostMap` 再对 `originList` 按 origin 排序；
+- `NetperfCosts` 则信任 controller 已经排好。
 
 由于 `Get` 返回的是深拷贝，这些排序不会改动缓存里的对象，但会在每次 PreFilter、对每个节点重复一遍：`originList` 的排序发生在节点循环内部，N 个节点就排 N 次。
 
@@ -853,7 +866,11 @@ NetworkOverhead 实现了 PreFilter 和 Filter，却没有实现 `EnqueueExtensi
 
 **CR 找不到时会 panic。** 当 Pod 带 AppGroup label 时，PreFilter 依次执行 `findAppGroupNetworkOverhead`、`findNetworkTopologyNetworkOverhead`、`sortNetworkTopologyCosts`、`GetDependencyList`。
 
-两个 find 在所有 namespace 都找不到时返回 `nil`；`sortNetworkTopologyCosts` 在 `weightsName` 不是 `NetperfCosts` 时会 `range networkTopology.Spec.Weights`，对 nil 指针解引用；即使跳过了排序，`GetDependencyList(pod, nil)` 也会访问 `ag.Spec`。
+出问题的路径是：
+
+1. 两个 find 在所有 namespace 都找不到时返回 `nil`；
+2. `sortNetworkTopologyCosts` 在 `weightsName` 不是 `NetperfCosts` 时会 `range networkTopology.Spec.Weights`，对 nil 指针解引用；
+3. 即使跳过了排序，`GetDependencyList(pod, nil)` 也会访问 `ag.Spec`。
 
 PreFilter 运行在调度主循环的 goroutine 里，框架不 recover，调度器进程退出。
 
@@ -893,7 +910,11 @@ NetworkOverhead 关心节点之间的距离，[下一篇](/posts/sched-plugin-30
 
 ### 7.3 代价从哪里来
 
-手工填写的 `UserDefined` 代价是静态的。KEP 设想的完整链路是：netperf 组件定期在每对 zone/region 之间各挑一对节点测量延迟，写入 ConfigMap；networktopology controller 读取 ConfigMap，计算代价（例如对多跳路径求最短路），写回 NetworkTopology 的 `NetperfCosts` 权重；插件配置 `weightsName: NetperfCosts` 使用它。
+手工填写的 `UserDefined` 代价是静态的。KEP 设想的完整链路分三步：
+
+1. netperf 组件定期在每对 zone/region 之间各挑一对节点测量延迟，写入 ConfigMap；
+2. networktopology controller 读取 ConfigMap，计算代价（例如对多跳路径求最短路），写回 NetworkTopology 的 `NetperfCosts` 权重；
+3. 插件配置 `weightsName: NetperfCosts` 使用它。
 
 这个设计只测 zone/region 之间的代表性节点对，避免在大集群里做 O(N²) 的全量探测，前提是同一 zone 内的网络质量均匀，这也是插件对同 zone 固定记 1 的原因。
 

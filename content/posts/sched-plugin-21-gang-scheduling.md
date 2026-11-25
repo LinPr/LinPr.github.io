@@ -255,7 +255,12 @@ func (p *PriorityQueue) isPodGroupMember(pod *v1.Pod) bool {
 //     newly arriving Pods are placed in `pendingPodGroupPods` to wait for the PodGroup to be requeued.
 ```
 
-`addPodGroupMember` 把这三条不变式落实到代码里：根组没被观察到就进 `incomplete`（第 4–9 行）；根组已经在某个队列里就并进去（第 11–13 行）；根组刚被 Pop 出去正在调度，就先放 `pending`（第 15–20 行）；否则新建一个 `QueuedPodGroupInfo` 送进 activeQ（第 23–26 行）。
+`addPodGroupMember` 把这三条不变式落实到代码里，按顺序判断四种情况：
+
+1. 根组没被观察到，就进 `incomplete`（第 4–9 行）；
+2. 根组已经在某个队列里，就并进去（第 11–13 行）；
+3. 根组刚被 Pop 出去正在调度，就先放 `pending`（第 15–20 行）；
+4. 否则新建一个 `QueuedPodGroupInfo` 送进 activeQ（第 23–26 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
@@ -291,7 +296,14 @@ func (p *PriorityQueue) addPodGroupMember(logger klog.Logger, pInfo *framework.Q
 
 `QueuedPodGroupInfo` 以根组为单位：没有 CompositePodGroup 时根组就是 PodGroup 自己；有的话，整棵树上所有叶子 PodGroup 的 Pod 合成一个 entity 出队。
 
-**排序仍然交给 QueueSort 插件**：`PrioritySort.Less` 现在比较的是 `fwk.QueuedEntityInfo`，组的优先级和时间戳与单个 Pod 同等参与排序（见[第 02 篇](/posts/sched-plugin-02-priority-sort/)）。组内 Pod 的顺序由 `PodGroupMemberPodsOrderingFunc` 决定：优先级高的在前，其次尝试次数多的在前，再按时间戳、最后按 Pod 名，保证每轮试放的顺序是确定的。
+**排序仍然交给 QueueSort 插件**：`PrioritySort.Less` 现在比较的是 `fwk.QueuedEntityInfo`，组的优先级和时间戳与单个 Pod 同等参与排序（见[第 02 篇](/posts/sched-plugin-02-priority-sort/)）。组内 Pod 的顺序由 `PodGroupMemberPodsOrderingFunc` 决定，依次比较：
+
+1. 优先级高的在前；
+2. 其次尝试次数多的在前；
+3. 再按时间戳；
+4. 最后按 Pod 名。
+
+这样保证每轮试放的顺序是确定的。
 
 ### 3.2 scheduleOnePodGroup：开场的四步
 
@@ -430,7 +442,12 @@ func (sched *Scheduler) podGroupSchedulingDefaultAlgorithm(ctx context.Context, 
 // next UpdateSnapshot instead of outliving the cycle.
 ```
 
-后一个 Pod 能「看见」前一个 Pod 占掉的资源，因为它们共享同一个 snapshot；而一旦整组失败，`podGroupSchedulingDefaultAlgorithm` 代码块里 `defer` 的 `revertFns.revert()`（第 3–8 行）会对每个已 assume 的 Pod 依次跑 Unreserve 并从 snapshot 里 Forget。即使漏掉了，下一次 `UpdateSnapshot` 也会把这些临时状态冲掉，不会污染 cache。**这是「all-or-nothing」在调度周期内的实现方式。**
+只在 snapshot 里 assume，带来两点效果：
+
+- 后一个 Pod 能「看见」前一个 Pod 占掉的资源，因为它们共享同一个 snapshot；
+- 一旦整组失败，`podGroupSchedulingDefaultAlgorithm` 代码块里 `defer` 的 `revertFns.revert()`（第 3–8 行）会对每个已 assume 的 Pod 依次跑 Unreserve 并从 snapshot 里 Forget。
+
+即使漏掉了，下一次 `UpdateSnapshot` 也会把这些临时状态冲掉，不会污染 cache。**这是「all-or-nothing」在调度周期内的实现方式。**
 
 第三处是失败处理：单个 Pod 失败时不跑 PostFilter。`schedulingAlgorithm` 里有一个分支专门处理这种情况（第 4–8 行）：
 
@@ -529,7 +546,13 @@ func podGroupPotentiallyFeasible(ctx context.Context, schedFwk framework.Framewo
 | `Wait` | 是 | Unschedulable |
 | `Success`（nil） | 是 | Success |
 
-`Success` 之后仍然继续评估剩余的 Pod，因为 minCount 只是下限，能多放就多放；接口注释也要求插件一旦返回 Success，之后都应继续返回 Success。`RunPlacementFeasiblePlugins` 在多个插件之间的合并规则是：遇到 Unschedulable 或 Error 立即返回，遇到 Wait 记下并继续问下一个插件，全部 Success 才是 Success。框架允许 PlacementFeasible 返回的只有这四种码，`UnschedulableAndUnresolvable` 会被当成「unexpected status code」变成 Error。
+`Success` 之后仍然继续评估剩余的 Pod，因为 minCount 只是下限，能多放就多放；接口注释也要求插件一旦返回 Success，之后都应继续返回 Success。`RunPlacementFeasiblePlugins` 在多个插件之间的合并规则是：
+
+- 遇到 Unschedulable 或 Error 立即返回；
+- 遇到 Wait 记下并继续问下一个插件；
+- 全部 Success 才是 Success。
+
+框架允许 PlacementFeasible 返回的只有这四种码，`UnschedulableAndUnresolvable` 会被当成「unexpected status code」变成 Error。
 
 ### 4.3 一个算例
 
@@ -668,7 +691,12 @@ func (ht *HierarchyTracker) propagateReadinessDelta(logger klog.Logger, parentKe
 }
 ```
 
-一个组从 3 个 Pod 涨到 4 个，跨过了 minCount=4，向父组传 +1（第 8–12 行）；涨到 5 个时 `wasReady` 已经是 true，什么都不传。父组 `readyChildren` 的变化也只在它自己跨过阈值时才继续往上走。**这样每次 Pod 事件的代价是 O(树深)，而树深被 API 限制在 4 以内。**
+以 minCount=4 的组为例：
+
+- 从 3 个 Pod 涨到 4 个，跨过了 minCount=4，向父组传 +1（第 8–12 行）；
+- 涨到 5 个时 `wasReady` 已经是 true，什么都不传。
+
+父组 `readyChildren` 的变化也只在它自己跨过阈值时才继续往上走。**这样每次 Pod 事件的代价是 O(树深)，而树深被 API 限制在 4 以内。**
 
 `getOrCreateGroup` 有一个容易忽略的默认值：
 
@@ -690,7 +718,11 @@ func (ht *HierarchyTracker) getOrCreateGroup(key fwk.EntityKey) *hierarchyGroup 
 }
 ```
 
-Pod 先于 PodGroup 到达时，tracker 先建一个占位节点（`genericGroup == nil`，第 7–13 行）。PodGroup 到达后 `AddGenericPodGroup` 写入真实的 minCount 和 parentKey，`updateGroupReadiness` 比较前后的就绪状态并补发传播；如果父链从 nil 变成了某个 CompositePodGroup，还会先从旧父撤销、再向新父传播。PodGroup 被删除时，只要还有 Pod 引用它，节点作为占位保留下来。
+占位节点贯穿 PodGroup 的整个生命周期：
+
+1. Pod 先于 PodGroup 到达时，tracker 先建一个占位节点（`genericGroup == nil`，第 7–13 行）；
+2. PodGroup 到达后，`AddGenericPodGroup` 写入真实的 minCount 和 parentKey，`updateGroupReadiness` 比较前后的就绪状态并补发传播；如果父链从 nil 变成了某个 CompositePodGroup，还会先从旧父撤销、再向新父传播；
+3. PodGroup 被删除时，只要还有 Pod 引用它，节点作为占位保留下来。
 
 ### 5.4 PreEnqueue 本身
 
@@ -792,7 +824,12 @@ func (pl *GangScheduling) EventsToRegister(_ context.Context) ([]fwk.ClusterEven
 
 **删除类事件不会被订阅：它们只会让组离就绪更远，不可能让等待中的组变得可调度。** Pod/Update 不订阅的理由注释里写了：`schedulingGroup` 不可变。
 
-这些 hint 会在两种情况下被用到：一是组在 PreEnqueue 被拦，`GangScheduling` 记为 gating plugin；二是 PlacementFeasible 返回 Wait/Unschedulable，`podGroupFitError.addPluginStatus` 把 `GangScheduling` 记进 `unschedulablePlugins`，回队时复制到每个 Pod 的 `UnschedulablePlugins`。队列评估一个组时会对组内每个 Pod 跑 hint，只要有一个 Pod 得到 `Queue`，整组就被移出 unschedulableEntities：
+这些 hint 会在两种情况下被用到：
+
+- 组在 PreEnqueue 被拦，`GangScheduling` 记为 gating plugin；
+- PlacementFeasible 返回 Wait/Unschedulable，`podGroupFitError.addPluginStatus` 把 `GangScheduling` 记进 `unschedulablePlugins`，回队时复制到每个 Pod 的 `UnschedulablePlugins`。
+
+队列评估一个组时会对组内每个 Pod 跑 hint，只要有一个 Pod 得到 `Queue`，整组就被移出 unschedulableEntities：
 
 ```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
@@ -803,7 +840,12 @@ func (p *PriorityQueue) isEntityWorthRequeuing(logger klog.Logger, entity framew
 }
 ```
 
-这里有一个和单 Pod 调度不同的地方：组内各 Pod 的 `UnschedulablePlugins` 并不相同。在场景 A 里，p2、p6 是自己 Filter 失败，带的是 `NodeResourcesFit` 之类的插件；p1/p3/p4/p5 成功了不回队。在场景 B 里，p2~p4 带的是各自的 Filter 插件，p1、p5、p6 带的是组的 `podGroupFitError`，里面有 `GangScheduling`。于是节点变化（唤醒 p2~p4）和新 Pod 加入（唤醒 p1、p5、p6）都能让这个组重新出队。
+这里有一个和单 Pod 调度不同的地方：组内各 Pod 的 `UnschedulablePlugins` 并不相同：
+
+- 场景 A：p2、p6 是自己 Filter 失败，带的是 `NodeResourcesFit` 之类的插件；p1/p3/p4/p5 成功了不回队；
+- 场景 B：p2~p4 带的是各自的 Filter 插件，p1、p5、p6 带的是组的 `podGroupFitError`，里面有 `GangScheduling`。
+
+于是节点变化（唤醒 p2~p4）和新 Pod 加入（唤醒 p1、p5、p6）都能让这个组重新出队。
 
 ## 七、提交结果与回队
 
@@ -842,13 +884,19 @@ func (p *PriorityQueue) isEntityWorthRequeuing(logger klog.Logger, entity framew
 		}
 ```
 
-**组成功时，每个成功的 Pod 才真正 `AssumeAndReserveInCache`**，跑 Permit，然后启动各自的绑定 goroutine（第 10–12 行）。组失败时，即使某个 Pod 自己试放成功，也带着组的状态回队。
+结果分两种情况：
+
+- **组成功时，每个成功的 Pod 才真正 `AssumeAndReserveInCache`**，跑 Permit，然后启动各自的绑定 goroutine（第 10–12 行）；
+- 组失败时，即使某个 Pod 自己试放成功，也带着组的状态回队。
 
 最后，调度器把结果写到 PodGroup 的 `status.conditions` 上，类型是 `PodGroupInitiallyScheduled`，reason 有 `Scheduled`、`Unschedulable`、`SchedulerError`、`PodGroupError` 四种。`updatePodGroupCondition` 有一条保护：condition 一旦是 True，后续轮次不会把它改回 False，避免扩容时新 Pod 的失败「污染」一个已经成功启动的组。
 
 ### 7.2 AddAttemptedPodGroupIfNeeded
 
-回队分两步。`FailureHandler` 把每个失败的 Pod 交给队列，此时根组仍是「最近一次 Pop 出来的 entity」，于是这些 Pod 被放进 `pendingPodGroupPods`。周期末尾 `AddAttemptedPodGroupIfNeeded` 把它们重新组装成一个 `QueuedPodGroupInfo`：
+回队分两步：
+
+1. `FailureHandler` 把每个失败的 Pod 交给队列，此时根组仍是「最近一次 Pop 出来的 entity」，于是这些 Pod 被放进 `pendingPodGroupPods`；
+2. 周期末尾 `AddAttemptedPodGroupIfNeeded` 把它们重新组装成一个 `QueuedPodGroupInfo`：
 
 ```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
@@ -870,7 +918,10 @@ func (p *PriorityQueue) isEntityWorthRequeuing(logger klog.Logger, entity framew
 	}
 ```
 
-**组成功但还有剩余 Pod 时（场景 A 的 p2、p6），组直接回 activeQ，不走 backoff（第 2–8 行）**，并保留原时间戳排在前面，让下一轮立刻为这些 Pod 尝试抢占。组失败时 `UnschedulableCount` 加一，按 backoff 规则进 backoffQ 或 unschedulableEntities，等 hint 唤醒。
+回队去向分两种情况：
+
+- **组成功但还有剩余 Pod 时（场景 A 的 p2、p6），组直接回 activeQ，不走 backoff（第 2–8 行）**，并保留原时间戳排在前面，让下一轮立刻为这些 Pod 尝试抢占；
+- 组失败时 `UnschedulableCount` 加一，按 backoff 规则进 backoffQ 或 unschedulableEntities，等 hint 唤醒。
 
 ## 八、边界情况与容易误解的地方
 
@@ -902,7 +953,12 @@ var _ fwk.PreEnqueuePlugin = &GangScheduling{}
 var _ fwk.PermitPlugin = &GangScheduling{}
 ```
 
-那时它由独立的 `GangScheduling` feature gate（1.35 Alpha）控制。PreEnqueue 直接用 PodGroup lister 和 `PodGroupStates().AllPodsCount()` 判断人数；Permit 则统计 `ScheduledPodsCount()`，不够 minCount 就返回 `Wait` 并带 5 分钟超时，够了就遍历 `AssumedPods()` 逐个 `Allow`。这和 scheduler-plugins 里 Coscheduling 的思路一致：一个个 Pod 先占住资源，在 Permit 处等齐再一起放行。
+那时它由独立的 `GangScheduling` feature gate（1.35 Alpha）控制，两个扩展点分工如下：
+
+- PreEnqueue 直接用 PodGroup lister 和 `PodGroupStates().AllPodsCount()` 判断人数；
+- Permit 则统计 `ScheduledPodsCount()`，不够 minCount 就返回 `Wait` 并带 5 分钟超时，够了就遍历 `AssumedPods()` 逐个 `Allow`。
+
+这和 scheduler-plugins 里 Coscheduling 的思路一致：一个个 Pod 先占住资源，在 Permit 处等齐再一起放行。
 
 master 上的版本把这套机制拆掉了：
 

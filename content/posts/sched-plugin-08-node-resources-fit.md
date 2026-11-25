@@ -64,7 +64,10 @@ var _ fwk.PlacementScorePlugin = &Fit{}
 
 ### 2.1 入口：ComputePodResourceRequest
 
-调度器的入口函数只是薄薄一层：`resource.PodRequests` 按共用口径算出请求量（第 4–8 行），再把结果转成定长结构体 `framework.Resource`（第 9–11 行）。
+调度器的入口函数只是薄薄一层，分两步：
+
+1. `resource.PodRequests` 按共用口径算出请求量（第 4–8 行）；
+2. 把结果转成定长结构体 `framework.Resource`（第 9–11 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/helper/resource_fit.go
@@ -108,7 +111,13 @@ func PodRequests(pod *v1.Pod, opts PodResourcesOptions) v1.ResourceList {
 }
 ```
 
-三步：容器级聚合（第 4–6 行），Pod 级覆盖（第 8–12 行），最后加 overhead（第 14–17 行）。三步里第一步最复杂，先看它。
+计算分三步：
+
+1. 容器级聚合（第 4–6 行）；
+2. Pod 级覆盖（第 8–12 行）；
+3. 加 overhead（第 14–17 行）。
+
+三步里第一步最复杂，先看它。
 
 ### 2.2 容器级聚合：sidecar 与 init 容器
 
@@ -209,7 +218,10 @@ func applyPodLevelResources(result, effectiveResources v1.ResourceList) {
 }
 ```
 
-**Pod 级的值会覆盖容器级聚合的结果，不是相加**（第 7 行是直接赋值，不是 `addResourceList`），而且只对 CPU、内存和 hugepages 生效。写在 Pod 级的扩展资源或临时存储会被忽略，这些维度仍然以容器级聚合为准。
+**Pod 级的值会覆盖容器级聚合的结果，不是相加**（第 7 行是直接赋值，不是 `addResourceList`）。生效范围有两条规则：
+
+- 只对 CPU、内存和 hugepages 生效；
+- 写在 Pod 级的扩展资源或临时存储会被忽略，这些维度仍然以容器级聚合为准。
 
 ### 2.4 overhead
 
@@ -245,7 +257,12 @@ func (r *Resource) SetMaxResource(rl v1.ResourceList) {
 }
 ```
 
-CPU 用毫核，内存和存储用字节：`switch` 的三个 `case` 分别处理内存、CPU、临时存储（第 9–14 行），其余资源只要满足 `IsScalarResourceName` 就放进 `ScalarResources`（第 15–18 行）：
+CPU 用毫核，内存和存储用字节。转换分两种情况：
+
+- `switch` 的三个 `case` 分别处理内存、CPU、临时存储（第 9–14 行）；
+- 其余资源只要满足 `IsScalarResourceName` 就放进 `ScalarResources`（第 15–18 行）。
+
+`IsScalarResourceName` 的判断如下：
 
 ```go {linenos=inline}
 // pkg/scheduler/util/utils.go
@@ -255,7 +272,14 @@ func IsScalarResourceName(name v1.ResourceName) bool {
 }
 ```
 
-扩展资源（`nvidia.com/gpu`、`example.com/foo`）、hugepages（`hugepages-2Mi`）、带 `kubernetes.io/` 前缀的原生资源、`attachable-volumes-*` 都在这里，依次对应第 3–4 行的四个判断。不符合任何一类的资源名会被静默丢弃，调度器既不检查也不报错。
+下面四类资源都在这里，依次对应第 3–4 行的四个判断：
+
+- 扩展资源（`nvidia.com/gpu`、`example.com/foo`）；
+- hugepages（`hugepages-2Mi`）；
+- 带 `kubernetes.io/` 前缀的原生资源；
+- `attachable-volumes-*`。
+
+不符合任何一类的资源名会被静默丢弃，调度器既不检查也不报错。
 
 ### 2.6 节点上已有 Pod：用的是另一套口径
 
@@ -300,13 +324,23 @@ func (pi *PodInfo) CalculateResource() fwk.PodResource {
 
 第一条决定了节点上的 Pod 按什么统计：`AggregateContainerRequests` 在这种模式下取三者的最大值（resize 被判定为 Infeasible 时不看 spec）。调度器按最大值计数，宁可高估也不低估。
 
-结果被缓存在 `PodInfo.cachedResource` 里（第 3–5 行命中缓存时直接返回，第 27 行写入），Pod 更新时清空。
+结果被缓存在 `PodInfo.cachedResource` 里，缓存的读写分三处：
+
+- 命中缓存时直接返回（第 3–5 行）；
+- 算完后写入（第 27 行）；
+- Pod 更新时清空。
 
 请求量的口径到这里就定下来了：待调度 Pod 算一次，节点上的 Pod 各自记录用量并缓存。接下来看插件本身怎么组织这些计算。
 
 ## 三、结构体、工厂与参数
 
-`Fit` 结构体把五个 gate 开关（第 5–9 行）、一个 `Handle`（第 10 行）和两个打分器（第 11–12 行）装在一起：
+`Fit` 结构体装了三类字段：
+
+- 五个 gate 开关（第 5–9 行）；
+- 一个 `Handle`（第 10 行）；
+- 两个打分器（第 11–12 行）。
+
+结构体定义如下：
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/noderesources/fit.go
@@ -402,7 +436,10 @@ var nodeResourceStrategyTypeMap = map[config.ScoringStrategyType]scorer{
 
 ## 四、PreFilter：只算不判
 
-PreFilter 的职责只有一句话：把待调度 Pod 的请求量算出来，存进 CycleState。它先把请求量包进 `preFilterState`（第 13 行），再用 `cycleState.Write` 连同 key 一起写入（第 15 行）。
+PreFilter 的职责只有一句话：把待调度 Pod 的请求量算出来，存进 CycleState。它分两步：
+
+1. 把请求量包进 `preFilterState`（第 13 行）；
+2. 用 `cycleState.Write` 连同 key 一起写入（第 15 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/noderesources/fit.go
@@ -434,7 +471,11 @@ CycleState 的 key 是 `"PreFilterNodeResourcesFit"`，值是待调度 Pod 的 `
 
 ## 五、Filter：比剩余，判可解
 
-`FitsRequest` 收集所有不足项（第 19 行），`Filter` 再根据其中有没有「不可解决」的项来定失败码：失败码先设成 `Unschedulable`（第 24 行），只要有一项 `Unresolvable` 就升级为 `UnschedulableAndUnresolvable`（第 28–29 行）。
+失败码的确定分三步：
+
+1. `FitsRequest` 收集所有不足项（第 19 行）；
+2. `Filter` 把失败码先设成 `Unschedulable`（第 24 行）；
+3. 只要其中有一项 `Unresolvable`，就升级为 `UnschedulableAndUnresolvable`（第 28–29 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/noderesources/fit.go
@@ -589,7 +630,12 @@ CPU、内存、临时存储在代码里是同构的三段，判定式完全相�
 
 这个参数的典型用途是配合调度器扩展（extender）：某种扩展资源由外部组件管理，节点 `allocatable` 里不上报，调度器默认会因为「节点有 0 个」而拒绝所有请求它的 Pod，把它加入 `ignoredResources` 就能跳过检查。
 
-节点根本没有某种扩展资源时，`allocatable` 取到 0，Pod 请求任何正数都会失败（第 23 行），而且 `Unresolvable` 为真（请求 > 0，第 28 行）。所以请求了 `nvidia.com/gpu` 的 Pod 在没有 GPU 的节点上返回 `UnschedulableAndUnresolvable`，抢占不会去这些节点上找受害者。
+节点根本没有某种扩展资源时，`allocatable` 取到 0，带来两个结果：
+
+- Pod 请求任何正数都会失败（第 23 行）；
+- `Unresolvable` 为真（请求 > 0，第 28 行）。
+
+所以请求了 `nvidia.com/gpu` 的 Pod 在没有 GPU 的节点上返回 `UnschedulableAndUnresolvable`，抢占不会去这些节点上找受害者。
 
 `ShouldDelegateResourceToDRA` 处理的是 `DRAExtendedResource`（1.37 GA）：节点 `allocatable` 里没有这种资源，但集群里存在一个 `DeviceClass` 声明了 `extendedResourceName` 与之对应，说明这种资源由 DRA 驱动通过 ResourceSlice 提供。
 
@@ -616,7 +662,10 @@ kubelet 准入也会跑同样的检查（`helper.Fits`），对应的 Pod 失败
 
 ### 6.1 PreScore 与「非零」请求
 
-PreScore 只做一件事：按 `ScoringStrategy.Resources` 的顺序，把待调度 Pod 每一项的请求量算出来（第 3 行），存进 `preScoreState.podRequests`（第 4–6 行）。
+PreScore 只做一件事：按 `ScoringStrategy.Resources` 的顺序，准备好待调度 Pod 的请求量，分两步：
+
+1. 把每一项的请求量算出来（第 3 行）；
+2. 存进 `preScoreState.podRequests`（第 4–6 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/noderesources/fit.go
@@ -711,7 +760,12 @@ func (r *resourceAllocationScorer) calculateNodeAllocatableRequest(
 - `requested`：放上这个 Pod 之后的请求量。
 - `allocatable`：节点总量。
 
-两种情况下某一项保持为 0、在打分时被跳过（第 15–17 行和第 20–21 行）：Pod 不请求的标量资源（例如在 `resources` 里配了 GPU，但这个 Pod 不要 GPU），以及节点上 `allocatable` 为 0 的资源。前者很关键：如果不跳过，不要 GPU 的 Pod 在 `MostAllocated` 下会被 GPU 已满的节点吸引过去，把宝贵的 GPU 节点 CPU 也占掉。
+两种情况下某一项保持为 0、在打分时被跳过：
+
+- Pod 不请求的标量资源，例如在 `resources` 里配了 GPU，但这个 Pod 不要 GPU（第 15–17 行）；
+- 节点上 `allocatable` 为 0 的资源（第 20–21 行）。
+
+前者很关键：如果不跳过，不要 GPU 的 Pod 在 `MostAllocated` 下会被 GPU 已满的节点吸引过去，把宝贵的 GPU 节点 CPU 也占掉。
 
 ### 6.3 LeastAllocated（默认）
 
@@ -750,7 +804,12 @@ func leastRequestedScore(requested, capacity int64) int64 {
 }
 ```
 
-单项分数是剩余比例乘以 100（`leastRequestedScore`，第 21–30 行），多项按权重加权平均（第 3–18 行），全程整数除法。越空的节点分越高，效果是把 Pod 摊开。
+计算分两层，全程整数除法：
+
+- 单项分数是剩余比例乘以 100（`leastRequestedScore`，第 21–30 行）；
+- 多项按权重加权平均（第 3–18 行）。
+
+越空的节点分越高，效果是把 Pod 摊开。
 
 ### 6.4 MostAllocated
 
@@ -846,7 +905,13 @@ func BuildBrokenLinearFunction(shape FunctionShape) func(int64) int64 {
 }
 ```
 
-第一个点之前取第一个点的分数（第 6–7 行），最后一个点之后取最后一个点的分数（第 12 行），中间按第 9 行的式子线性插值，同样是整数运算。`shape: [{0,0},{100,10}]` 等价于 `MostAllocated`，`[{0,10},{100,0}]` 等价于 `LeastAllocated`。它真正的价值在于非单调的形状，比如「装到 70% 最好，再满就开始扣分」，给突发流量留余量。
+按利用率落在哪一段分三种情况，同样是整数运算：
+
+- 第一个点之前取第一个点的分数（第 6–7 行）；
+- 最后一个点之后取最后一个点的分数（第 12 行）；
+- 中间按第 9 行的式子线性插值。
+
+`shape: [{0,0},{100,10}]` 等价于 `MostAllocated`，`[{0,10},{100,0}]` 等价于 `LeastAllocated`。它真正的价值在于非单调的形状，比如「装到 70% 最好，再满就开始扣分」，给突发流量留余量。
 
 它和前两种策略有两处实现差异：
 
@@ -926,7 +991,10 @@ func (r *resourceAllocationScorer) scorePlacement(
 }
 ```
 
-把整个放置方案（比如一个机架）里的所有节点当成一个大节点：三个向量在第 18–20 行累加，第 24 行交给 `r.scorer`，也就是固定的 `MostAllocated`。
+把整个放置方案（比如一个机架）里的所有节点当成一个大节点，分两步：
+
+1. 三个向量在第 18–20 行累加；
+2. 第 24 行交给 `r.scorer`，也就是固定的 `MostAllocated`。
 
 这里固定用 `MostAllocated` 而不跟随 `ScoringStrategy.Type`：一组 Pod 应该尽量挤进已经比较满的拓扑域，把完整的空域留给下一个大作业。细节在 [TopologyPlacementGenerator](/posts/sched-plugin-22-topology-placement/) 一篇展开。
 
@@ -962,11 +1030,18 @@ func (f *Fit) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWithHint, e
 }
 ```
 
-在默认配置下（`InPlacePodVerticalScaling` 已 GA，`DRAExtendedResource` 已 GA），前五个事件全部生效：两个基础事件在第 4–5 行，`DeviceClass` 在第 10 行，两个 `ScaleDown` 在第 14–15 行。
+在默认配置下（`InPlacePodVerticalScaling` 已 GA，`DRAExtendedResource` 已 GA），前五个事件全部生效：
+
+- 两个基础事件在第 4–5 行；
+- `DeviceClass` 在第 10 行；
+- 两个 `ScaleDown` 在第 14–15 行。
 
 ### 7.1 已调度 Pod 被删除
 
-删除事件的判断很松，只排除两种情况，其余一律 `Queue`：没有绑定节点的 Pod 被删除时 `QueueSkip`（第 2–5 行），resize 被推迟的 Pod 删除的不是同一节点上的 Pod 时也 `QueueSkip`（第 7–12 行）。
+删除事件的判断很松，只排除两种情况，其余一律 `Queue`：
+
+- 没有绑定节点的 Pod 被删除时 `QueueSkip`（第 2–5 行）；
+- resize 被推迟的 Pod 删除的不是同一节点上的 Pod 时也 `QueueSkip`（第 7–12 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/noderesources/fit.go
@@ -991,7 +1066,10 @@ func (f *Fit) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWithHint, e
 
 ### 7.2 节点新增或 allocatable 变化
 
-节点事件先做粗筛：这个节点的总量放不放得下这个 Pod（第 3–6 行）。放得下之后，新增节点直接放行（第 8–11 行），更新节点还要看它关心的资源是否真的变多了（第 13–16 行）。
+节点事件的判断分两步：
+
+1. 先做粗筛：这个节点的总量放不放得下这个 Pod（第 3–6 行）；
+2. 放得下之后，新增节点直接放行（第 8–11 行），更新节点还要看它关心的资源是否真的变多了（第 13–16 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/noderesources/fit.go
@@ -1029,7 +1107,10 @@ func isFit(pod *v1.Pod, node *v1.Node, draManager fwk.SharedDRAManager, opts Res
 }
 ```
 
-所以它判断的是「这个节点的总量放不放得下这个 Pod」（第 6–7 行构造一个空的 `NodeInfo`），不考虑节点上已经有什么。hint 运行在事件处理路径上，拿不到调度快照，只能做这种粗筛：一个 4 核节点不可能放下 8 核的 Pod，直接 `QueueSkip`；能放下的，交给下一个调度周期去看实际剩余量。
+所以它判断的是「这个节点的总量放不放得下这个 Pod」（第 6–7 行构造一个空的 `NodeInfo`），不考虑节点上已经有什么。hint 运行在事件处理路径上，拿不到调度快照，只能做这种粗筛：
+
+- 一个 4 核节点不可能放下 8 核的 Pod，直接 `QueueSkip`；
+- 能放下的，交给下一个调度周期去看实际剩余量。
 
 节点更新时还要求「Pod 关心的资源变大了」：
 
@@ -1059,7 +1140,13 @@ func haveAnyRequestedResourcesIncreased(pod *v1.Pod, originalNode, modifiedNode 
 }
 ```
 
-Pod 名额增加总是值得重试（第 5–7 行）；其余资源只看 Pod 请求了的那几种，CPU、内存、临时存储在第 9–13 行，标量资源在第 15–21 行。只请求 CPU 的 Pod 不会因为节点内存变大而被唤醒。
+判断按资源分三类：
+
+- Pod 名额增加总是值得重试（第 5–7 行）；
+- CPU、内存、临时存储只看 Pod 请求了的那几种（第 9–13 行）；
+- 标量资源同样只看 Pod 请求了的那几种（第 15–21 行）。
+
+只请求 CPU 的 Pod 不会因为节点内存变大而被唤醒。
 
 事件本身由框架过滤：`UpdateNodeAllocatable` 只在 `status.allocatable` 语义上发生变化时才产生（`extractNodeAllocatableChange` 用 `equality.Semantic.DeepEqual` 比较），kubelet 定期上报节点状态、更新 condition 都不会触发它。
 
@@ -1091,14 +1178,22 @@ func extractPodScaleDown(newPod, oldPod *v1.Pod) fwk.ActionType {
 }
 ```
 
-两类情况都会产生这个事件：资源项被整个删掉（第 9–12 行），或者数值变小（第 14–17 行）。落到队列里有两类 `UpdatePodScaleDown`：
+两类情况都会产生这个事件：
+
+- 资源项被整个删掉（第 9–12 行）；
+- 数值变小（第 14–17 行）。
+
+落到队列里有两类 `UpdatePodScaleDown`：
 
 - `AssignedPod` 缩容：别的已调度 Pod 变小了，可能腾出资源。hint 是 `haveEnoughRelevantResourcesDecreased`，它对两边都用 `UseStatusResources` 口径算请求量（与 `NodeInfo` 的统计口径一致），只在待调度 Pod 请求的资源里有某一项确实变小时才 `Queue`。
 - `TargetPod` 缩容：被拒绝的 Pod **自己**变小了，直接 `Queue`。
 
 注意 `haveEnoughRelevantResourcesDecreased` 用 `max(spec, allocated, actuated)` 计算缩容前后的请求量。
 
-把 spec 从 2 核改到 1 核，在 kubelet 真正完成缩容之前，`allocated` 和 `actuated` 还是 2 核，最大值不变，hint 返回 `QueueSkip`。等 kubelet 更新了 status，再来一次 Pod 更新事件，这时最大值才下降，Pod 才被唤醒。
+把 spec 从 2 核改到 1 核，hint 的反应分两个阶段：
+
+1. 在 kubelet 真正完成缩容之前，`allocated` 和 `actuated` 还是 2 核，最大值不变，hint 返回 `QueueSkip`；
+2. 等 kubelet 更新了 status，再来一次 Pod 更新事件，这时最大值才下降，Pod 才被唤醒。
 
 这和 `NodeInfo` 统计请求量的时机是一致的，避免在资源真正释放之前就把等待的 Pod 放进来，结果又失败一次。
 
@@ -1118,7 +1213,11 @@ hint 检查新增或修改的 `DeviceClass` 的 `extendedResourceName`（或隐�
 
 打开这个 gate 后，调度器会把这样的 Pod 当作一个「需要调度」的对象重新入队，目的不是换节点，而是看能否在**原节点**上抢占低优先级 Pod 腾出空间。
 
-这个 Pod 已有 `spec.nodeName`，[NodeName](/posts/sched-plugin-03-node-name/) 的 PreFilter 会把候选集缩到这一个节点；`NodeAffinity`、`NodePorts` 等插件对它返回 `Skip`；`NodeResourcesFit` 是少数要认真算的插件。
+这个 Pod 已有 `spec.nodeName`，各插件对它的处理分三类：
+
+- [NodeName](/posts/sched-plugin-03-node-name/) 的 PreFilter 会把候选集缩到这一个节点；
+- `NodeAffinity`、`NodePorts` 等插件对它返回 `Skip`；
+- `NodeResourcesFit` 是少数要认真算的插件。
 
 问题在于：这个 Pod 自己的旧请求量已经记在节点的 `Requested` 里了，再把新请求量整个加上去，就重复计算了。
 
@@ -1151,11 +1250,21 @@ func adjustDeltasToAccomodateCacheDiscrepancy(opts ResourceRequestsOptions, podR
 }
 ```
 
-第 5–7 行先判断这个 Pod 是不是已经在当前节点上：没开 gate、Pod 没有 `nodeName`、或者不在这个节点上，都直接把完整请求量当作增量返回。真正折算时只检查**增量**：节点缓存里这个 Pod 已经按 `max(spec, allocated, actuated)` 记了账，新请求只需比较超出的部分（第 22 行）。负增量截断为 0，理由写在注释里：kubelet 还没真正释放的资源，不能提前算作空闲。
+折算分三步：
+
+1. 先判断这个 Pod 是不是已经在当前节点上（第 5–7 行）：没开 gate、Pod 没有 `nodeName`、或者不在这个节点上，都直接把完整请求量当作增量返回；
+2. 真正折算时只检查**增量**：节点缓存里这个 Pod 已经按 `max(spec, allocated, actuated)` 记了账，新请求只需比较超出的部分（第 22 行）；
+3. 负增量截断为 0，理由写在注释里：kubelet 还没真正释放的资源，不能提前算作空闲。
 
 `Unresolvable` 的判定仍然用 `podRequest`（完整的新请求量）与 `allocatable` 比较：Pod 想扩到比整个节点还大，抢占也无济于事。
 
-QueueingHint 也为这类 Pod 加了节点维度的过滤：已调度 Pod 被删除、节点 allocatable 变化、其他 Pod 缩容，只有发生在同一个节点上才 `Queue`。还有两个 `UpdatePodScaleUp` 事件：
+QueueingHint 也为这类 Pod 加了节点维度的过滤，下面三种事件只有发生在同一个节点上才 `Queue`：
+
+- 已调度 Pod 被删除；
+- 节点 allocatable 变化；
+- 其他 Pod 缩容。
+
+还有两个 `UpdatePodScaleUp` 事件：
 
 - `TargetPod` 扩容：这个 Pod 又往上加了请求，可能原来不需要抢占、现在需要了，所以只要它是 deferred 状态就 `Queue`。
 - 同节点上别的 Pod 扩容：它可能吃掉了这个 Pod 正在等的余量，需要重新评估抢占。
@@ -1166,7 +1275,10 @@ QueueingHint 也为这类 Pod 加了节点维度的过滤：已调度 Pod 被删
 
 ## 九、边界情况与坑
 
-**Filter 和 Score 用的是两套数。** Filter 用真实 `Requested`，BestEffort 容器按 0；Score 用 `NonZeroRequested`，缺失的请求按 100m/200MiB。
+**Filter 和 Score 用的是两套数。**
+
+- Filter 用真实 `Requested`，BestEffort 容器按 0；
+- Score 用 `NonZeroRequested`，缺失的请求按 100m/200MiB。
 
 所以会出现「节点 Filter 通过、但 `MostAllocated` 已经把它打成满分」的情况，也会出现「`LeastAllocated` 下得分为 0、但 Filter 照样能放」的情况。
 
@@ -1182,7 +1294,12 @@ BestEffort Pod 只受 maxPods 约束。一个已经被 requests 占满的节点�
 
 后果是：从代码看，`NodeResourcesFit` 打分时会以 `SkipPodLevelResources: true` 计算待调度 Pod 的请求，只写了 Pod 级 requests、容器不写 requests 的 Pod，在打分阶段会被当作每个容器 100m/200MiB。
 
-Filter 不受影响（PreFilter 显式传入了 `f.enablePodLevelResources`），节点侧的 `NonZeroRequested` 也不受影响（`CalculateResource` 直接读 feature gate）。`NodeResourcesBalancedAllocation` 的构造函数则正确设置了这个字段。
+有两处不受影响：
+
+- Filter：PreFilter 显式传入了 `f.enablePodLevelResources`；
+- 节点侧的 `NonZeroRequested`：`CalculateResource` 直接读 feature gate。
+
+`NodeResourcesBalancedAllocation` 的构造函数则正确设置了这个字段。
 
 临时存储不进默认打分。默认 `ScoringStrategy.Resources` 只有 CPU 和内存。临时存储在 Filter 中检查，但不影响节点选择，除非显式加进 `resources`。
 

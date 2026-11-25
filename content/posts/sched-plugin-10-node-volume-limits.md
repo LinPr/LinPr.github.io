@@ -49,11 +49,11 @@ const CSIName = names.NodeVolumeLimits
 
 结构体名和常量名 `CSIName` 是那个年代留下的。代码里还有一句注释「If the volume is not migratable, it will be count in non_csi filter」，所说的 non-CSI filter 已经不存在了：不能迁移的 in-tree 卷现在根本不计数。
 
-字段里有三处与众不同（`csiManager` 在第 4 行、`vaIndexer` 在第 10 行、`randomVolumeIDPrefix` 在第 12 行）：
+字段里有三处与众不同：
 
-- `csiManager` 不是自己建的 lister，而是 `handle.SharedCSIManager()`。它在 `pkg/scheduler/framework_init.go` 里用 CSINode lister 构造，通过 `frameworkruntime.WithSharedCSIManager` 注入，接口定义在 fwk 包的 `CSIManager`，供所有插件共享 CSINode 视图。
-- `vaIndexer` 是给 VolumeAttachment informer 加的按 `spec.nodeName` 的索引，键名 `va.spec.nodename`。Filter 每个节点都要查「挂在这个节点上的 VA」，没有索引就得每次全量遍历。
-- `randomVolumeIDPrefix` 在 `NewCSI` 里用 `rand.String(32)` 生成，用于给还没绑定 PV 的 PVC 造一个假的 volumeHandle，后面细说。
+- `csiManager`（第 4 行）不是自己建的 lister，而是 `handle.SharedCSIManager()`。它在 `pkg/scheduler/framework_init.go` 里用 CSINode lister 构造，通过 `frameworkruntime.WithSharedCSIManager` 注入，接口定义在 fwk 包的 `CSIManager`，供所有插件共享 CSINode 视图。
+- `vaIndexer`（第 10 行）是给 VolumeAttachment informer 加的按 `spec.nodeName` 的索引，键名 `va.spec.nodename`。Filter 每个节点都要查「挂在这个节点上的 VA」，没有索引就得每次全量遍历。
+- `randomVolumeIDPrefix`（第 12 行）在 `NewCSI` 里用 `rand.String(32)` 生成，用于给还没绑定 PV 的 PVC 造一个假的 volumeHandle，后面细说。
 
 数据源齐了，接下来看它们之中哪个决定了上限。
 
@@ -139,7 +139,13 @@ PreFilter 不写 CycleState，`PreFilterExtensions` 返回 nil。所有计算都
 
 ### 4.1 主流程
 
-Filter 一次做完三件事：统计新 Pod 的卷（第 11–18 行）、统计节点上已有 Pod（第 36–48 行）和 VolumeAttachment（第 51–61 行）的卷、按驱动与上限比较（第 69–78 行）。代码略长，先通读一遍。
+Filter 一次做完三件事：
+
+1. 统计新 Pod 的卷（第 11–18 行）；
+2. 统计节点上已有 Pod（第 36–48 行）和 VolumeAttachment（第 51–61 行）的卷；
+3. 按驱动与上限比较（第 69–78 行）。
+
+代码略长，先通读一遍。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
@@ -257,7 +263,11 @@ func (pl *CSILimits) Filter(ctx context.Context, _ fwk.CycleState, pod *v1.Pod, 
 
 ### 4.3 filterAttachableVolumes：三种卷的入口
 
-三类卷在同一个函数里分叉，`switch` 只负责把它们各自换成 PVC 名或者直接处理（`PersistentVolumeClaim` 在第 3–5 行，`Ephemeral` 在第 6–9 行，其余落在 `default` 里交给 `checkAttachableInlineVolume`，第 10–19 行）：
+三类卷在同一个函数里分叉，`switch` 只负责把它们各自换成 PVC 名或者直接处理，共三个分支：
+
+- `PersistentVolumeClaim` 在第 3–5 行；
+- `Ephemeral` 在第 6–9 行；
+- 其余落在 `default` 里交给 `checkAttachableInlineVolume`，第 10–19 行。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
@@ -296,7 +306,10 @@ func (pl *CSILimits) Filter(ctx context.Context, _ fwk.CycleState, pod *v1.Pod, 
 		}
 ```
 
-新 Pod 和已有 Pod 的容错不对称。新 Pod 的 PVC 查不到，错误用 `%w` 包装后上抛（第 28 行），Filter 用 `apierrors.IsNotFound` 识别出来（`IsNotFound` 走 `errors.As`，能穿透包装），返回 `UnschedulableAndUnresolvable`；已有 Pod 的 PVC 查不到只是跳过不计（第 30–33 行）。
+新 Pod 和已有 Pod 的容错不对称：
+
+- 新 Pod 的 PVC 查不到，错误用 `%w` 包装后上抛（第 28 行），Filter 用 `apierrors.IsNotFound` 识别出来（`IsNotFound` 走 `errors.As`，能穿透包装），返回 `UnschedulableAndUnresolvable`；
+- 已有 Pod 的 PVC 查不到只是跳过不计（第 30–33 行）。
 
 已有 Pod 已经在节点上，它的 PVC 被删了也不该阻止新 Pod 调度，宁可少算。
 
@@ -347,13 +360,20 @@ func (pl *CSILimits) getCSIDriverInfo(logger klog.Logger, csiNode *storagev1.CSI
 
 **已绑定的 CSI PV**：直接取 `spec.csi.driver` 和 `spec.csi.volumeHandle`（第 35 行）。
 
-**已绑定的 in-tree PV**：比如 `spec.awsElasticBlockStore.volumeID: aws://us-east-1a/vol-0abc`。先确认可迁移（第 19–21 行），再确认迁移开关（第 25 行），然后用 csi-translation-lib 翻译（第 30 行）。
+**已绑定的 in-tree PV**：比如 `spec.awsElasticBlockStore.volumeID: aws://us-east-1a/vol-0abc`。处理分三步：
+
+1. 确认可迁移（第 19–21 行）；
+2. 确认迁移开关（第 25 行）；
+3. 用 csi-translation-lib 翻译（第 30 行）。
 
 翻译不只是改字段名，EBS 的 `KubernetesVolumeIDToEBSVolumeID` 会把 `aws://us-east-1a/vol-0abc` 这种 URL 形式规整成 `vol-0abc`，驱动名换成 `ebs.csi.aws.com`。
 
 这样同一块盘无论以 in-tree PV、内联卷还是原生 CSI PV 出现，算出来的键都是 `ebs.csi.aws.com/vol-0abc`，去重才成立。
 
-**未绑定的 PVC**：典型场景是 `WaitForFirstConsumer` 的 PVC，要等调度器选定节点后才会供给。此时没有 PV，PV 名为空（第 5–8 行）或 PV 查不到（第 10–14 行）都转去 `getCSIDriverInfoFromSC`，只能看 StorageClass：
+**未绑定的 PVC**：典型场景是 `WaitForFirstConsumer` 的 PVC，要等调度器选定节点后才会供给。此时没有 PV，以下两种情况都转去 `getCSIDriverInfoFromSC`，只能看 StorageClass：
+
+- PV 名为空（第 5–8 行）；
+- PV 查不到（第 10–14 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodevolumelimits/csi.go
@@ -377,7 +397,12 @@ func (pl *CSILimits) getCSIDriverInfo(logger klog.Logger, csiNode *storagev1.CSI
 	return provisioner, volumeHandle
 ```
 
-驱动名取 StorageClass 的 `provisioner`（第 7 行；in-tree provisioner 如 `kubernetes.io/aws-ebs` 在第 8–17 行换算成 CSI 驱动名），句柄则是 `<随机前缀>-<命名空间>/<PVC名>`（第 5 行）。这个设计有两层用意：
+返回的两个值分别这样取：
+
+- 驱动名取 StorageClass 的 `provisioner`（第 7 行；in-tree provisioner 如 `kubernetes.io/aws-ebs` 在第 8–17 行换算成 CSI 驱动名）；
+- 句柄则是 `<随机前缀>-<命名空间>/<PVC名>`（第 5 行）。
+
+这个设计有两层用意：
 
 - 随机前缀保证假句柄不会与任何真实 volumeHandle 撞上；
 - 同一个未绑定 PVC 在同一个调度器实例里总是得到相同的假句柄。比如一个 assumed Pod 已经引用了 `pvc-new`、正在等待卷供给，第二个 Pod 也引用 `pvc-new`，两边的键一致，可以正确去重。
@@ -452,7 +477,12 @@ func (pl *CSILimits) getNodeVolumeAttachmentInfo(logger klog.Logger, nodeName st
 }
 ```
 
-VA 只覆盖「指向原生 CSI PV」的那部分：没有 PV 名的 VA 被跳过（第 8–11 行），非 CSI PV 的 VA 也被跳过（第 14–17 行），内联卷的 VA（`source.inlineVolumeSpec`）和 in-tree PV 的 VA 因此都只能靠 Pod 那一路计数。只有 `attachRequired: true` 的驱动才会产生 VA，NFS 这类不需要 attach 的驱动不受这一路影响。
+VA 只覆盖「指向原生 CSI PV」的那部分，有两种 VA 被跳过：
+
+- 没有 PV 名的 VA（第 8–11 行）；
+- 非 CSI PV 的 VA（第 14–17 行）。
+
+内联卷的 VA（`source.inlineVolumeSpec`）和 in-tree PV 的 VA 因此都只能靠 Pod 那一路计数。只有 `attachRequired: true` 的驱动才会产生 VA，NFS 这类不需要 attach 的驱动不受这一路影响。
 
 数量数完了，还有一道不数数量、只查驱动是否就位的门槛。
 
@@ -476,7 +506,10 @@ VA 只覆盖「指向原生 CSI PV」的那部分：没有 PV 名的 VA 被跳�
 	}
 ```
 
-`checkCSIDriverOnNode` 先查 CSIDriver 对象：不存在（可能不是 CSI 驱动）或 `spec.preventPodSchedulingIfMissing` 未设为 true，都视为「已安装」放行；驱动明确 opt-in 时，才要求节点的 CSINode 里有这个驱动。
+`checkCSIDriverOnNode` 先查 CSIDriver 对象，分两种情况：
+
+- CSIDriver 不存在（可能不是 CSI 驱动）或 `spec.preventPodSchedulingIfMissing` 未设为 true，都视为「已安装」放行；
+- 驱动明确 opt-in 时，才要求节点的 CSINode 里有这个驱动。
 
 这解决的是节点刚启动的窗口期：DaemonSet 形式的 CSI node 插件还没跑起来，CSINode 里没有这个驱动，也就没有上限，老逻辑会直接放行，Pod 调度上去之后挂载失败。
 
@@ -516,7 +549,10 @@ func (pl *CSILimits) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWith
 
 CSINode 更新的 hint 有一个缝隙。在 `VolumeLimitScaling` 下被「驱动未安装」拒绝的 Pod，等的是驱动注册到 CSINode。kubelet 启动时就会创建 CSINode（此时可能没有任何驱动），驱动注册是一次 Update。
 
-如果这个驱动不上报 `max_volumes_per_node`，新旧 count 都按 0 算，hint 返回 `QueueSkip`，Pod 不会被立刻唤醒，只能等不可调度队列的周期刷新（`DefaultPodMaxInUnschedulablePodsDuration`，5 分钟）或其它事件。驱动上报了上限则 0 → N，正常唤醒。
+结果取决于驱动是否上报 `max_volumes_per_node`：
+
+- 不上报：新旧 count 都按 0 算，hint 返回 `QueueSkip`，Pod 不会被立刻唤醒，只能等不可调度队列的周期刷新（`DefaultPodMaxInUnschedulablePodsDuration`，5 分钟）或其它事件；
+- 上报了上限：0 → N，正常唤醒。
 
 还要注意 Pod 删除和 VA 删除这两个事件的时间差。Pod 被删时卷往往还没 detach，VA 还在，这时被唤醒的 Pod 重新跑 Filter 还是会失败（VA 一路照样计数），真正腾出槽位的是之后的 VA Delete 事件。
 

@@ -17,7 +17,14 @@ description: "系列开篇。沿着 ScheduleOne 的源码走一遍：Pod 怎么�
 
 {{< figure src="/images/posts/sched-plugins/00-journey.svg" link="/images/posts/sched-plugins/00-journey.svg" caption="一个 Pod 的调度旅程：左侧是扩展点，右侧是本系列在该位置重点讲的插件（点击查看大图）" >}}
 
-上面这张图是按扩展点画的。落到代码里，这些扩展点分别由哪个函数触发，可以看下面这张调用栈。它一直画到真正执行插件方法的那一层：黄色底的行就是直接调用插件钩子的函数（框架里统一命名为 `runXxxPlugin`），右侧黄色标签是它调用的方法，比如 `runFilterPlugin` 里的 `pl.Filter()`。缩进表示谁调用了谁；右侧加粗的是每一步的关键决策，比如 Filter 的失败码决定能否抢占、抢占成功本轮也算失败、assume 让绑定可以异步。这张图可以当作全文的提纲，后文各节就是对这些结论的展开：
+上面这张图是按扩展点画的。落到代码里，这些扩展点分别由哪个函数触发，可以看下面这张调用栈。它一直画到真正执行插件方法的那一层，读图时注意四种标记：
+
+- 黄色底的行：直接调用插件钩子的函数（框架里统一命名为 `runXxxPlugin`）；
+- 右侧黄色标签：它调用的方法，比如 `runFilterPlugin` 里的 `pl.Filter()`；
+- 缩进：表示谁调用了谁；
+- 右侧加粗：每一步的关键决策，比如 Filter 的失败码决定能否抢占、抢占成功本轮也算失败、assume 让绑定可以异步。
+
+这张图可以当作全文的提纲，后文各节就是对这些结论的展开：
 
 {{< figure src="/images/posts/sched-plugins/00-call-stack.svg" link="/images/posts/sched-plugins/00-call-stack.svg" caption="从入队到绑定的调用栈与关键决策：黄色底的行直接执行插件钩子，右侧加粗的是这一步的关键结论；左侧色条紫色是队列，蓝色是调度周期，绿色是绑定周期的 goroutine，橙色只在失败时执行（点击查看大图）" >}}
 
@@ -105,7 +112,12 @@ func applyFeatureGates(config *v1.Plugins) {
 }
 ```
 
-`DeferredPodScheduling` 不是追加在末尾，而是用 `slices.Insert` 插到 `NodeResourcesFit` 前面（这个 gate 的分支在第 6–8 行）。注释给了两条理由：它要排在 `NodeName` 这类基础过滤之后，避免对无关的节点事件做无用重试；又要排在 `NodeResourcesFit` 之前，这样节点禁止扩容抢占时失败会记在它名下，策略放开时它自己的 QueueingHint 才能把 Pod 叫回来。第 17 篇会讲它的来龙去脉。`GangScheduling`、`TopologyPlacementGenerator`、`PodGroupPodsCount` 这三个插件服务于 PodGroup 成组调度，在第 21~23 篇。
+`DeferredPodScheduling` 不是追加在末尾，而是用 `slices.Insert` 插到 `NodeResourcesFit` 前面（这个 gate 的分支在第 6–8 行）。注释给了两条理由：
+
+- 要排在 `NodeName` 这类基础过滤之后，避免对无关的节点事件做无用重试；
+- 又要排在 `NodeResourcesFit` 之前，这样节点禁止扩容抢占时失败会记在它名下，策略放开时它自己的 QueueingHint 才能把 Pod 叫回来。
+
+第 17 篇会讲它的来龙去脉。`GangScheduling`、`TopologyPlacementGenerator`、`PodGroupPodsCount` 这三个插件服务于 PodGroup 成组调度，在第 21~23 篇。
 
 out-of-tree 插件不在这份列表里。scheduler-plugins 编译出的是另一个调度器二进制，它用 `app.WithPlugin` 把自己的插件工厂加进 Registry，再由用户在 profile 里显式启用。第 25 篇开始讲这一部分。
 
@@ -157,7 +169,12 @@ func (sched *Scheduler) ScheduleOne(ctx context.Context) {
 }
 ```
 
-entity 可能是一个 Pod，也可能是一个 PodGroup：`NextEntity`（第 4 行）取出 entity，`switch`（第 6–15 行）按类型分流。后者是 `GenericWorkload` 系列 feature 引入的成组调度路径（`schedule_one_podgroup.go`），整组 Pod 在一次周期里一起评估放置方案。第 21 篇会单独讲这条路径，这里先沿着单个 Pod 走。
+entity 可能是一个 Pod，也可能是一个 PodGroup，这段循环分两步：
+
+1. `NextEntity` 取出 entity（第 4 行）；
+2. `switch` 按类型分流（第 6–15 行）。
+
+PodGroup 是 `GenericWorkload` 系列 feature 引入的成组调度路径（`schedule_one_podgroup.go`），整组 Pod 在一次周期里一起评估放置方案。第 21 篇会单独讲这条路径，这里先沿着单个 Pod 走。
 
 ## 三、调度周期：串行地选出一个节点
 
@@ -263,7 +280,13 @@ func (a *SchedulingAlgorithm) numFeasibleNodesToFind(percentageOfNodesToScore *i
 }
 ```
 
-`minFeasibleNodesToFind` 是 100，`minFeasibleNodesPercentageToFind` 是 5，`percentageOfNodesToScore` 默认为 0，表示自适应。节点数不到 100 时直接返回全部（第 3–5 行），所以 100 个节点以下的集群会检查全部节点；1000 个节点的集群，比例是 50 − 1000/125 = 42%（第 7–9 行算出来），找到 420 个可行节点就停；5000 个节点的集群比例是 50 − 40 = 10%，找到 500 个就停（第 11–14 行再对结果做一次下限保护）。下一个 Pod 从上次停下的位置（`nextStartNodeIndex`）接着往后找，保证每个节点都有机会被看到。
+`minFeasibleNodesToFind` 是 100，`minFeasibleNodesPercentageToFind` 是 5，`percentageOfNodesToScore` 默认为 0，表示自适应。按集群规模分三种情况：
+
+- 节点数不到 100 时直接返回全部（第 3–5 行），所以 100 个节点以下的集群会检查全部节点；
+- 1000 个节点的集群，比例是 50 − 1000/125 = 42%（第 7–9 行算出来），找到 420 个可行节点就停；
+- 5000 个节点的集群比例是 50 − 40 = 10%，找到 500 个就停（第 11–14 行再对结果做一次下限保护）。
+
+下一个 Pod 从上次停下的位置（`nextStartNodeIndex`）接着往后找，保证每个节点都有机会被看到。
 
 这意味着大集群里打分阶段看到的只是一部分节点，「全局最优」只是局部最优，后面讲打分插件时会反复遇到这个前提。
 
@@ -283,7 +306,12 @@ func (a *SchedulingAlgorithm) numFeasibleNodesToFind(percentageOfNodesToScore *i
 
 `Unschedulable` 和 `UnschedulableAndUnresolvable` 的区别贯穿整个系列，因为**返回哪个 code，决定了抢占能不能解决它**。
 
-端口冲突、资源不足返回前者，因为赶走一个 Pod 就能腾出端口或资源；节点亲和不匹配、存储区域不对返回后者，因为赶走谁都改变不了节点的标签。每篇文章都会说明插件在什么情况下返回哪一种。
+两种 code 的典型场景：
+
+- 端口冲突、资源不足返回前者，因为赶走一个 Pod 就能腾出端口或资源；
+- 节点亲和不匹配、存储区域不对返回后者，因为赶走谁都改变不了节点的标签。
+
+每篇文章都会说明插件在什么情况下返回哪一种。
 
 ### 3.4 PostFilter：没有节点时的补救
 
@@ -301,7 +329,12 @@ func (a *SchedulingAlgorithm) numFeasibleNodesToFind(percentageOfNodesToScore *i
 		return ScheduleResult{nominatingInfo: nominatingInfo}, fwk.NewStatus(fwk.Unschedulable).WithError(err)
 ```
 
-注意返回值：**即使抢占成功，这一次调度周期仍然算失败**，返回 `Unschedulable`（第 9 行）。抢占只是删除了受害者 Pod，并把节点名写进 Pod 的 `nominatedNodeName`（第 5–8 行取出 `Result` 里的 `NominatingInfo`），Pod 要等下一个周期才能真正放上去，那时就会走上面的「提名节点快速路径」。`DefaultPreemption` 在第 18 篇，scheduler-plugins 里改写抢占逻辑的三个插件在第 28、31、32 篇。
+注意返回值：**即使抢占成功，这一次调度周期仍然算失败**，返回 `Unschedulable`（第 9 行）。抢占只做了两件事：
+
+- 删除受害者 Pod；
+- 把节点名写进 Pod 的 `nominatedNodeName`（第 5–8 行取出 `Result` 里的 `NominatingInfo`）。
+
+Pod 要等下一个周期才能真正放上去，那时就会走上面的「提名节点快速路径」。`DefaultPreemption` 在第 18 篇，scheduler-plugins 里改写抢占逻辑的三个插件在第 28、31、32 篇。
 
 ### 3.5 Score：在可行节点里挑一个
 
@@ -328,9 +361,18 @@ func (a *SchedulingAlgorithm) numFeasibleNodesToFind(percentageOfNodesToScore *i
 	}
 ```
 
-**Assume + Reserve**：在缓存里把 Pod 记到目标节点上（`AssumeAndReserveInCache`，第 2 行），然后调用各插件的 Reserve。有状态的插件在这里记录状态，比如 `VolumeBinding` 把选中的 PV 假定绑定，`CapacityScheduling` 把用量计入配额。之后任何一步失败，都会调用 Unreserve 把记录的状态退回去。
+**Assume + Reserve** 分两步：
 
-**Permit**：最后一道关卡，可以批准、拒绝或让 Pod 等待（第 5–7 行）。等待的 Pod 已经占着资源，但不会进入绑定。成组调度最早就靠这个机制：一组 Pod 逐个通过调度周期，在 Permit 处等齐了再一起放行。scheduler-plugins 的 `Coscheduling` 用的就是这种方式（第 27 篇），v1.36 的 in-tree `GangScheduling` 也是 PreEnqueue 加 Permit 等待。master 上的 `GangScheduling` 已经换了做法：整组作为一个 entity 出队，在专门的 PodGroup 调度周期里一起试放，不再依赖 Permit 等待（第 21 篇）。
+1. 在缓存里把 Pod 记到目标节点上（`AssumeAndReserveInCache`，第 2 行）；
+2. 调用各插件的 Reserve。
+
+有状态的插件在这里记录状态，比如 `VolumeBinding` 把选中的 PV 假定绑定，`CapacityScheduling` 把用量计入配额。之后任何一步失败，都会调用 Unreserve 把记录的状态退回去。
+
+**Permit**：最后一道关卡，可以批准、拒绝或让 Pod 等待（第 5–7 行）。等待的 Pod 已经占着资源，但不会进入绑定。成组调度最早就靠这个机制：一组 Pod 逐个通过调度周期，在 Permit 处等齐了再一起放行。三个实现的做法：
+
+- scheduler-plugins 的 `Coscheduling` 用的就是这种方式（第 27 篇）；
+- v1.36 的 in-tree `GangScheduling` 也是 PreEnqueue 加 Permit 等待；
+- master 上的 `GangScheduling` 已经换了做法：整组作为一个 entity 出队，在专门的 PodGroup 调度周期里一起试放，不再依赖 Permit 等待（第 21 篇）。
 
 走到这里，调度周期该做的都做完了：节点选好了，状态记好了，Permit 也过了（或者正在等）。剩下的事交给另一个 goroutine。
 
@@ -389,7 +431,10 @@ func (a *SchedulingAlgorithm) numFeasibleNodesToFind(percentageOfNodesToScore *i
 	}
 ```
 
-然后 `AddUnschedulablePodIfNotPresent` 决定 Pod 去哪里。它先检查这个 Pod 在被调度的这段时间里，集群有没有发生过拒绝它的插件所关心的事件（`determineSchedulingHintForInFlightPod`）：如果发生过，说明它失败所依据的状态可能已经过时，直接进 `backoffQ`；否则进 `unschedulableEntities` 等待。
+然后 `AddUnschedulablePodIfNotPresent` 决定 Pod 去哪里。它先检查这个 Pod 在被调度的这段时间里，集群有没有发生过拒绝它的插件所关心的事件（`determineSchedulingHintForInFlightPod`），结果分两种：
+
+- 发生过：说明它失败所依据的状态可能已经过时，直接进 `backoffQ`；
+- 没发生过：进 `unschedulableEntities` 等待。
 
 之后它什么时候回到 `activeQ`，取决于这些插件的 `EventsToRegister` 与 QueueingHint。每个插件声明自己关心哪些集群事件，比如 `NodeResourcesFit` 关心节点资源变化和 Pod 删除，`TaintToleration` 关心节点污点变化。
 
@@ -431,6 +476,13 @@ func (a *SchedulingAlgorithm) numFeasibleNodesToFind(percentageOfNodesToScore *i
 | out-of-tree：打分 | [33 NodeResourcesAllocatable](/posts/sched-plugin-33-node-resources-allocatable/) · [34 NodeMetadata](/posts/sched-plugin-34-node-metadata/) · [35 PodState](/posts/sched-plugin-35-pod-state/) · [36 SySched](/posts/sched-plugin-36-sysched/) |
 | out-of-tree：Trimaran 负载感知 | [37 TargetLoadPacking](/posts/sched-plugin-37-target-load-packing/) · [38 LoadVariationRiskBalancing](/posts/sched-plugin-38-load-variation-risk-balancing/) · [39 LowRiskOverCommitment](/posts/sched-plugin-39-low-risk-overcommitment/) · [40 Peaks](/posts/sched-plugin-40-peaks/) |
 
-读每篇时可以带着同样的四个问题：插件挂在哪些扩展点上；CycleState 里存了什么；失败时返回哪种 code；被它拒绝的 Pod 靠什么事件回来。四个问题都答得上来，这个插件就算读懂了。
+读每篇时可以带着同样的四个问题：
+
+1. 插件挂在哪些扩展点上；
+2. CycleState 里存了什么；
+3. 失败时返回哪种 code；
+4. 被它拒绝的 Pod 靠什么事件回来。
+
+四个问题都答得上来，这个插件就算读懂了。
 
 旅程从 Pod 进入队列之前开始：[下一篇](/posts/sched-plugin-01-scheduling-gates/)讲 `SchedulingGates`，一个让 Pod 连排队资格都没有的插件。

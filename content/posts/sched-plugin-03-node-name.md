@@ -193,7 +193,15 @@ func (p *PreFilterResult) Merge(in *PreFilterResult) *PreFilterResult {
 }
 ```
 
-**`nil` 表示「全部节点」，非 nil 的集合之间取交集**（`AllNodes` 第 9–11 行，`Merge` 第 13–30 行）。注意 `nil` 和空集合的区别：`NodeNames == nil` 是全部，`NodeNames` 是一个长度为 0 的集合则表示一个都不行。
+**`nil` 表示「全部节点」，非 nil 的集合之间取交集**，对应两个方法：
+
+- `AllNodes`（第 9–11 行）；
+- `Merge`（第 13–30 行）。
+
+注意 `nil` 和空集合的区别：
+
+- `NodeNames == nil` 是全部；
+- `NodeNames` 是一个长度为 0 的集合则表示一个都不行。
 
 框架在 `RunPreFilterPlugins` 里按链上顺序逐个合并，交集一旦为空就立刻终止：
 
@@ -216,7 +224,10 @@ func (p *PreFilterResult) Merge(in *PreFilterResult) *PreFilterResult {
 
 `pluginsWithNodes` 记录了哪些插件缩小过范围（第 2–4 行），它会被写进 `diagnosis.UnschedulablePlugins`。这一点在第六节讲事件时还会用到。
 
-默认插件里能返回非 nil `PreFilterResult` 的只有两个：`NodeName`（`spec.nodeName` 非空）和 `NodeAffinity`（required 节点亲和里用了 `matchFields: metadata.name In [...]`，第 06 篇细讲）。
+默认插件里能返回非 nil `PreFilterResult` 的只有两个：
+
+- `NodeName`：`spec.nodeName` 非空；
+- `NodeAffinity`：required 节点亲和里用了 `matchFields: metadata.name In [...]`，第 06 篇细讲。
 
 合并只是算出了一个集合，真正把它变成节点列表的是下一步。
 
@@ -358,7 +369,11 @@ func ReplaceDaemonSetPodNodeNameNodeAffinity(affinity *v1.Affinity, nodename str
 
 `metav1.ObjectNameField` 就是 `metadata.name`（第二段代码第 4 行，条件在第 3–7 行拼装）。这正好落在 `NodeAffinity.PreFilter` 能识别的形式上，它会返回 `PreFilterResult{NodeNames: {nodename}}`。所以**DaemonSet Pod 在调度器里享受的「只看一个节点」的优化，来自 `NodeAffinity` 而不是 `NodeName`。**
 
-效果相同，但 Pod 是经过调度器的：资源不够时可以触发抢占（目标节点被标为 `Unschedulable` 而不是 `UnschedulableAndUnresolvable`），PriorityClass 生效，失败会被记录成调度事件。
+效果相同，但 Pod 是经过调度器的，因此多了三点保障：
+
+- 资源不够时可以触发抢占（目标节点被标为 `Unschedulable` 而不是 `UnschedulableAndUnresolvable`）；
+- PriorityClass 生效；
+- 失败会被记录成调度事件。
 
 DaemonSet 的模板里如果真写了 `spec.nodeName`，控制器的 `nodeShouldRunDaemonPod` 会只在这一个节点上创建 Pod，而创建出的 Pod 带着 `nodeName`，又回到了 5.1 的绕过路径。
 
@@ -381,7 +396,12 @@ func (pl *NodeName) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWithH
 
 只注册了 `Node/Add`（第 6 行），而且没有 hint 函数，框架会用 `defaultQueueingHintFn`，等价于总是返回 `Queue`。逻辑是：节点名不会被修改，节点删除也不会让 Pod 变得可调度，唯一能改变 `NodeName` 判定的是「目标节点出现了」，对应 3.2 里「不存在的节点被静默丢弃」的情况。
 
-`NodeName` 怎么进入 Pod 的 `UnschedulablePlugins`？有两条路：Filter 在某个节点上返回失败（只可能发生在提名节点路径上），或者它在 PreFilter 缩小过范围，被 `pluginsWithNodes` 记了下来（3.1）。后一条意味着：**只要 Pod 带着 `nodeName` 失败了，哪怕真正的原因是资源不足，之后任何新节点加入都会把它唤醒一次。** 这是一个宁可多唤醒的选择，代价不大，因为这类 Pod 本身就很少。
+`NodeName` 怎么进入 Pod 的 `UnschedulablePlugins`？有两条路：
+
+- Filter 在某个节点上返回失败（只可能发生在提名节点路径上）；
+- 它在 PreFilter 缩小过范围，被 `pluginsWithNodes` 记了下来（3.1）。
+
+后一条意味着：**只要 Pod 带着 `nodeName` 失败了，哪怕真正的原因是资源不足，之后任何新节点加入都会把它唤醒一次。** 这是一个宁可多唤醒的选择，代价不大，因为这类 Pod 本身就很少。
 
 hint 讲完，插件的全部行为也就齐了。剩下的边角情况集中在 API Server 和 kubelet 一侧。
 

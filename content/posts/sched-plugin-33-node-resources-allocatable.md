@@ -21,7 +21,11 @@ description: "NodeResourcesAllocatable 只根据节点 allocatable 的加权和�
 
 设计文档 `kep/48-node-resources-allocatable-scoring` 描述了一个异构集群的场景：集群里有 10 单位和 200 单位两种节点，依次来了请求为 5、5、100、100 的四个 Pod。
 
-用 in-tree 的 `LeastAllocated` 打分：两个节点都空，第一个 5 可能落在任一节点；第二个 5 会去「已分配比例更低」的节点，大概率是大节点。最终可能是 `5/10` 和 `105/200`，第二个 100 放不下了。
+用 in-tree 的 `LeastAllocated` 打分，过程是这样的：
+
+1. 两个节点都空，第一个 5 可能落在任一节点；
+2. 第二个 5 会去「已分配比例更低」的节点，大概率是大节点；
+3. 最终可能是 `5/10` 和 `105/200`，第二个 100 放不下了。
 
 所有基于「已分配比例」的打分都有这个问题：一个小 Pod 放在大节点上，比例变化很小，看起来很划算。
 
@@ -50,7 +54,10 @@ type NodeResourcesAllocatableArgs struct {
 }
 ```
 
-默认值在 v1 的 `SetDefaults_NodeResourcesAllocatableArgs`：`resources` 为空时用 `cpu: 1<<20, memory: 1`，`mode` 为空时用 `Least`。校验在 `ValidateNodeResourcesAllocatableArgs`：每个资源的权重必须大于 0（没有上限），`mode` 只能是 `Least` 或 `Most`。
+默认值和校验分别在两个函数里：
+
+- 默认值在 v1 的 `SetDefaults_NodeResourcesAllocatableArgs`：`resources` 为空时用 `cpu: 1<<20, memory: 1`，`mode` 为空时用 `Least`；
+- 校验在 `ValidateNodeResourcesAllocatableArgs`：每个资源的权重必须大于 0（没有上限），`mode` 只能是 `Least` 或 `Most`。
 
 `allocatable.go` 里还有一个同名的 `validateResources` 函数，是没有被调用的遗留代码，实际生效的是 `apis/config/validation` 中的版本。
 
@@ -64,7 +71,11 @@ type NodeResourcesAllocatableArgs struct {
 
 ### 3.1 工厂
 
-工厂要做的事只有一件：把 Profile 里的 args 和默认值合并，装进 `resourceAllocationScorer`。默认值先在 `var mode config.ModeType` 和 `resToWeightMap := defaultResourcesToWeightMap`（第 5–6 行）里铺好，`allocArgs != nil` 时才被参数覆盖，最后连同闭包一起装进结构体（第 29–37 行）。
+工厂要做的事只有一件：把 Profile 里的 args 和默认值合并，装进 `resourceAllocationScorer`。具体分三步：
+
+1. 默认值先在 `var mode config.ModeType` 和 `resToWeightMap := defaultResourcesToWeightMap`（第 5–6 行）里铺好；
+2. `allocArgs != nil` 时才被参数覆盖；
+3. 最后连同闭包一起装进结构体（第 29–37 行）。
 
 ```go {linenos=inline}
 // pkg/noderesources/allocatable.go
@@ -113,7 +124,10 @@ func NewAllocatable(ctx context.Context, allocArgs runtime.Object, h fwk.Handle)
 
 ### 3.2 打分
 
-打分分两层：外层的 `score` 负责取数（第 15–17 行），真正加权的是构造时传进来的闭包（第 19 行）。
+打分分两层：
+
+- 外层的 `score` 负责取数（第 15–17 行）；
+- 真正加权的是构造时传进来的闭包（第 19 行）。
 
 ```go {linenos=inline}
 // pkg/noderesources/resource_allocation.go
@@ -140,7 +154,12 @@ func (r *resourceAllocationScorer) score(
 }
 ```
 
-`calculateResourceAllocatableRequest` 会算出节点的 allocatable 和「已请求 + 本 Pod 请求」两个值，CPU/内存用 `GetNonZeroRequested`（未声明 request 的容器按 100m/200Mi 计），ephemeral-storage 和扩展资源用 `GetRequested`。但真正打分的闭包根本不看 `requested`：
+`calculateResourceAllocatableRequest` 会算出节点的 allocatable 和「已请求 + 本 Pod 请求」两个值，请求量按资源类型分两种算法：
+
+- CPU/内存用 `GetNonZeroRequested`（未声明 request 的容器按 100m/200Mi 计）；
+- ephemeral-storage 和扩展资源用 `GetRequested`。
+
+但真正打分的闭包根本不看 `requested`：
 
 ```go {linenos=inline}
 // pkg/noderesources/allocatable.go
@@ -170,7 +189,12 @@ func score(logger klog.Logger, capacity int64, mode config.ModeType) int64 {
 }
 ```
 
-所以原始分是 `±Σ(allocatable_i × w_i) / Σw_i`，`Least` 为负、`Most` 为正（第 7–11 行累加，第 15–20 行定符号）。**它只跟节点自己的 allocatable 有关，与节点上已经运行了什么、与本 Pod 请求多少都无关**，`requested` 的计算是从 in-tree 结构继承来的、在这里没有用处的开销。
+所以原始分是 `±Σ(allocatable_i × w_i) / Σw_i`，分两步得到：
+
+1. 按权重累加各资源的 allocatable（第 7–11 行）；
+2. 定符号，`Least` 为负、`Most` 为正（第 15–20 行）。
+
+**它只跟节点自己的 allocatable 有关，与节点上已经运行了什么、与本 Pod 请求多少都无关**，`requested` 的计算是从 in-tree 结构继承来的、在这里没有用处的开销。
 
 测试用例 `resources requested with more than the node` 也印证了这一点：Pod 请求超过节点容量，分数照样按规格给。插件不管能不能放下，那是 Filter 阶段 `NodeResourcesFit` 的事。
 
@@ -210,7 +234,10 @@ func (alloc *Allocatable) NormalizeScore(ctx context.Context, state fwk.CycleSta
 }
 ```
 
-标准的 min-max 线性映射（第 22 行）：本轮可行节点中原始分最高的得 100，最低的得 0。所有节点规格相同时 `oldRange == 0`（第 19–20 行），全部 0 分，插件对同构集群不起作用，这是合理的。
+归一化有两种情况：
+
+- 标准的 min-max 线性映射（第 22 行）：本轮可行节点中原始分最高的得 100，最低的得 0；
+- 所有节点规格相同时 `oldRange == 0`（第 19–20 行），全部 0 分，插件对同构集群不起作用，这是合理的。
 
 ## 四、算例
 
@@ -225,7 +252,12 @@ func (alloc *Allocatable) NormalizeScore(ctx context.Context, state fwk.CycleSta
 | memheavy | 8C / 128Gi | 8000 × 1048576 | 137438953472 | 139071 |
 | large | 64C / 256Gi | 64000 × 1048576 | 274877906944 | 326143 |
 
-以 small 为例：`(4000 × 1048576 + 16 × 2^30) / 1048577 = 21374173184 / 1048577 ≈ 20383.98`，Go 整数除法向零截断，`Least` 模式下是 −20383。原始分近似等于「毫核数 + 内存 MiB 数」，所以叫它 MiB 当量更直观：small 是 4000 + 16384，内存贡献了八成。
+以 small 为例，计算分两步：
+
+1. `(4000 × 1048576 + 16 × 2^30) / 1048577 = 21374173184 / 1048577 ≈ 20383.98`；
+2. Go 整数除法向零截断，`Least` 模式下是 −20383。
+
+原始分近似等于「毫核数 + 内存 MiB 数」，所以叫它 MiB 当量更直观：small 是 4000 + 16384，内存贡献了八成。
 
 `Least` 模式归一化：最高 −20383，最低 −326143，区间 305760。
 

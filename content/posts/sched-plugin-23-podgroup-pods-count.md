@@ -127,7 +127,10 @@ func (pl *PodGroupPodsCount) ScorePlacement(ctx context.Context, state fwk.Place
 
 **原始分数就是「这个组一共会有多少个 Pod 在跑」**：snapshot 里已经调度的（assigned + assumed），加上这个 placement 里新放下的。
 
-已调度数从哪来？不开 CompositePodGroup 时读本组的 `PodGroupState`（第 13–17 行）；开了以后用 `helper.GetPodGroupStates` 遍历以当前组为根的整棵子树（第 3–12 行），把每个叶子 PodGroup 的 `ScheduledPodsCount()` 加起来：
+已调度数从哪来？分两种情况：
+
+- 不开 CompositePodGroup 时，读本组的 `PodGroupState`（第 13–17 行）；
+- 开了以后，用 `helper.GetPodGroupStates` 遍历以当前组为根的整棵子树，把每个叶子 PodGroup 的 `ScheduledPodsCount()` 加起来（第 3–12 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podgrouppodscount/podgroup_pods_count.go
@@ -152,7 +155,12 @@ func (pl *PodGroupPodsCount) getScheduledPodsCount(podGroup fwk.PodGroupInfo) (i
 
 这里不会重复计数：每个 placement 试放结束后，`evaluatePlacement` 立刻调用 `placementRevertFns.revert()` 撤销 snapshot 里的 assume，所以打分时 snapshot 里的「已调度」只包含本轮之前就存在的 Pod，本轮新放的 Pod 只在 `ProposedAssignments` 里出现一次。CompositePodGroup 的情况类似，`makeCompositePodGroupAssignments` 用 `successfulLeafResults` 把子树里所有成功叶子的提议合在一起。
 
-注释里那句「reduce the relative difference」说的是：同样是 2 个和 1 个新 Pod 的差距，如果组里已经有 10 个 Pod 在跑，原始分是 12 对 11，归一化后是 100 对 91；只数新 Pod 则是 2 对 1，归一化后是 100 对 50。前者更符合「整组规模差别不大」的事实。
+注释里那句「reduce the relative difference」说的是：同样是 2 个和 1 个新 Pod 的差距，两种算法给出的结果不同：
+
+- 组里已经有 10 个 Pod 在跑时，原始分是 12 对 11，归一化后是 100 对 91；
+- 只数新 Pod，则是 2 对 1，归一化后是 100 对 50。
+
+前者更符合「整组规模差别不大」的事实。
 
 **不过在默认配置下，这一项其实很少真正影响结果。** TopologyPlacementGenerator 在组里已经有 Pod 调度时只返回那一个域（第 22 篇 3.3 节），候选只剩一个，打分会被跳过。已调度数大于 0 且又有多个候选 placement 的情况，需要有第三方的 PlacementGenerate 插件参与才会出现。
 

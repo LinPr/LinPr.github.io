@@ -101,7 +101,11 @@ func (f *restartAllContainersFeature) InferForUpdate(oldPodInfo, newPodInfo *typ
 }
 ```
 
-节点开了这个 gate 就声明（`Discover`，第 2–4 行）；Pod 只要有一个容器或 init 容器的 `RestartPolicyRules` 里出现 `rule.Action == v1.ContainerRestartRuleActionRestartAllContainers`，就算需要它（`InferForScheduling`，第 6–22 行）。字段不可变，所以更新时永远不需要（`InferForUpdate`，第 24–27 行）。
+三个方法各回答一个问题：
+
+- `Discover`：节点开了这个 gate 就声明（第 2–4 行）；
+- `InferForScheduling`：Pod 只要有一个容器或 init 容器的 `RestartPolicyRules` 里出现 `rule.Action == v1.ContainerRestartRuleActionRestartAllContainers`，就算需要它（第 6–22 行）；
+- `InferForUpdate`：字段不可变，所以更新时永远不需要（第 24–27 行）。
 
 有的特性的 `Discover` 还依赖容器运行时，比如 `UserNamespacesHostNetworkSupport` 要求 gate 开启并且 CRI 报告支持「user namespace + host network」；它的 `InferForScheduling` 检查 `hostNetwork: true` 且 `hostUsers: false`。
 
@@ -140,7 +144,10 @@ var AllFeatures = []types.Feature{
 
 第二类是「原地扩缩容」相关的特性：调度时 Pod 还没有被修改过，只有运行中修改 resources 时才需要节点支持，所以它们只在 Pod 更新的检查里起作用（见第五节）。
 
-第三类对 Pod 的调度和更新都不施加约束，声明它们是为了让其它组件读取：`DRAOptionalNodeOperations` 的注释说明，ResourceClaim 的分配结果要到 PreBind 才确定，PreFilter 推断不出来，这类过滤由 `DynamicResources` 插件自己做；`DRANodeAllocatableResources` 则被 apiserver 的准入插件用来校验 ResourceSlice。
+第三类对 Pod 的调度和更新都不施加约束，声明它们是为了让其它组件读取：
+
+- `DRAOptionalNodeOperations`：注释说明，ResourceClaim 的分配结果要到 PreBind 才确定，PreFilter 推断不出来，这类过滤由 `DynamicResources` 插件自己做；
+- `DRANodeAllocatableResources`：被 apiserver 的准入插件用来校验 ResourceSlice。
 
 ### 2.3 从名字到位图
 
@@ -181,9 +188,17 @@ func (b bitmap) IsSubset(other bitmap) (bool, error) {
 }
 ```
 
-`b &^ other`（b 与非 other）留下「b 有而 other 没有」的位（第 6–10 行），全为 0 即是子集；两边长度不同时先报错（第 3–5 行）。当前十项特性只占一个 `uint64` 的低 10 位，一次 Filter 的判断就是一次按位运算。
+判断分两步：
 
-名字列表到位图的映射在 `mapSorted` 中，它假定输入是有序的，用双指针一次扫描完成。有两个变体：`MustMapSorted` 遇到未知名字就 panic，`TryMap` 则跳过未知名字。
+1. 两边长度不同时先报错（第 3–5 行）；
+2. `b &^ other`（b 与非 other）留下「b 有而 other 没有」的位（第 6–10 行），全为 0 即是子集。
+
+当前十项特性只占一个 `uint64` 的低 10 位，一次 Filter 的判断就是一次按位运算。
+
+名字列表到位图的映射在 `mapSorted` 中，它假定输入是有序的，用双指针一次扫描完成。有两个变体：
+
+- `MustMapSorted` 遇到未知名字就 panic；
+- `TryMap` 则跳过未知名字。
 
 {{< figure src="/images/posts/sched-plugins/16-ndf-bitmap.svg" caption="注册表排序后每个特性占固定的一位；节点声明、Pod 需求都变成同样长度的位图，Filter 只做一次子集判断。下方是同一个库在三个组件里的用法（点击查看大图）" link="/images/posts/sched-plugins/16-ndf-bitmap.svg" >}}
 
@@ -213,7 +228,11 @@ kubelet 在初始化时（`NewMainKubelet`）计算一次，之后不再变化�
 	}
 ```
 
-`discoverNodeDeclaredFeatures` 把 kubelet 的 feature gate、CRI 报告的运行时能力（目前是 `UserNamespacesHostNetwork` 和 `MountOptions` 两项）和 kubelet 版本打包成 `NodeConfiguration`，交给 `DiscoverNodeFeatures`。结果写进节点状态（`kubelet_node_status.go` 中 `node.Status.DeclaredFeatures = kl.nodeDeclaredFeatures`）。
+`discoverNodeDeclaredFeatures` 分三步：
+
+1. 把 kubelet 的 feature gate、CRI 报告的运行时能力（目前是 `UserNamespacesHostNetwork` 和 `MountOptions` 两项）和 kubelet 版本打包成 `NodeConfiguration`；
+2. 交给 `DiscoverNodeFeatures`；
+3. 结果写进节点状态（`kubelet_node_status.go` 中 `node.Status.DeclaredFeatures = kl.nodeDeclaredFeatures`）。
 
 kubelet 用 `MustMapSorted` 而不是 `TryMap`（第 16 行）：它声明的名字本来就来自同一个注册表，出现未知名字说明程序有 bug，应该立刻暴露。
 
@@ -311,7 +330,13 @@ func (pl *NodeDeclaredFeatures) PreFilter(ctx context.Context, cycleState fwk.Cy
 }
 ```
 
-三个 `Skip` 出口：原地扩容被推迟的已绑定 Pod（`resource.IsPodResizeDeferred`，第 3–5 行；它不换节点，见[第 17 篇](/posts/sched-plugin-17-deferred-pod-scheduling/)）；插件未启用（第 6–8 行）；Pod 不需要任何特性（`reqs.IsEmpty()`，第 15–17 行）。第三个是绝大多数 Pod 的路径，对它们来说插件的全部开销就是十次 `InferForScheduling` 调用，每次只是遍历容器或卷列表。
+三个 `Skip` 出口：
+
+1. 原地扩容被推迟的已绑定 Pod（`resource.IsPodResizeDeferred`，第 3–5 行；它不换节点，见[第 17 篇](/posts/sched-plugin-17-deferred-pod-scheduling/)）；
+2. 插件未启用（第 6–8 行）；
+3. Pod 不需要任何特性（`reqs.IsEmpty()`，第 15–17 行）。
+
+第三个是绝大多数 Pod 的路径，对它们来说插件的全部开销就是十次 `InferForScheduling` 调用，每次只是遍历容器或卷列表。
 
 推断时只传 `Spec`，`Status` 为 nil：调度阶段的 Pod 还没有运行时状态。
 
@@ -541,7 +566,14 @@ func (p *Plugin) validatePod(a admission.Attributes) error {
 }
 ```
 
-只处理已绑定 Pod 的 spec 更新和 `resize` 子资源（第 9–17 行），用 `generation` 是否变化快速跳过 status 更新（第 19–22 行）。`validatePodUpdate` 调用 `InferForPodUpdate(oldPodInfo, newPodInfo, p.version)`，从 node lister 取出 Pod 所在节点做 `MatchNode`，不满足就返回 `Forbidden`：`pod update requires features ... which are not available on node ...`。这样一个跑在旧节点上的 Pod 发起 Pod 级资源的原地扩容，请求在 API 层就被拒绝，而不是写进去之后 kubelet 处理不了。
+处理流程分四步：
+
+1. 只处理已绑定 Pod 的 spec 更新和 `resize` 子资源（第 9–17 行）；
+2. 用 `generation` 是否变化快速跳过 status 更新（第 19–22 行）；
+3. `validatePodUpdate` 调用 `InferForPodUpdate(oldPodInfo, newPodInfo, p.version)`，从 node lister 取出 Pod 所在节点做 `MatchNode`；
+4. 不满足就返回 `Forbidden`：`pod update requires features ... which are not available on node ...`。
+
+这样一个跑在旧节点上的 Pod 发起 Pod 级资源的原地扩容，请求在 API 层就被拒绝，而不是写进去之后 kubelet 处理不了。
 
 kubelet 收到 Pod 更新时也会做一次同样的推断（`HandlePodUpdates` 中），不满足时只记录一个 `FailedNodeDeclaredFeaturesCheck` 事件，作为准入插件之外的可观测性补充。
 
