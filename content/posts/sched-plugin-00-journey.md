@@ -15,6 +15,25 @@ description: "系列开篇。沿着 ScheduleOne 的源码走一遍：Pod 怎么�
 
 本系列的 in-tree 代码基于 Kubernetes master 提交 `aabdf5a2`（2026-10 下旬，1.38 开发周期），out-of-tree 代码基于 scheduler-plugins 提交 `cfeb3aa`（依赖 Kubernetes v1.36.4）。框架层面的设计讨论可以参考之前的[《从 OpenResty phase engine 到 scheduler framework》](/posts/scheduler-framework/)，这里只讲后续文章需要用到的部分。
 
+调度器并不是孤立工作的。Pod 进入调度器之前，kube-apiserver 的准入链已经改写过它；调度器做完决定之后，还要经过 apiserver 的 binding 子资源和 kubelet 的准入才能真正运行；中间还有好几个控制器在改它依赖的对象。下面这张全景图把这条完整链路画了出来，后面 40 篇讲的插件都在图中间的 kube-scheduler 里。
+
+{{< figure src="/images/posts/sched-plugins/00-architecture.svg" link="/images/posts/sched-plugins/00-architecture.svg" caption="Pod 从提交到运行的全景：kube-apiserver 的准入链、kube-scheduler 的队列与两个周期、binding 子资源、kubelet，以及 Ⓐ~Ⓖ 七类周边组件介入的位置（点击查看大图）" >}}
+
+读图时注意三种标记：
+
+1. ①~㉔ 是一个 Pod 正常走完的主路径，从 kubectl 提交一直到容器运行；
+2. 橙色是会重试的失败，Pod 回到调度队列等下一次机会；红色是这个 Pod 到此为止，只能由控制器新建一个 Pod 重来；
+3. Ⓐ~Ⓖ 是调度器之外的组件，图中带同样字母的步骤就是它们介入的地方，比如 Ⓑ 出现在 ③ 变更准入和 ⑧ PreEnqueue 上，表示 gate 由 webhook 加上、由控制器删除。
+
+**很多「调度器为什么这样做」的问题，答案其实在调度器之外**。图中跨组件的几条线索，后面的文章会反复用到：
+
+1. `spec.priority` 由 ③ 里的 Priority 准入插件按 `priorityClassName` 写入，之后一直保存在 Pod 上。调度期间 activeQ 的 QueueSort 用它排队、⑫ 用它判断提名 Pod 是否占位、PostFilter 用它挑 victims；Pod 运行之后，㉔ kubelet 的节点压力驱逐排序也会用到它（第 02、18 篇）。
+2. `spec.schedulingGates` 只能在创建时加（③ 的 webhook），创建后 ④ 的校验只允许删除；gate 没删干净时，㉑ 的 binding 子资源会直接拒绝绑定（第 01 篇）。
+3. 调度器把决定写回集群只有一个出口：⑲ 调用 binding 子资源，由 apiserver 写入 `spec.nodeName`。除此之外它只会写 `PodScheduled` 条件、`status.nominatedNodeName`，以及在抢占时删除 victims。
+4. `status.nominatedNodeName` 有两个来源：抢占成功后由失败处理写入；开启 `NominatedNodeNameForExpectation` 时，绑定周期在 PreBind 或 WaitOnPermit 之前也会写入，告诉 Cluster Autoscaler 这个 Pod 即将落在哪个节点。绑定成功时 ㉑ 把它清空（第 18 篇）。
+5. ㉒ kubelet 会用同一套判断（资源、nodeAffinity、hostPort、NoExecute 污点）再检查一次。这里失败的 Pod 直接变成 `Failed`，调度器不会再管它。
+6. 被判为 unschedulable 的 Pod，要等外部对象变化才会被唤醒：Ⓔ 扩出新节点、Ⓒ 供给好 PV、Ⓑ 删掉 gate，这些事件经 ⑦ 的 QueueingHint 判断后才把它移出 `unschedulableEntities`（第五节）。
+
 {{< figure src="/images/posts/sched-plugins/00-journey.svg" link="/images/posts/sched-plugins/00-journey.svg" caption="一个 Pod 的调度旅程：左侧是扩展点，右侧是本系列在该位置重点讲的插件（点击查看大图）" >}}
 
 上面这张图是按扩展点画的。落到代码里，这些扩展点分别由哪个函数触发，可以看下面这张调用栈。它一直画到真正执行插件方法的那一层，读图时注意四种标记：
