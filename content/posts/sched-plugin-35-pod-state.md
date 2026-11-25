@@ -122,9 +122,9 @@ README 的解释是：终止中的 Pod 最终会从节点上物理移除。结�
 
 这种节点通常出现在三个地方：
 
-- 滚动更新时旧版本 Pod 正在退出的节点；
-- 缩容中的工作负载所在的节点；
-- 抢占的受害者所在的节点。
+1. 滚动更新时旧版本 Pod 正在退出的节点；
+2. 缩容中的工作负载所在的节点；
+3. 抢占的受害者所在的节点。
 
 ### 4.2 被提名的 Pod 是「坏消息」
 
@@ -148,13 +148,13 @@ README 的解释是：终止中的 Pod 最终会从节点上物理移除。结�
 
 DefaultPreemption 选中一个节点后，会同时制造两件事：
 
-- 受害者被删除（变成终止中），在 `PodState` 眼里，这个节点 +k（k 个受害者）；
-- 抢占者被提名到这个节点，这个节点 −1（一个抢占者）。
+1. 受害者被删除（变成终止中），在 `PodState` 眼里，这个节点 +k（k 个受害者）；
+2. 抢占者被提名到这个节点，这个节点 −1（一个抢占者）。
 
 **驱逐了多个受害者时，节点的原始分反而是正的，会被偏好。** 这和插件「避开被提名节点」的初衷恰好相反。框架的硬保护会在 Filter 时把优先级不低于当前 Pod 的抢占者计入节点，于是有两种情况：
 
-- 资源不够时，新 Pod 会被直接拒绝；
-- 只要还放得下，`PodState` 就会把新 Pod 吸引到这个正在为抢占者腾位置的节点上，进一步压缩它的余量。
+1. 资源不够时，新 Pod 会被直接拒绝；
+2. 只要还放得下，`PodState` 就会把新 Pod 吸引到这个正在为抢占者腾位置的节点上，进一步压缩它的余量。
 
 in-tree 也意识到了终止中受害者的意义：DefaultPreemption 的 `PodEligibleToPreemptOthers` 在 Pod 已有提名节点、且该节点上有因抢占而终止中的低优先级 Pod 时，拒绝再次抢占（第 2–7 行），让它等这些 Pod 退出：
 
@@ -177,27 +177,27 @@ in-tree 也意识到了终止中受害者的意义：DefaultPreemption 的 `PodE
 
 五条局限，前三条来自实现，后两条来自数据本身能提供的范围。
 
-- 只数个数：一个请求 64 核的终止中 Pod 和一个请求 0.1 核的终止中 Pod 贡献相同；一个大的抢占者和一个小的抢占者扣分也相同。如果目标是「哪个节点很快会腾出足够的资源」，需要累加 request 而不是计数。
-- 不看优先级：高优先级 Pod 不必在乎低优先级的被提名 Pod（框架的 Filter 都不把它们算进来），但在 `PodState` 里同样被扣分。
-- 会把自己算进去：nominator 中的提名要到 assume 时才通过 `DeleteNominatedPodIfExists` 删除。一个之前抢占成功、带着 `nominatedNodeName` 的 Pod 重新进入调度时，它自己还在 nominator 里，提名节点因此被扣一分。框架会先单独评估提名节点（`evaluateNominatedNode`），通过就只剩一个可行节点、跳过打分，所以只有提名节点 Filter 不通过、需要对全部节点打分时，这个问题才会出现，而那时提名节点本来也不在候选里。**影响很小，但它说明插件没有像框架那样排除 `pod.UID`**（对比上一节框架代码第 3 行的 `pi.GetPod().UID != pod.UID`）。
-- 终止时间不可知：`deletionTimestamp` 只表示开始终止，Pod 可能有很长的 `terminationGracePeriodSeconds`，也可能因为 finalizer 卡住很久。偏好这样的节点并不总是有收益。
-- 数据范围：终止中的 Pod 必须仍在 NodeInfo 里，kubelet 确认删除后就消失了；被提名的 Pod 只来自本调度器的队列，其他调度器提名的 Pod 不在其中。
+1. 只数个数：一个请求 64 核的终止中 Pod 和一个请求 0.1 核的终止中 Pod 贡献相同；一个大的抢占者和一个小的抢占者扣分也相同。如果目标是「哪个节点很快会腾出足够的资源」，需要累加 request 而不是计数。
+2. 不看优先级：高优先级 Pod 不必在乎低优先级的被提名 Pod（框架的 Filter 都不把它们算进来），但在 `PodState` 里同样被扣分。
+3. 会把自己算进去：nominator 中的提名要到 assume 时才通过 `DeleteNominatedPodIfExists` 删除。一个之前抢占成功、带着 `nominatedNodeName` 的 Pod 重新进入调度时，它自己还在 nominator 里，提名节点因此被扣一分。框架会先单独评估提名节点（`evaluateNominatedNode`），通过就只剩一个可行节点、跳过打分，所以只有提名节点 Filter 不通过、需要对全部节点打分时，这个问题才会出现，而那时提名节点本来也不在候选里。**影响很小，但它说明插件没有像框架那样排除 `pod.UID`**（对比上一节框架代码第 3 行的 `pi.GetPod().UID != pod.UID`）。
+4. 终止时间不可知：`deletionTimestamp` 只表示开始终止，Pod 可能有很长的 `terminationGracePeriodSeconds`，也可能因为 finalizer 卡住很久。偏好这样的节点并不总是有收益。
+5. 数据范围：终止中的 Pod 必须仍在 NodeInfo 里，kubelet 确认删除后就消失了；被提名的 Pod 只来自本调度器的队列，其他调度器提名的 Pod 不在其中。
 
 ## 六、发散：作为示例插件的价值
 
 局限归局限，它作为示例的价值在于：一个打分插件可以同时用到两种完全不同来源的数据。
 
-- snapshot 中的 NodeInfo：本轮调度周期开始时冻结的集群视图，并发打分时只读，线程安全；
-- 通过 `fwk.Handle` 访问的调度器内部状态：这里是 `PodNominator` 接口，它读的是调度队列的实时状态，带锁，在本轮周期中可能变化。
+1. snapshot 中的 NodeInfo：本轮调度周期开始时冻结的集群视图，并发打分时只读，线程安全；
+2. 通过 `fwk.Handle` 访问的调度器内部状态：这里是 `PodNominator` 接口，它读的是调度队列的实时状态，带锁，在本轮周期中可能变化。
 
 后者是 out-of-tree 插件常被忽视的能力。`fwk.Handle` 还暴露了 `SnapshotSharedLister`、`SharedInformerFactory`、`ClientSet`、`IterateOverWaitingPods` 等入口（Coscheduling 就靠 `IterateOverWaitingPods` 管理 Permit 等待中的 Pod）。写自定义插件时，先看 Handle 能提供什么，常常比自己再建一套 informer 更省事，也更容易和调度器内部状态保持一致。
 
-另一个值得注意的点是它没有 `EventsToRegister`。纯 Score 插件不会让 Pod 变成不可调度，也就不需要声明重新入队的事件；终止中、被提名的状态变化只影响下一次打分，不需要通知队列。
+它也没有 `EventsToRegister`。纯 Score 插件不会让 Pod 变成不可调度，也就不需要声明重新入队的事件；终止中、被提名的状态变化只影响下一次打分，不需要通知队列。
 
 ## 小结
 
-- `PodState` 的原始分是「终止中的 Pod 数 − 被提名的 Pod 数」，前者来自 NodeInfo 快照，后者来自调度队列的 nominator，再做 min-max 归一化，所有节点相同时全部 0 分。
-- 设计意图是偏好即将变空的节点、避开为抢占者预留的节点，是框架 `RunFilterPluginsWithNominatedPods` 硬保护之外的一层软偏好。
-- 它只数个数，不看资源量和优先级，抢占目标节点上两项会相互抵消甚至变成加分；在示例之外直接用于生产需要谨慎。
+1. `PodState` 的原始分是「终止中的 Pod 数 − 被提名的 Pod 数」，前者来自 NodeInfo 快照，后者来自调度队列的 nominator，再做 min-max 归一化，所有节点相同时全部 0 分。
+2. 设计意图是偏好即将变空的节点、避开为抢占者预留的节点，是框架 `RunFilterPluginsWithNominatedPods` 硬保护之外的一层软偏好。
+3. 它只数个数，不看资源量和优先级，抢占目标节点上两项会相互抵消甚至变成加分；在示例之外直接用于生产需要谨慎。
 
 下一篇 [SySched](/posts/sched-plugin-36-sysched/) 换一个完全不同的视角：不看资源，而是看节点上的 Pod 一共打开了多少系统调用。

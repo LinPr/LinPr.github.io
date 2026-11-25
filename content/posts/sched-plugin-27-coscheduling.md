@@ -19,8 +19,8 @@ Coscheduling 要解决的问题和[第 21 篇](/posts/sched-plugin-21-gang-sched
 
 两条路线的区别是：
 
-- GangScheduling 把整组作为一个 entity 出队，在一次调度周期里逐个试放、失败统一回滚；
-- Coscheduling 诞生在调度框架还只能一个一个处理 Pod 的年代，它让每个 Pod 照常走完调度周期、真实地占住资源，然后在 Permit 扩展点原地等待，等到同组凑够 `minMember` 个再一起放行。
+1. GangScheduling 把整组作为一个 entity 出队，在一次调度周期里逐个试放、失败统一回滚；
+2. Coscheduling 诞生在调度框架还只能一个一个处理 Pod 的年代，它让每个 Pod 照常走完调度周期、真实地占住资源，然后在 Permit 扩展点原地等待，等到同组凑够 `minMember` 个再一起放行。
 
 本文基于 scheduler-plugins 提交 `cfeb3aa`，它依赖 Kubernetes v1.36.4。
 
@@ -108,6 +108,12 @@ type PodGroupSpec struct {
 }
 ```
 
+`PodGroupSpec` 的三个字段分别决定「至少几个成员」「至少多少资源」「最多等多久」：
+
+1. `MinMember`：组里至少要凑齐的 Pod 数，必填，最小为 1；
+2. `MinResources`：整组至少要占用的资源量，可选，和 `MinMember` 一起构成「资源不够就一个都不启动」的条件；
+3. `ScheduleTimeoutSeconds`：组内成员最多等待多久，可选，不写时用插件参数 `permitWaitingTimeSeconds`（默认 60 秒）。
+
 Pod 和 PodGroup 的关联不是 Pod spec 里的字段，而是一个标签：
 
 ```go {linenos=inline}
@@ -176,13 +182,13 @@ type CoschedulingArgs struct {
 
 默认值在 `apis/config/v1/defaults.go`：
 
-- `permitWaitingTimeSeconds` 60；
-- `podGroupBackoffSeconds` 0（不 backoff）；
-- `podGroupRejectPercentage` 10。
+1. `permitWaitingTimeSeconds` 60；
+2. `podGroupBackoffSeconds` 0（不 backoff）；
+3. `podGroupRejectPercentage` 10。
 
 校验要求前两个非负、第三个在 0~100 之间；`New` 里对 `PodGroupBackoffSeconds < 0` 又检查了一遍。
 
-`New` 里有两处初始化值得注意：
+`New` 里有两处初始化：
 
 ```go {linenos=inline}
 // pkg/coscheduling/coscheduling.go
@@ -245,8 +251,8 @@ type PodGroupManager struct {
 
 `assignedPodsByPG` 是 gang 判定的核心计数。它有两个来源：
 
-- Permit 时把当前 Pod 加进去（此时 Pod 只是 assume，还没绑定）；
-- Pod informer 的 Add 事件里，带 `nodeName` 的 Pod 也会加进去（主要覆盖调度器重启后已经在跑的 Pod）。
+1. Permit 时把当前 Pod 加进去（此时 Pod 只是 assume，还没绑定）；
+2. Pod informer 的 Add 事件里，带 `nodeName` 的 Pod 也会加进去（主要覆盖调度器重启后已经在跑的 Pod）。
 
 删除来源也是两个：Unreserve，以及已绑定 Pod 的 Delete 事件。所以它近似等于「已经过了 Permit 或已经绑定、且还存在的同组 Pod」。
 
@@ -308,8 +314,8 @@ func (pgMgr *PodGroupManager) GetCreationTimestamp(ctx context.Context, pod *cor
 
 两个细节：
 
-- **优先级比较在时间戳之前。** README 特意提醒「Pods in the same PodGroup with different priorities might lead to unintended behavior」。同组 Pod 优先级不同，会被其他组的 Pod 插在中间，同组相邻的假设就不成立了。
-- **Less 在 activeQ 的堆操作里被调用，持有队列锁。** 每次比较都要走一次 `GetCreationTimestamp`，可能要读 `sync.Map` 和 informer cache。读本地缓存很快，但这是 Coscheduling 比 PrioritySort 多出的一份常数开销。
+1. **优先级比较在时间戳之前。** README 特意提醒「Pods in the same PodGroup with different priorities might lead to unintended behavior」。同组 Pod 优先级不同，会被其他组的 Pod 插在中间，同组相邻的假设就不成立了。
+2. **Less 在 activeQ 的堆操作里被调用，持有队列锁。** 每次比较都要走一次 `GetCreationTimestamp`，可能要读 `sync.Map` 和 informer cache。读本地缓存很快，但这是 Coscheduling 比 PrioritySort 多出的一份常数开销。
 
 ## 五、PreFilter：四道检查
 
@@ -559,9 +565,9 @@ func (cs *Coscheduling) Permit(ctx context.Context, state fwk.CycleState, pod *v
 
 返回 `Wait` 意味着什么？此时有三件事成立：
 
-- 这个 Pod 已经在调度器 cache 里 assume 到了某个节点，资源被计入了节点占用；
-- 框架把它放进 `waitingPods` 表，为每个返回 Wait 的插件起一个 `time.AfterFunc` 计时器；
-- 它的绑定 goroutine 阻塞在 `WaitOnPermit`。
+1. 这个 Pod 已经在调度器 cache 里 assume 到了某个节点，资源被计入了节点占用；
+2. 框架把它放进 `waitingPods` 表，为每个返回 Wait 的插件起一个 `time.AfterFunc` 计时器；
+3. 它的绑定 goroutine 阻塞在 `WaitOnPermit`。
 
 在 v1.36 的绑定周期里，`NominatedNodeNameForExpectation`（1.35 起 Beta、默认开启）打开时，即将进入 WaitOnPermit 的 Pod 还会被写上 `status.nominatedNodeName`，告诉 Cluster Autoscaler 等外部组件「这个 Pod 马上要落到这里」，所以 `kubectl get pod -o wide` 能看到 waiting Pod 的 NOMINATED NODE。
 
@@ -613,8 +619,8 @@ func (pgMgr *PodGroupManager) ActivateSiblings(ctx context.Context, pod *corev1.
 
 前面讲的都是顺利凑齐的情况。凑不齐时有两条收场路径：
 
-- Filter 阶段就找不到节点，走 PostFilter；
-- Permit 等不到人，走 Unreserve。
+1. Filter 阶段就找不到节点，走 PostFilter；
+2. Permit 等不到人，走 Unreserve。
 
 {{< figure src="/images/posts/sched-plugins/27-permit-timeline.svg" link="/images/posts/sched-plugins/27-permit-timeline.svg" caption="minMember=3 时 Permit 的三种结局：及时凑齐、第三个 Pod 失败触发 PostFilter 连坐、等待超时后 Unreserve 连坐（点击查看大图）" >}}
 
@@ -686,10 +692,10 @@ func (cs *Coscheduling) PostFilter(ctx context.Context, state fwk.CycleState, po
 2. 删除 `permittedPG`，让下一轮重新做资源检查；
 3. 记录失败时刻，影响 QueueSort。
 
-注意 PostFilter 里有两处容易被忽视：
+PostFilter 里有两处容易被忽视：
 
-- **assigned 为 0 时也会走到第三条分支。** 比如组里第一个 Pod 就 Filter 失败，`(minMember - 0) / minMember = 100%`，于是标记失败时刻，组的 Pod 整体排到同优先级的其他组后面。
-- **PreFilter 失败也会进 PostFilter。** PreFilter 返回 `UnschedulableAndUnresolvable` 后，调度器照样跑 PostFilter 链。DefaultPreemption 找不到候选，返回 Unschedulable，链继续走到 Coscheduling。也就是说「人数不够」被 PreFilter 拦下时，同样会给这个组打上失败时刻，同样会删掉 `permittedPG`。
+1. **assigned 为 0 时也会走到第三条分支。** 比如组里第一个 Pod 就 Filter 失败，`(minMember - 0) / minMember = 100%`，于是标记失败时刻，组的 Pod 整体排到同优先级的其他组后面。
+2. **PreFilter 失败也会进 PostFilter。** PreFilter 返回 `UnschedulableAndUnresolvable` 后，调度器照样跑 PostFilter 链。DefaultPreemption 找不到候选，返回 Unschedulable，链继续走到 Coscheduling。也就是说「人数不够」被 PreFilter 拦下时，同样会给这个组打上失败时刻，同样会删掉 `permittedPG`。
 
 ### 7.2 Unreserve：一个失败，全员失败
 
@@ -718,10 +724,10 @@ func (cs *Coscheduling) Unreserve(ctx context.Context, state fwk.CycleState, pod
 
 框架在以下情况会调用 Unreserve：
 
-- Reserve 之后的某个插件失败；
-- Permit 拒绝；
-- WaitOnPermit 超时或被 Reject；
-- PreBind/Bind 失败。
+1. Reserve 之后的某个插件失败；
+2. Permit 拒绝；
+3. WaitOnPermit 超时或被 Reject；
+4. PreBind/Bind 失败。
 
 对 Coscheduling 来说最典型的是超时：
 
@@ -832,7 +838,15 @@ PodGroup 的 `status` 不由调度器写，而由 `cmd/controller` 里的 PodGro
 
 {{< figure src="/images/posts/sched-plugins/27-controller-state.svg" link="/images/posts/sched-plugins/27-controller-state.svg" caption="PodGroupReconciler 的实际状态转移：Pending 只看 Pod 数，Scheduling 与 Running 共用一段判断，Failed 和 Finished 是终态（点击查看大图）" >}}
 
-照着代码读，有几处和 KEP、类型注释的描述不一致，值得单独列出来：
+一次 Reconcile 按顺序做五件事：
+
+1. 两条提前返回（第 2–13 行）：`Finished`、`Failed` 是终态，直接结束；`Scheduling` 或 `Pending` 且 `Running` 为 0 时，`ScheduleStartTime` 距创建时间超过 48 小时的也不再处理，只发一条 `Timeout` 事件；
+2. 列 Pod（第 15–23 行）：按 `scheduling.x-k8s.io/pod-group=<name>` 找出组名下的 Pod，后面所有判定都用这个列表；
+3. phase 为空串（第 27–28 行）：直接置为 `Pending`，不做别的判断；
+4. phase 为 `Pending`（第 29–35 行）：Pod 数够 `minMember` 才升为 `Scheduling`，并用第一个 Pod 的 ownerReferences 填 `OccupiedBy`；
+5. 其余 phase（第 36–45 行）：先统计 `Running`、`Succeeded`、`Failed`，Pod 数掉到 `minMember` 以下退回 `Pending`；否则依次判断，`Succeeded + Running` 不足 `minMember` 为 `Scheduling`、达到为 `Running`，有失败且三类之和够 `minMember` 为 `Failed`，`Succeeded` 够 `minMember` 为 `Finished`，后两条覆盖前面的结果。
+
+照着代码读，有几处和 KEP、类型注释的描述不一致：
 
 **`Unknown` 从不被设置。** 类型注释说它表示「部分 Pod 调度了、其余因资源不足等原因调度不上」，但 Reconcile 里没有任何分支会写这个值。
 
@@ -875,10 +889,10 @@ PodGroup 的 `status` 不由调度器写，而由 `cmd/controller` 里的 PodGro
 
 Coscheduling 为此加了一系列缓解手段：
 
-- QueueSort 让同组 Pod 连续出队，缩短交错的窗口；
-- PreFilter 的 minResources 检查提前排除总量不够的组；
-- PostFilter 在第一个 Pod 失败时就整组释放，而不是等到超时；
-- 失败时刻参与排序，让反复失败的组让出队首。
+1. QueueSort 让同组 Pod 连续出队，缩短交错的窗口；
+2. PreFilter 的 minResources 检查提前排除总量不够的组；
+3. PostFilter 在第一个 Pod 失败时就整组释放，而不是等到超时；
+4. 失败时刻参与排序，让反复失败的组让出队首。
 
 这些手段降低了死锁的概率和持续时间，但不能根除。
 
@@ -916,12 +930,12 @@ scheduler-plugins 升级到新版本 Kubernetes 时，至少要适配这个接�
 
 ## 十三、小结
 
-- Coscheduling 用 PodGroup CRD 和 `scheduling.x-k8s.io/pod-group` 标签编组，挂在 QueueSort、PreFilter、PostFilter、Reserve（仅为 Unreserve）、Permit 五个扩展点，是 QueueSort 插件，与 QOSSort、TopologicalSort 互斥。
-- QueueSort 按「优先级 → PodGroup 创建时间（最近失败过则用失败时刻）→ namespace/name」排序，让同组 Pod 连续出队，并避免反复失败的组霸占队首。
-- PreFilter 做四道检查：backoff 名单、Pod 总数 ≥ minMember、扣除 gated Pod 后仍够数、集群剩余资源总和 ≥ minResources；任一失败返回 `UnschedulableAndUnresolvable`，以避免抢占。
-- Permit 把 Pod 计入 `assignedPodsByPG`，够 minMember 就 Allow 所有同组 waiting Pod，否则 Wait（默认 60s），第一个进入 Wait 的 Pod 负责激活兄弟。
-- PostFilter 在差距超过 `podGroupRejectPercentage`（默认 10%）时 Reject 整组 waiting Pod；Unreserve 在超时或其他失败时同样连坐整组。
-- PodGroup controller 的 phase 以代码为准：Unknown 从不设置，Failed 是终态，48 小时超时不会触发，列 Pod 不限命名空间。
-- 与 in-tree GangScheduling 相比，Coscheduling 让 Pod 占着资源在 Permit 等待，存在组间互等的风险，靠排序、预检、乐观拒绝和超时来缓解。
+1. Coscheduling 用 PodGroup CRD 和 `scheduling.x-k8s.io/pod-group` 标签编组，挂在 QueueSort、PreFilter、PostFilter、Reserve（仅为 Unreserve）、Permit 五个扩展点，是 QueueSort 插件，与 QOSSort、TopologicalSort 互斥。
+2. QueueSort 按「优先级 → PodGroup 创建时间（最近失败过则用失败时刻）→ namespace/name」排序，让同组 Pod 连续出队，并避免反复失败的组霸占队首。
+3. PreFilter 做四道检查：backoff 名单、Pod 总数 ≥ minMember、扣除 gated Pod 后仍够数、集群剩余资源总和 ≥ minResources；任一失败返回 `UnschedulableAndUnresolvable`，以避免抢占。
+4. Permit 把 Pod 计入 `assignedPodsByPG`，够 minMember 就 Allow 所有同组 waiting Pod，否则 Wait（默认 60s），第一个进入 Wait 的 Pod 负责激活兄弟。
+5. PostFilter 在差距超过 `podGroupRejectPercentage`（默认 10%）时 Reject 整组 waiting Pod；Unreserve 在超时或其他失败时同样连坐整组。
+6. PodGroup controller 的 phase 以代码为准：Unknown 从不设置，Failed 是终态，48 小时超时不会触发，列 Pod 不限命名空间。
+7. 与 in-tree GangScheduling 相比，Coscheduling 让 Pod 占着资源在 Permit 等待，存在组间互等的风险，靠排序、预检、乐观拒绝和超时来缓解。
 
 下一篇是另一个依赖 CRD、在调度器里维护进程内用量记录的插件：做多租户弹性配额的 [CapacityScheduling](/posts/sched-plugin-28-capacity-scheduling/)。

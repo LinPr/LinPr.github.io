@@ -87,8 +87,8 @@ type Policy struct {
 
 两个字段的含义要合在一起读：
 
-- 优先级低于 `MinimumPreemptablePriority` 的抢占者，需要等受害者被调度满 `TolerationSeconds` 秒之后才能抢它；
-- 优先级达到门槛的抢占者不受限制。
+1. 优先级低于 `MinimumPreemptablePriority` 的抢占者，需要等受害者被调度满 `TolerationSeconds` 秒之后才能抢它；
+2. 优先级达到门槛的抢占者不受限制。
 
 `TolerationSeconds` 为负数表示永远等不到。
 
@@ -129,8 +129,8 @@ func parsePreemptionTolerationPolicy(
 
 两个字段的默认值：
 
-- `MinimumPreemptablePriority` 默认是 `value + 1`（第 9 行）；
-- `TolerationSeconds` 默认是 `0`（第 20 行）。
+1. `MinimumPreemptablePriority` 默认是 `value + 1`（第 9 行）；
+2. `TolerationSeconds` 默认是 `0`（第 20 行）。
 
 两个都不写时，任何比受害者优先级高的抢占者都满足门槛，行为与默认抢占完全一致，所以把插件换上去不会改变没有加 annotation 的 `PriorityClass` 的行为。
 
@@ -221,15 +221,15 @@ func ExemptedFromPreemption(
 
 {{< figure src="/images/posts/sched-plugins/31-exemption-flow.svg" link="/images/posts/sched-plugins/31-exemption-flow.svg" caption="节点上每个 Pod 的判定顺序：先过优先级比较，再进 ExemptedFromPreemption；绿色为豁免，橙色为成为候选受害者，红色为整个节点的模拟报错（点击查看大图）" >}}
 
-逐条看几个值得注意的分支，它们决定了这个函数在边界上的行为：
+这个函数在边界上的行为由七个分支决定：
 
-- 没有 `priorityClassName`：直接不豁免。只有在集群里没有 `globalDefault: true` 的 `PriorityClass` 时才会出现这种 Pod，否则 Priority 准入插件会给它填上默认的类名。
-- Lister 查不到 `PriorityClass`：返回 error，而且这个 error 会一路上抛，让当前节点的 `SelectVictimsOnNode` 以 `Error` 状态结束。`PriorityClass` 被删除、但还有 Pod 引用它的情况下就会触发。测试 `TestExemptedFromPreemptionWithNonExitingPriorityClass` 覆盖了这一路径。
-- 抢占者 `preemptionPolicy: Never`：豁免所有人（第 17–23 行）。这个分支在插件内部实际走不到，因为 Evaluator 的第一步 `PodEligibleToPreemptOthers` 已经把这类抢占者拦下了；它的存在是因为函数是导出的，其他插件调用时不一定先做了资格检查。
-- 解析失败：不豁免，只打一条错误日志。annotation 写成 `"10k"` 之类的值，策略就等于没写，调度器之外看不到任何提示。
-- 门槛比较用 `>=`（第 34–37 行）：抢占者优先级恰好等于 `minimum-preemptable-priority` 时，不豁免，可以直接抢。测试 `when preemptor's priority is equal to MinimumPreemptablePriorityClass, it should return false` 明确了这一点。
-- 没有 `PodScheduled=True`：豁免（第 44–47 行）。节点上的 Pod 一般都已经有这个 condition（绑定时由 API server 写入），没有的主要是调度器缓存里被 assume、尚未完成绑定的 Pod。插件选择保护它们：一个刚刚做出的调度决定不应该马上被推翻。
-- 时间比较（第 51 行）：`scheduledAt` 用的是 `PodScheduled` condition 的 `LastTransitionTime`，不是容器启动时间，也不是 `status.startTime`。Pod 绑定后拉镜像花了 5 分钟，那 10 分钟的容忍期里真正在跑的只有 5 分钟。如果「保证运行时间」是硬需求，`toleration-seconds` 要把镜像拉取和启动时间算进去。
+1. 没有 `priorityClassName`：直接不豁免。只有在集群里没有 `globalDefault: true` 的 `PriorityClass` 时才会出现这种 Pod，否则 Priority 准入插件会给它填上默认的类名。
+2. Lister 查不到 `PriorityClass`：返回 error，而且这个 error 会一路上抛，让当前节点的 `SelectVictimsOnNode` 以 `Error` 状态结束。`PriorityClass` 被删除、但还有 Pod 引用它的情况下就会触发。测试 `TestExemptedFromPreemptionWithNonExitingPriorityClass` 覆盖了这一路径。
+3. 抢占者 `preemptionPolicy: Never`：豁免所有人（第 17–23 行）。这个分支在插件内部实际走不到，因为 Evaluator 的第一步 `PodEligibleToPreemptOthers` 已经把这类抢占者拦下了；它的存在是因为函数是导出的，其他插件调用时不一定先做了资格检查。
+4. 解析失败：不豁免，只打一条错误日志。annotation 写成 `"10k"` 之类的值，策略就等于没写，调度器之外看不到任何提示。
+5. 门槛比较用 `>=`（第 34–37 行）：抢占者优先级恰好等于 `minimum-preemptable-priority` 时，不豁免，可以直接抢。测试 `when preemptor's priority is equal to MinimumPreemptablePriorityClass, it should return false` 明确了这一点。
+6. 没有 `PodScheduled=True`：豁免（第 44–47 行）。节点上的 Pod 一般都已经有这个 condition（绑定时由 API server 写入），没有的主要是调度器缓存里被 assume、尚未完成绑定的 Pod。插件选择保护它们：一个刚刚做出的调度决定不应该马上被推翻。
+7. 时间比较（第 51 行）：`scheduledAt` 用的是 `PodScheduled` condition 的 `LastTransitionTime`，不是容器启动时间，也不是 `status.startTime`。Pod 绑定后拉镜像花了 5 分钟，那 10 分钟的容忍期里真正在跑的只有 5 分钟。如果「保证运行时间」是硬需求，`toleration-seconds` 要把镜像拉取和启动时间算进去。
 
 `now` 不是在判定时取的，而是在 PostFilter 开头取一次：
 
@@ -304,6 +304,8 @@ func (pl *PreemptionToleration) PostFilter(ctx context.Context, state fwk.CycleS
 // PriorityClass resources into account for selecting victim pods.
 ```
 
+注释的第一句点明了这个函数的产物：让抢占者放得下的最小受害者集合，而不是节点上任意一组能腾出空间的低优先级 Pod。
+
 候选受害者确定之后，剩下的步骤和 in-tree 的实现逐行对应：
 
 ```go {linenos=inline}
@@ -349,7 +351,7 @@ func (pl *PreemptionToleration) PostFilter(ctx context.Context, state fwk.CycleS
 
 被豁免的 Pod 始终留在节点副本上，Filter 判断时它们占着资源。所以一个节点上如果大部分低优先级 Pod 都处于容忍期，移除剩下的也腾不出足够空间，这个节点会在 Filter 一步失败，不成为候选。
 
-这里有一个值得多想一步的地方：容忍期的判断发生在「全部移除」之前，是一个硬筛选，而不是赦免阶段的偏好。即便驱逐一个容忍期内的 Pod 就能让抢占者放下，插件也不会这么做，而是去别的节点找；所有节点都找不到，抢占就失败。容忍策略的优先级高于「尽量让高优先级 Pod 调度成功」。
+容忍期的判断发生在「全部移除」之前，是一个硬筛选，而不是赦免阶段的偏好。即便驱逐一个容忍期内的 Pod 就能让抢占者放下，插件也不会这么做，而是去别的节点找；所有节点都找不到，抢占就失败。容忍策略的优先级高于「尽量让高优先级 Pod 调度成功」。
 
 ## 五、和 DefaultPreemption 的逐项对比
 
@@ -371,8 +373,8 @@ type PreemptionTolerationArgs schedconfig.DefaultPreemptionArgs
 
 默认值和校验也直接调 in-tree 的：
 
-- `SetDefaults_PreemptionTolerationArgs` 调用 `SetDefaults_DefaultPreemptionArgs`，得到 `minCandidateNodesPercentage: 10`、`minCandidateNodesAbsolute: 100`；
-- `New` 里调用 `validation.ValidateDefaultPreemptionArgs`。
+1. `SetDefaults_PreemptionTolerationArgs` 调用 `SetDefaults_DefaultPreemptionArgs`，得到 `minCandidateNodesPercentage: 10`、`minCandidateNodesAbsolute: 100`；
+2. `New` 里调用 `validation.ValidateDefaultPreemptionArgs`。
 
 所以「找多少个候选节点」这件事，`PreemptionToleration` 和 `DefaultPreemption` 完全一样：从随机偏移开始，找到 `max(节点数 × 10%, 100)`（不超过节点数）个候选就停。
 
@@ -390,12 +392,12 @@ type PreemptionTolerationArgs schedconfig.DefaultPreemptionArgs
 
 第三行影响最实际：
 
-- `DefaultPreemption` 认为「提名节点上有正在因抢占而退出的 Pod，就先别再抢」；
-- `PreemptionToleration` 认为「提名节点上有任何正在退出的低优先级 Pod，就先别再抢」。
+1. `DefaultPreemption` 认为「提名节点上有正在因抢占而退出的 Pod，就先别再抢」；
+2. `PreemptionToleration` 认为「提名节点上有任何正在退出的低优先级 Pod，就先别再抢」。
 
 后者在一个有大量 Pod 正被滚动更新的节点上，会让已提名的抢占者在这段时间里放弃重新评估，即便它的提名节点已经因为别的原因不再合适（`UnschedulableAndUnresolvable` 的情况除外，代码对此单独放行）。
 
-第一行则说明了一个更值得注意的事实：in-tree 现在已经有了 `IsEligiblePod` 这个钩子：
+第一行则指向一个更关键的事实：in-tree 现在已经有了 `IsEligiblePod` 这个钩子：
 
 ```go {linenos=inline}
 // k8s.io/kubernetes@v1.36.4/pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go
@@ -406,6 +408,12 @@ type PreemptionTolerationArgs schedconfig.DefaultPreemptionArgs
 // problems if system pods are unable to find space.
 type IsEligiblePodFunc func(nodeInfo fwk.NodeInfo, victim fwk.PodInfo, preemptor *v1.Pod) bool
 ```
+
+注释交代了这个钩子的三件事：
+
+1. 它是一个函数类型，要赋给 `DefaultPreemption` 的字段才生效，不是配置项；
+2. 它在「受害者优先级必须低于抢占者」这条内置规则之外再加一层判定，两者是叠加关系，钩子不能替内置规则放行；
+3. 自定义实现必须保证系统组件仍然能抢占普通 Pod，否则系统 Pod 可能永远找不到空间。
 
 `DefaultPreemption` 的 `New` 返回的是具体类型 `*DefaultPreemption`，注释写明「The plugin type is retained to allow modification」。
 
@@ -443,11 +451,11 @@ type IsEligiblePodFunc func(nodeInfo fwk.NodeInfo, victim fwk.PodInfo, preemptor
 
 主流程之外，还有几处行为只体现在边界上：策略写错、`PriorityClass` 被删、集群里同时跑着别的调度器。
 
-- 策略失效没有提示：解析失败只打日志，`PriorityClass` 上写错 annotation，表现就是和默认抢占一样。上线前可以用一个短的 `toleration-seconds` 和一个测试抢占者验证一次。
-- `PriorityClass` 被删除会让抢占报错：节点上只要有一个低优先级 Pod 引用了不存在的 `PriorityClass`，这个节点的模拟就以 `Error` 结束。`DryRunPreemption` 收集这些错误，只有在一个候选都没找到时才把错误作为 PostFilter 的结果返回，这时 `schedule_one.go` 用 `HandleErrorWithContext` 把它记成错误日志，Pod 本身仍按普通的「无法调度」处理。排查时，抢占没有发生而日志里出现 `priorityclass ... not found`，就是这个原因。
-- PDB 与容忍策略的关系：PDB 在抢占中是软约束，Evaluator 优先选择不违反 PDB 的候选，但所有候选都违反时仍会执行。**容忍策略是硬约束，被豁免的 Pod 不会出现在任何候选里。** 需要「绝对不被抢」时，容忍策略（`toleration-seconds: -1`）比 PDB 更可靠；但它只对调度器的抢占有效，对节点压力驱逐、`kubectl drain` 等其他驱逐途径没有作用，那些场景仍要靠 PDB。
-- 只在调度器层面生效：策略存在于 annotation 中，只有启用了这个插件的调度器才认。集群里还跑着别的调度器（包括默认的 kube-scheduler）时，使用别的 `schedulerName` 的高优先级 Pod 仍会按默认规则抢占这些 Pod。
-- `now` 与时钟偏差：`scheduledAt` 来自 API server 写入的 condition 时间，`now` 来自调度器所在节点的时钟。两者不同步时，容忍期的实际长度会有偏差，一般在秒级，对分钟级的容忍期影响不大。
+1. 策略失效没有提示：解析失败只打日志，`PriorityClass` 上写错 annotation，表现就是和默认抢占一样。上线前可以用一个短的 `toleration-seconds` 和一个测试抢占者验证一次。
+2. `PriorityClass` 被删除会让抢占报错：节点上只要有一个低优先级 Pod 引用了不存在的 `PriorityClass`，这个节点的模拟就以 `Error` 结束。`DryRunPreemption` 收集这些错误，只有在一个候选都没找到时才把错误作为 PostFilter 的结果返回，这时 `schedule_one.go` 用 `HandleErrorWithContext` 把它记成错误日志，Pod 本身仍按普通的「无法调度」处理。排查时，抢占没有发生而日志里出现 `priorityclass ... not found`，就是这个原因。
+3. PDB 与容忍策略的关系：PDB 在抢占中是软约束，Evaluator 优先选择不违反 PDB 的候选，但所有候选都违反时仍会执行。**容忍策略是硬约束，被豁免的 Pod 不会出现在任何候选里。** 需要「绝对不被抢」时，容忍策略（`toleration-seconds: -1`）比 PDB 更可靠；但它只对调度器的抢占有效，对节点压力驱逐、`kubectl drain` 等其他驱逐途径没有作用，那些场景仍要靠 PDB。
+4. 只在调度器层面生效：策略存在于 annotation 中，只有启用了这个插件的调度器才认。集群里还跑着别的调度器（包括默认的 kube-scheduler）时，使用别的 `schedulerName` 的高优先级 Pod 仍会按默认规则抢占这些 Pod。
+5. `now` 与时钟偏差：`scheduledAt` 来自 API server 写入的 condition 时间，`now` 来自调度器所在节点的时钟。两者不同步时，容忍期的实际长度会有偏差，一般在秒级，对分钟级的容忍期影响不大。
 
 ## 八、发散：在受害者一侧表达策略
 
@@ -463,10 +471,10 @@ Kubernetes 的抢占设计里，抢占者一侧有 `priority` 和 `preemptionPol
 
 ## 小结
 
-- `PreemptionToleration` 只实现 PostFilter，用受害者 `PriorityClass` 上的 `minimum-preemptable-priority` 与 `toleration-seconds` 两个 annotation 剔除候选受害者，默认值 `value + 1` 和 `0` 使未配置的 `PriorityClass` 行为与默认抢占一致。
-- 判定顺序：无类名不豁免、查不到类名报错、门槛达到不豁免、时长为负永久豁免、未调度豁免、最后比较 `PodScheduled` 时间加时长与 PostFilter 开始时刻。
-- 两个 annotation 必须配合使用：只写门槛或只写时长，几乎没有效果。
-- 其余抢占逻辑从 in-tree 复制而来，已经落后于 v1.36.4 的 `DefaultPreemption`（同步驱逐、旧的重复抢占检查）；今天更好的实现方式是给 `DefaultPreemption` 注入 `IsEligiblePod`。
-- 容忍期到期不产生集群事件，等待中的抢占者可能要等 unschedulable 队列的 5 分钟超时才重试。
+1. `PreemptionToleration` 只实现 PostFilter，用受害者 `PriorityClass` 上的 `minimum-preemptable-priority` 与 `toleration-seconds` 两个 annotation 剔除候选受害者，默认值 `value + 1` 和 `0` 使未配置的 `PriorityClass` 行为与默认抢占一致。
+2. 判定顺序：无类名不豁免、查不到类名报错、门槛达到不豁免、时长为负永久豁免、未调度豁免、最后比较 `PodScheduled` 时间加时长与 PostFilter 开始时刻。
+3. 两个 annotation 必须配合使用：只写门槛或只写时长，几乎没有效果。
+4. 其余抢占逻辑从 in-tree 复制而来，已经落后于 v1.36.4 的 `DefaultPreemption`（同步驱逐、旧的重复抢占检查）；今天更好的实现方式是给 `DefaultPreemption` 注入 `IsEligiblePod`。
+5. 容忍期到期不产生集群事件，等待中的抢占者可能要等 unschedulable 队列的 5 分钟超时才重试。
 
 下一篇看被注释掉的 [CrossNodePreemption](/posts/sched-plugin-32-cross-node-preemption/)：受害者为什么必须和抢占者在同一个节点上，以及打破这个限制要付出什么代价。

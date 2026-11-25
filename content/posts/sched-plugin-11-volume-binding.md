@@ -108,8 +108,8 @@ func SetDefaults_VolumeBindingArgs(obj *configv1.VolumeBindingArgs) {
 }
 ```
 
-- `bindTimeoutSeconds` 默认 600 秒（第 3–5 行），是 PreBind 等待 PV 控制器完成绑定的最长时间。校验只要求非负，0 表示不等待。
-- `shape` 是打分曲线，默认两点：利用率 0 得 10 分，利用率 100 得 0 分（第 6–17 行）。校验（`ValidateVolumeBindingArgsWithOptions`）在 gate 开启时检查利用率在 0~100 且严格递增、分数在 0~10；gate 关闭时如果配置了 `shape` 直接报错，防止将来开启 gate 时意外生效。
+1. `bindTimeoutSeconds` 默认 600 秒（第 3–5 行），是 PreBind 等待 PV 控制器完成绑定的最长时间。校验只要求非负，0 表示不等待。
+2. `shape` 是打分曲线，默认两点：利用率 0 得 10 分，利用率 100 得 0 分（第 6–17 行）。校验（`ValidateVolumeBindingArgsWithOptions`）在 gate 开启时检查利用率在 0~100 且严格递增、分数在 0~10；gate 关闭时如果配置了 `shape` 直接报错，防止将来开启 gate 时意外生效。
 
 `New` 里构造 Binder 时会拿到八个 informer：Pod、Node、CSINode、PVC、PV、StorageClass，以及 `CapacityCheck` 里的 CSIDriver 和 CSIStorageCapacity。其中 PVC 和 PV 不是直接用 lister，而是包成了 assume cache（第 11–12 行的 `pvcCache`、`pvCache`）：
 
@@ -167,6 +167,13 @@ func (d *stateData) Clone() fwk.StateData {
 	return d
 }
 ```
+
+四个字段各管一件事：
+
+1. `allBound`（第 6 行）：这份方案里的卷是否都已绑定，由 Reserve 里 `AssumePodVolumes` 的结果填入；PreBindPreFlight 靠它决定要不要返回 `Skip`，从而跳过 PreBind；
+2. `podVolumesByNode`（第 10 行）：节点名到 `PodVolumes` 的映射，PreFilter 建一张空 map，Filter 为每个候选节点写一条，Reserve 取选中节点的那一条；
+3. `podVolumeClaims`（第 11 行）：PreFilter 分好的三类 PVC，Filter 为每个节点设计方案时以它为输入；
+4. `hasStaticBindings`（第 14 行）：方案里是否含静态绑定，Filter 写入，PreScore 靠它决定要不要进入打分（6.1 节）。
 
 大多数插件的 CycleState 在 PreFilter 写好后只读，这个不同：Filter 在多个 goroutine 里对不同节点并行执行，每个都要把自己算出的 `PodVolumes` 写进 `podVolumesByNode`。所以结构体内嵌了一把 `sync.Mutex`（第 15 行）。
 
@@ -237,10 +244,10 @@ func (pl *VolumeBinding) PreFilter(ctx context.Context, state fwk.CycleState, po
 
 `podHasPVCs` 遍历 `persistentVolumeClaim` 和 `ephemeral` 两类卷，从 PVCLister 取 PVC，遇到以下情况返回错误，PreFilter 包成 `UnschedulableAndUnresolvable`：
 
-- PVC 不存在。generic ephemeral 卷的 PVC 由 ephemeral 控制器在 Pod 创建后才建，这时错误被改写成 `waiting for ephemeral volume controller to create the persistentvolumeclaim "..."`，让人一眼看出是正常的等待；
-- PVC 的 `status.phase` 是 `Lost`（绑定的 PV 不存在了）；
-- PVC 带 `deletionTimestamp`，正在删除；
-- ephemeral 卷的 PVC 不归这个 Pod 所有（`ephemeral.VolumeIsForPod`）。
+1. PVC 不存在。generic ephemeral 卷的 PVC 由 ephemeral 控制器在 Pod 创建后才建，这时错误被改写成 `waiting for ephemeral volume controller to create the persistentvolumeclaim "..."`，让人一眼看出是正常的等待；
+2. PVC 的 `status.phase` 是 `Lost`（绑定的 PV 不存在了）；
+3. PVC 带 `deletionTimestamp`，正在删除；
+4. ephemeral 卷的 PVC 不归这个 Pod 所有（`ephemeral.VolumeIsForPod`）。
 
 普通 PVC 不存在时，上一篇说过 `VolumeRestrictions` 在 PreFilter 链上更早，会先报错并终止 PreFilter，所以实际看到这段 VolumeBinding 报错的，主要是 ephemeral 卷。
 
@@ -292,8 +299,8 @@ Pod 没有任何 PVC 时，PreFilter 写入一个**空的** `stateData` 再返�
 
 未完全绑定的 PVC 再按 StorageClass 的 `volumeBindingMode` 分：
 
-- `WaitForFirstConsumer` 且 `volumeName` 为空：进 `unboundClaimsDelayBinding`（第 13–15 行），这是调度器要接手的；
-- 其它情况，包括 `Immediate` 模式，以及 `volumeName` 已填但还没 bind-completed 的预绑定 PVC：进 `unboundClaimsImmediate`（第 16–20 行），意思是「这应该由 PV 控制器完成，调度器只等」。
+1. `WaitForFirstConsumer` 且 `volumeName` 为空：进 `unboundClaimsDelayBinding`（第 13–15 行），这是调度器要接手的；
+2. 其它情况，包括 `Immediate` 模式，以及 `volumeName` 已填但还没 bind-completed 的预绑定 PVC：进 `unboundClaimsImmediate`（第 16–20 行），意思是「这应该由 PV 控制器完成，调度器只等」。
 
 只要有一个 `unboundClaimsImmediate`，PreFilter 就返回 `UnschedulableAndUnresolvable`（前面 PreFilter 那个块的第 15–22 行），原因 `pod has unbound immediate PersistentVolumeClaims`。
 
@@ -343,8 +350,8 @@ func (pl *VolumeBinding) Filter(ctx context.Context, cs fwk.CycleState, pod *v1.
 
 `FindPodVolumes` 的结果分两层处理：
 
-- 用四个布尔变量记录结果（第 2–5 行）；
-- 在 defer 里统一翻译成原因字符串（第 6–22 行）。
+1. 用四个布尔变量记录结果（第 2–5 行）；
+2. 在 defer 里统一翻译成原因字符串（第 6–22 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/volumebinding/binder.go
@@ -415,9 +422,9 @@ func (pl *VolumeBinding) Filter(ctx context.Context, cs fwk.CycleState, pod *v1.
 
 `tryTranslatePVToCSI` 在三个条件都满足时把 in-tree PV 翻译成 CSI 形式：
 
-- PV 可迁移；
-- 插件属于写死的五个块存储插件之一（`isCSIMigrationOnForPlugin`）；
-- 节点 CSINode 的 `storage.alpha.kubernetes.io/migrated-plugins` 注解里包含这个插件。
+1. PV 可迁移；
+2. 插件属于写死的五个块存储插件之一（`isCSIMigrationOnForPlugin`）；
+3. 节点 CSINode 的 `storage.alpha.kubernetes.io/migrated-plugins` 注解里包含这个插件。
 
 翻译会改写拓扑，比如 GCE PD 的 `topology.kubernetes.io/zone` 被替换成驱动自己的 `topology.gke.io/zone`（`csi-translation-lib/plugins/in_tree_volume.go` 的 `translateTopologyFromInTreeToCSI`）。节点上的 CSI 驱动注册时会给节点打上驱动的拓扑标签，所以翻译后的 nodeAffinity 匹配的是驱动视角的拓扑。
 
@@ -504,20 +511,20 @@ func (pl *VolumeBinding) Filter(ctx context.Context, cs fwk.CycleState, pod *v1.
 
 挑选过程有两个要点：
 
-- PVC 按请求容量从小到大排序（第 3 行），依次挑选；
-- `chosenPVs`（第 5 行声明，第 27 行写入）保证同一个 Pod 的两个 PVC 不会挑到同一块 PV。
+1. PVC 按请求容量从小到大排序（第 3 行），依次挑选；
+2. `chosenPVs`（第 5 行声明，第 27 行写入）保证同一个 Pod 的两个 PVC 不会挑到同一块 PV。
 
 从小到大排是贪心策略：小 PVC 先挑走小 PV，大 PV 留给大 PVC，降低「大 PV 被小 PVC 占了、大 PVC 无盘可用」的概率。
 
 `FindMatchingVolume`（`component-helpers/storage/volume/pv_helpers.go`）是 PV 控制器和调度器共用的匹配函数，条件依次是：
 
-- 不在排除列表；
-- `claimRef` 为空或者就是这个 PVC；
-- 容量不小于请求，`volumeMode` 和 `volumeAttributesClassName` 一致；
-- 没有在删除，`phase` 为 `Available`；
-- PV 的 `nodeAffinity` 允许这个节点；
-- label 满足 PVC 的 `selector`；
-- StorageClass 相同，access mode 满足。
+1. 不在排除列表；
+2. `claimRef` 为空或者就是这个 PVC；
+3. 容量不小于请求，`volumeMode` 和 `volumeAttributesClassName` 一致；
+4. 没有在删除，`phase` 为 `Available`；
+5. PV 的 `nodeAffinity` 允许这个节点；
+6. label 满足 PVC 的 `selector`；
+7. StorageClass 相同，access mode 满足。
 
 满足条件的 PV 里取容量最小的一块。
 
@@ -579,8 +586,8 @@ func (pl *VolumeBinding) Filter(ctx context.Context, cs fwk.CycleState, pod *v1.
 
 失败时的原因分两种：
 
-- 前两关失败对应 `didn't find available persistent volumes to bind`；
-- 第三关失败返回 `(true, false)`，只报 `did not have enough free storage`，不报 BindConflict。
+1. 前两关失败对应 `didn't find available persistent volumes to bind`；
+2. 第三关失败返回 `(true, false)`，只报 `did not have enough free storage`，不报 BindConflict。
 
 StorageClass 不存在、PVC 没有 class 则作为 error 返回（第 5–12 行），Filter 给出的是 `Error` 状态，Pod 进 backoff 队列重试，而不是 unschedulable。
 
@@ -648,9 +655,9 @@ maximumVolumeSize: 200Gi
 
 匹配条件三个，就是上面 `hasEnoughCapacity` 那个块第 30–32 行的三个条件：
 
-- `storageClassName` 相同；
-- `volumeLimit` 不小于请求，其中 `maximumVolumeSize` 优先，没有才用 `capacity`（总剩余空间不等于能建的最大单卷，比如 LVM 卷组碎片化之后）；
-- `nodeTopology` 这个 label selector 匹配节点标签，`nodeTopology` 为 nil 视为不可访问。
+1. `storageClassName` 相同；
+2. `volumeLimit` 不小于请求，其中 `maximumVolumeSize` 优先，没有才用 `capacity`（总剩余空间不等于能建的最大单卷，比如 LVM 卷组碎片化之后）；
+3. `nodeTopology` 这个 label selector 匹配节点标签，`nodeTopology` 为 nil 视为不可访问。
 
 只要找到一个满足的对象就返回，这个对象会作为 `NodeCapacity` 记进 `DynamicProvision`，供打分使用。
 
@@ -684,8 +691,8 @@ func (pl *VolumeBinding) PreScore(ctx context.Context, cs fwk.CycleState, pod *v
 
 `scorer` 只在 `New` 里 gate 开启时才构造，所以 PreScore 的行为只取决于 gate：
 
-- gate 关闭时 PreScore 直接 Skip（第 3–5 行）；
-- gate 开启时第二个条件恒为真，PreScore 总是放行。
+1. gate 关闭时 PreScore 直接 Skip（第 3–5 行）；
+2. gate 开启时第二个条件恒为真，PreScore 总是放行。
 
 `hasStaticBindings` 这个条件（第 7 行）是 alpha 时期「只给静态绑定打分」的遗留，现在已经不起作用。没有 PVC 的 Pod 也会进入 Score，但 `podVolumesByNode` 里没有任何节点，每个节点都得 0 分，不影响排序。
 
@@ -723,8 +730,8 @@ func (pl *VolumeBinding) PreScore(ctx context.Context, cs fwk.CycleState, pod *v
 
 按 StorageClass 分组，计算每组的「请求 / 容量」。第 3 行按两种模式分流，算完后在第 29 行交给 `pl.scorer`：
 
-- 有静态绑定时只看静态绑定（第 5–11 行）：请求是 PVC 请求之和，容量是被选中 PV 的容量之和。动态供给部分被忽略。
-- 没有静态绑定时看动态供给（第 14–26 行）：容量取 `CSIStorageCapacity.capacity`（注意是 `capacity` 不是 `maximumVolumeSize`），用赋值（第 23 行）而非累加，因为同一个 class 的多个 PVC 匹配到的是同一份节点容量；请求累加（第 25 行）。`NodeCapacity` 为 nil（驱动没开容量跟踪）的 PVC 不参与。
+1. 有静态绑定时只看静态绑定（第 5–11 行）：请求是 PVC 请求之和，容量是被选中 PV 的容量之和。动态供给部分被忽略。
+2. 没有静态绑定时看动态供给（第 14–26 行）：容量取 `CSIStorageCapacity.capacity`（注意是 `capacity` 不是 `maximumVolumeSize`），用赋值（第 23 行）而非累加，因为同一个 class 的多个 PVC 匹配到的是同一份节点容量；请求累加（第 25 行）。`NodeCapacity` 为 nil（驱动没开容量跟踪）的 PVC 不参与。
 
 ### 6.2 shape 与打分函数
 
@@ -779,8 +786,8 @@ func buildScorerFunction(scoringFunctionShape helper.FunctionShape) volumeCapaci
 
 算例二：自定义 shape、静态绑定。配置 shape 为 (0, 0)、(50, 3)、(100, 5)，映射后为 (0, 0)、(50, 30)、(100, 50)。Pod 请求 50Gi，zone-a 节点能匹配的最小 PV 是 200Gi，zone-b 节点是 100Gi：
 
-- zone-a：利用率 50 × 100 / 200 = 25，落在 (0, 0)~(50, 30) 之间，插值 0 + (30 − 0) × (25 − 0) / (50 − 0) = 15；
-- zone-b：利用率 50 × 100 / 100 = 50，正好在折点上，30 分。
+1. zone-a：利用率 50 × 100 / 200 = 25，落在 (0, 0)~(50, 30) 之间，插值 0 + (30 − 0) × (25 − 0) / (50 − 0) = 15；
+2. zone-b：利用率 50 × 100 / 100 = 50，正好在折点上，30 分。
 
 PV 越贴合请求的节点分越高，这是紧凑策略，避免小 PVC 占用大 PV 造成浪费。它与测试用例「static binding」期望的 15、15、30、30 一致。
 
@@ -802,8 +809,8 @@ PV 越贴合请求的节点分越高，这是紧凑策略，避免小 PVC 占用
 
 Reserve 分两种情况：
 
-- 有方案时，把 Filter 为选中节点算出的那份方案（第 5 行）变成内存里的假设（第 7 行的 `AssumePodVolumes`）；
-- 没有方案（Pod 不引用 PVC）时直接置 `allBound`（第 12–14 行）。
+1. 有方案时，把 Filter 为选中节点算出的那份方案（第 5 行）变成内存里的假设（第 7 行的 `AssumePodVolumes`）；
+2. 没有方案（Pod 不引用 PVC）时直接置 `allBound`（第 12–14 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/volumebinding/volume_binding.go
@@ -867,8 +874,8 @@ func (pl *VolumeBinding) Reserve(ctx context.Context, cs fwk.CycleState, pod *v1
 	return
 ```
 
-- 静态绑定（第 3–15 行）：`GetBindVolumeToClaim` 复制 PV，把 `spec.claimRef` 指向 PVC，并加上 `pv.kubernetes.io/bound-by-controller: "yes"` 注解，再放进 `pvCache`；
-- 动态供给（第 18–33 行）：复制 PVC，加上 `volume.kubernetes.io/selected-node: <节点名>` 注解，再放进 `pvcCache`。
+1. 静态绑定（第 3–15 行）：`GetBindVolumeToClaim` 复制 PV，把 `spec.claimRef` 指向 PVC，并加上 `pv.kubernetes.io/bound-by-controller: "yes"` 注解，再放进 `pvCache`；
+2. 动态供给（第 18–33 行）：复制 PVC，加上 `volume.kubernetes.io/selected-node: <节点名>` 注解，再放进 `pvcCache`。
 
 两步都只改内存，没有任何 API 调用。任何一步失败都会把之前 assume 过的东西还原，保证 Reserve 要么全成功、要么不留痕迹。最后把修改后的对象写回 `podVolumes`，PreBind 会拿它们去发 API 请求。
 
@@ -954,8 +961,8 @@ func (pl *VolumeBinding) PreBindPreFlight(ctx context.Context, state fwk.CycleSt
 
 它在绑定周期的开头调用（`NominatedNodeNameForExpectation` gate 开启时，1.35 起 beta 默认开启）。它不做实际操作，只告诉框架两件事：
 
-- 返回 `Skip`（所有卷已绑定）时，框架跳过本插件的 PreBind；返回 Success 时，调度器会先把 `nominatedNodeName` 写到 Pod 上，告诉 cluster-autoscaler 等外部组件「这个 Pod 马上要绑到这个节点，只是还在等卷」，避免它们在 PreBind 漫长的等待期里误判 Pod 无处可去；
-- `AllowParallel: true`（第 3 行）表示它的 PreBind 可以和其它同样声明并行的 PreBind 插件（比如 DynamicResources）一起跑。
+1. 返回 `Skip`（所有卷已绑定）时，框架跳过本插件的 PreBind；返回 Success 时，调度器会先把 `nominatedNodeName` 写到 Pod 上，告诉 cluster-autoscaler 等外部组件「这个 Pod 马上要绑到这个节点，只是还在等卷」，避免它们在 PreBind 漫长的等待期里误判 Pod 无处可去；
+2. `AllowParallel: true`（第 3 行）表示它的 PreBind 可以和其它同样声明并行的 PreBind 插件（比如 DynamicResources）一起跑。
 
 PreBind 本身：
 
@@ -992,10 +999,10 @@ func (b *volumeBinder) BindPodVolumes(ctx context.Context, assumedPod *v1.Pod, p
 
 然后 `checkBindings` 每秒轮询一次（第 13–16 行），最长 `bindTimeout`（默认 600 秒）。它读的是 `GetAPIObj`，即 informer store 里的真实版本而不是假设版本，原因注释里也说了：假设版本可能在主调度循环里被再次覆盖，只有 API 状态才和 PV 控制器、供给器共享。检查项包括：
 
-- Pod 还在不在（被删了立即报错退出，不必再等）；
-- informer 里的对象版本是否已经追上刚才的写入（`CompareResourceVersion`，没追上就继续等）；
-- 静态绑定：PV 的 `claimRef` 是否被 PV 控制器清掉（清掉说明绑定被拒绝），PV 的 nodeAffinity 是否仍匹配节点，PVC 是否已经完全绑定；
-- 动态供给：PVC 的 `selected-node` 是否仍等于 Pod 所在节点。**供给器放弃时会删掉这个注解**，这里看到注解消失就报 `provisioning failed for PVC`；PVC 绑上 PV 后，再检查新 PV 的 nodeAffinity 是否匹配。
+1. Pod 还在不在（被删了立即报错退出，不必再等）；
+2. informer 里的对象版本是否已经追上刚才的写入（`CompareResourceVersion`，没追上就继续等）；
+3. 静态绑定：PV 的 `claimRef` 是否被 PV 控制器清掉（清掉说明绑定被拒绝），PV 的 nodeAffinity 是否仍匹配节点，PVC 是否已经完全绑定；
+4. 动态供给：PVC 的 `selected-node` 是否仍等于 Pod 所在节点。**供给器放弃时会删掉这个注解**，这里看到注解消失就报 `provisioning failed for PVC`；PVC 绑上 PV 后，再检查新 PV 的 nodeAffinity 是否匹配。
 
 全部 PVC 完全绑定才返回 true。PreBind 失败（包括超时）返回 `Error` 状态，按 `schedule_one.go` 里 `bindingCycle` 的约定，Permit 之后的失败一律不算 unschedulable，Pod 进 backoff 队列重试。
 
@@ -1023,8 +1030,8 @@ Reserve 之后的任何一步失败（Permit 拒绝、PreBind 出错、Bind 出�
 
 结合「Restore 只撤销版本号相同的那一版」，撤销结果分两种：
 
-- 已经成功写进 API 的 PV，`binding.pv` 已被替换成 API 返回的新对象，版本号与假设版本不同，Restore 不会动它，等 informer 送来新版本自然覆盖；
-- 还没写进 API 的，假设被删除，cache 回到 informer 的视图。
+1. 已经成功写进 API 的 PV，`binding.pv` 已被替换成 API 返回的新对象，版本号与假设版本不同，Restore 不会动它，等 informer 送来新版本自然覆盖；
+2. 还没写进 API 的，假设被删除，cache 回到 informer 的视图。
 
 `handleBindingCycleError` 在调用 Unreserve 之后，还会以 `AssignedPodDelete` 事件触发一次 `MoveAllToActiveOrBackoffQueue`，因为被 forget 的 assumed Pod 占用的资源释放了。
 
@@ -1094,7 +1101,7 @@ gRPC 返回 `ResourceExhausted`（CSI 规范里的「在指定拓扑无法供给
 | CSIDriver 更新 | Pod 有内联 CSI 卷用到这个驱动，且 `storageCapacity` 从 true 变成 false（不再做容量检查）才 `Queue` |
 | CSIStorageCapacity 新增/更新 | 新增 `Queue`；更新时 `volumeLimit`（`maximumVolumeSize` 优先，否则 `capacity`）变大才 `Queue` |
 
-CSIDriver 的 hint 有一处值得推敲：它只遍历 `vol.CSI`（CSI 内联临时卷），而容量检查针对的是 PVC 的 StorageClass provisioner。对一个因容量不足被拒、使用普通 PVC 的 Pod，驱动关闭 `storageCapacity` 的事件会被这个 hint 判成 `QueueSkip`。好在这种操作很少见，Pod 最终也会被周期性刷新捞回来。
+CSIDriver 的 hint 有一处漏判：它只遍历 `vol.CSI`（CSI 内联临时卷），而容量检查针对的是 PVC 的 StorageClass provisioner。对一个因容量不足被拒、使用普通 PVC 的 Pod，驱动关闭 `storageCapacity` 的事件会被这个 hint 判成 `QueueSkip`。好在这种操作很少见，Pod 最终也会被周期性刷新捞回来。
 
 PV 事件没有 hint 是有代价的：PV 控制器、供给器、attach/detach 控制器都会频繁更新 PV 的 status 和注解，每次都会把所有被 VolumeBinding 拒绝的 Pod 放回队列。
 
@@ -1145,18 +1152,18 @@ ephemeral 卷与 VolumeZone 的不对称。VolumeBinding 处理 generic ephemera
 
 ### 11.3 生产建议
 
-- 拓扑相关的存储（云盘、本地盘、TopoLVM、OpenEBS LocalPV）一律使用 `WaitForFirstConsumer`。`Immediate` 只适合 NFS、CephFS 这类任意节点都能访问的存储。
-- 节点级存储想要容量感知，驱动必须部署 external-provisioner 的容量控制器并在 CSIDriver 上声明 `storageCapacity: true`。否则 Filter 不做容量检查，Score 对动态供给全部给 0 分。
-- 1.37 之后 Score 默认生效。如果集群以静态 local PV 为主，默认 shape 会让调度器偏好「PV 比请求大很多」的节点，考虑配置递增 shape，比如 `[{utilization: 0, score: 0}, {utilization: 100, score: 10}]`。
-- 监控 `scheduler_volume_scheduling_stage_error_total`（`volumebinding/metrics`），它按 `predicate`、`assume`、`bind` 三个阶段计数，`bind` 阶段的错误通常意味着供给器或 PV 控制器出了问题。
+1. 拓扑相关的存储（云盘、本地盘、TopoLVM、OpenEBS LocalPV）一律使用 `WaitForFirstConsumer`。`Immediate` 只适合 NFS、CephFS 这类任意节点都能访问的存储。
+2. 节点级存储想要容量感知，驱动必须部署 external-provisioner 的容量控制器并在 CSIDriver 上声明 `storageCapacity: true`。否则 Filter 不做容量检查，Score 对动态供给全部给 0 分。
+3. 1.37 之后 Score 默认生效。如果集群以静态 local PV 为主，默认 shape 会让调度器偏好「PV 比请求大很多」的节点，考虑配置递增 shape，比如 `[{utilization: 0, score: 0}, {utilization: 100, score: 10}]`。
+4. 监控 `scheduler_volume_scheduling_stage_error_total`（`volumebinding/metrics`），它按 `predicate`、`assume`、`bind` 三个阶段计数，`bind` 阶段的错误通常意味着供给器或 PV 控制器出了问题。
 
 ## 十二、小结
 
-- `VolumeBinding` 让 `WaitForFirstConsumer` 的 PVC 在调度时才决定绑哪块 PV 或在哪供给，是调度器里唯一检查 PV `nodeAffinity` 的插件。
-- PreFilter 把 PVC 分成已绑定、延迟绑定、立即绑定三类，存在未绑定的立即绑定 PVC（包括预绑定和 StorageClass 不存在的情况）就以 `UnschedulableAndUnresolvable` 拒绝。
-- Filter 为每个节点生成一份 `PodVolumes`：已绑定 PVC 查 nodeAffinity；未绑定 PVC 先看 selected-node，再按容量从小到大匹配静态 PV，剩下的检查 provisioner、`allowedTopologies` 和 `CSIStorageCapacity`。所有失败都是 `UnschedulableAndUnresolvable`。
-- Score 按 StorageClass 计算「请求 / 容量」并套 shape 折线，1.37 起 `StorageCapacityScoring` 默认开启、权重 1，默认 shape 偏向剩余空间多的节点。
-- Reserve 通过 assume cache 在内存中写入 `claimRef` 和 `selected-node`，版本号规则让假设在 informer 追上后自动失效；PreBind 把它们写进 API 并每秒轮询，默认最多等 600 秒；Unreserve 撤销未落地的假设。
-- 调度器与供给器之间只靠 `selected-node` 注解通信：写上是请求，供给器删掉是拒绝。
+1. `VolumeBinding` 让 `WaitForFirstConsumer` 的 PVC 在调度时才决定绑哪块 PV 或在哪供给，是调度器里唯一检查 PV `nodeAffinity` 的插件。
+2. PreFilter 把 PVC 分成已绑定、延迟绑定、立即绑定三类，存在未绑定的立即绑定 PVC（包括预绑定和 StorageClass 不存在的情况）就以 `UnschedulableAndUnresolvable` 拒绝。
+3. Filter 为每个节点生成一份 `PodVolumes`：已绑定 PVC 查 nodeAffinity；未绑定 PVC 先看 selected-node，再按容量从小到大匹配静态 PV，剩下的检查 provisioner、`allowedTopologies` 和 `CSIStorageCapacity`。所有失败都是 `UnschedulableAndUnresolvable`。
+4. Score 按 StorageClass 计算「请求 / 容量」并套 shape 折线，1.37 起 `StorageCapacityScoring` 默认开启、权重 1，默认 shape 偏向剩余空间多的节点。
+5. Reserve 通过 assume cache 在内存中写入 `claimRef` 和 `selected-node`，版本号规则让假设在 informer 追上后自动失效；PreBind 把它们写进 API 并每秒轮询，默认最多等 600 秒；Unreserve 撤销未落地的假设。
+6. 调度器与供给器之间只靠 `selected-node` 注解通信：写上是请求，供给器删掉是拒绝。
 
-最后一个存储插件 [VolumeZone](/posts/sched-plugin-12-volume-zone/) 很短，它处理的是 PV 上那几个老旧的 zone/region 标签。
+最后一个存储插件是 [VolumeZone](/posts/sched-plugin-12-volume-zone/)，它处理的是 PV 上那几个老旧的 zone/region 标签。

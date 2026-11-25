@@ -96,15 +96,15 @@ func GetHostPorts(pod *v1.Pod) []v1.ContainerPort {
 
 清单里有两类容器，取舍不同：
 
-- init 容器只收集 `restartPolicy: Always` 的那种（第 12–24 行），也就是 sidecar。普通 init 容器跑完就退出，调度器认为它不长期占用端口。
-- 应用容器只保留 `hostPort > 0` 的声明（第 25–30 行）。
+1. init 容器只收集 `restartPolicy: Always` 的那种（第 12–24 行），也就是 sidecar。普通 init 容器跑完就退出，调度器认为它不长期占用端口。
+2. 应用容器只保留 `hostPort > 0` 的声明（第 25–30 行）。
 
 **所以清单上只有「会长期占端口」的容器。**
 
 这个函数有两个调用方：
 
-- 插件的 PreFilter：收集待调度 Pod 想要的端口；
-- `NodeInfo.update`：Pod 加入或离开节点时维护节点的已用端口。
+1. 插件的 PreFilter：收集待调度 Pod 想要的端口；
+2. `NodeInfo.update`：Pod 加入或离开节点时维护节点的已用端口。
 
 两边用同一个函数，保证「想要」和「已占」的口径一致。
 
@@ -133,7 +133,7 @@ func New(_ context.Context, _ runtime.Object, _ fwk.Handle, fts feature.Features
 
 ### 3.2 PreFilter：没有端口就 Skip
 
-PreFilter 要做的事很少：判断这个 Pod 有没有端口，有就写进 CycleState。
+PreFilter 判断这个 Pod 有没有端口，有就写进 CycleState，没有就返回 `Skip`。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodeports/node_ports.go
@@ -161,8 +161,8 @@ func (pl *NodePorts) PreFilter(ctx context.Context, cycleState fwk.CycleState, p
 
 写进 CycleState 的这一项（第 14–19 行）：
 
-- key 是 `"PreFilterNodePorts"`；
-- 值就是待调度 Pod 的端口切片。
+1. key 是 `"PreFilterNodePorts"`；
+2. 值就是待调度 Pod 的端口切片。
 
 绝大多数 Pod 没有 `hostPort`，在这里返回 `Skip`（第 16–18 行），整个调度周期里 `NodePorts` 的 Filter 一次都不会被调用。
 
@@ -318,13 +318,13 @@ func (h HostPortInfo) sanitize(ip, protocol *string) {
 
 对比上一篇的 `NodeAffinity` 和下一篇的 [NodeResourcesFit](/posts/sched-plugin-08-node-resources-fit/)：
 
-- `NodeAffinity` 一律不可解决；
-- `NodeResourcesFit` 视情况而定（请求量超过节点总量时不可解决）；
-- `NodePorts` 则一律可解决。
+1. `NodeAffinity` 一律不可解决；
+2. `NodeResourcesFit` 视情况而定（请求量超过节点总量时不可解决）；
+3. `NodePorts` 则一律可解决。
 
 它不需要区分，因为端口表里的每一项都对应某个可以驱逐的 Pod。
 
-扩展点的行为到这里就讲完了。但被拒绝的 Pod 不会立刻重试，它要等一个「情况可能已经变了」的信号。
+被拒绝的 Pod 不会立刻重试，它要等一个「情况可能已经变了」的信号。
 
 ## 四、EventsToRegister 与 QueueingHint
 
@@ -345,8 +345,8 @@ func (pl *NodePorts) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWith
 
 两类事件能让被端口卡住的 Pod 有新机会：
 
-- 已调度的 Pod 被删除（第 5 行），可能释放端口。容器的 `ports` 字段不可变，所以不需要订阅 Pod 更新。
-- 新节点加入（第 8 行），新节点上端口全空。这里没有 hint 函数，等价于总是 `Queue`。节点更新不订阅，节点的任何属性变化都不会影响端口占用。
+1. 已调度的 Pod 被删除（第 5 行），可能释放端口。容器的 `ports` 字段不可变，所以不需要订阅 Pod 更新。
+2. 新节点加入（第 8 行），新节点上端口全空。这里没有 hint 函数，等价于总是 `Queue`。节点更新不订阅，节点的任何属性变化都不会影响端口占用。
 
 删除事件几乎在每个节点上都在发生，所以它单独配了 hint。这个函数要把「删了也没用」的情况提前挡掉：
 
@@ -456,18 +456,18 @@ kubelet 会再查一遍。kubelet 准入的 `generalFilter` 复用了插件导�
 
 如果只是要从集群外访问服务，`NodePort` 类型的 Service（注意不是这个插件）由 kube-proxy 在所有节点上开放端口，不影响调度；`LoadBalancer` 和 Ingress 更进一步。**只有在需要绕开 kube-proxy、保留客户端源 IP、或者必须让流量落在本节点的 Pod 上时，`hostPort`/`hostNetwork` 才值得它带来的调度约束。**
 
-从调度器的角度看，`NodePorts` 是一个几乎零成本的插件：大部分 Pod 在 PreFilter 就 `Skip` 了；需要检查的 Pod，每个节点也只是几次 map 查找。它值得一读，是因为它用最少的代码展示了几个贯穿全系列的设计：
+从调度器的角度看，`NodePorts` 是一个几乎零成本的插件：大部分 Pod 在 PreFilter 就 `Skip` 了；需要检查的 Pod，每个节点也只是几次 map 查找。它用最少的代码展示了几个贯穿全系列的设计：
 
-- 状态放在 `NodeInfo` 还是 CycleState；
-- 失败码如何决定抢占；
-- hint 如何用和 Filter 相同的语义精确判断「这个事件和我有没有关系」。
+1. 状态放在 `NodeInfo` 还是 CycleState；
+2. 失败码如何决定抢占；
+3. hint 如何用和 Filter 相同的语义精确判断「这个事件和我有没有关系」。
 
 ## 七、小结
 
-- `NodePorts` 只检查 `hostPort > 0` 的端口，来源是应用容器和 sidecar；`hostNetwork` Pod 的 `containerPort` 会被默认填进 `hostPort`。
-- PreFilter 对没有端口的 Pod 返回 `Skip`；CycleState 只放待调度 Pod 的端口，节点已用端口在 `NodeInfo.UsedPorts` 里，所以不需要 `PreFilterExtensions`。
-- 冲突判定基于 `(hostIP, protocol, port)`：空 IP 视为 `0.0.0.0`，`0.0.0.0` 与任何 IP 冲突，具体 IP 只与自己和 `0.0.0.0` 冲突，协议不同不冲突。
-- 冲突返回 `Unschedulable`，可以通过抢占占用端口的低优先级 Pod 解决。
-- QueueingHint 只在被删 Pod 曾经占用（或提名占用）过、且与当前 Pod 有端口交集时返回 `Queue`；新节点加入总是重试。
+1. `NodePorts` 只检查 `hostPort > 0` 的端口，来源是应用容器和 sidecar；`hostNetwork` Pod 的 `containerPort` 会被默认填进 `hostPort`。
+2. PreFilter 对没有端口的 Pod 返回 `Skip`；CycleState 只放待调度 Pod 的端口，节点已用端口在 `NodeInfo.UsedPorts` 里，所以不需要 `PreFilterExtensions`。
+3. 冲突判定基于 `(hostIP, protocol, port)`：空 IP 视为 `0.0.0.0`，`0.0.0.0` 与任何 IP 冲突，具体 IP 只与自己和 `0.0.0.0` 冲突，协议不同不冲突。
+4. 冲突返回 `Unschedulable`，可以通过抢占占用端口的低优先级 Pod 解决。
+5. QueueingHint 只在被删 Pod 曾经占用（或提名占用）过、且与当前 Pod 有端口交集时返回 `Queue`；新节点加入总是重试。
 
 端口之后是调度器里最重的一道检查：[NodeResourcesFit](/posts/sched-plugin-08-node-resources-fit/) 要回答「资源够不够」，而「Pod 到底请求了多少资源」这个问题，比看上去复杂得多。

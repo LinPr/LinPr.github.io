@@ -36,8 +36,8 @@ kubelet 里的 Topology Manager 负责让一个 Pod 拿到的 CPU、内存、设
 
 作用域（`topologyManagerScope`）决定对齐的粒度，有两种：
 
-- `container`（默认）逐个容器对齐，不同容器可以落在不同 NUMA 节点；
-- `pod` 把整个 Pod 当成一个整体，所有容器必须落在同一组 NUMA 节点上。
+1. `container`（默认）逐个容器对齐，不同容器可以落在不同 NUMA 节点；
+2. `pod` 把整个 Pod 当成一个整体，所有容器必须落在同一组 NUMA 节点上。
 
 被拒绝的 Pod 状态是 `TopologyAffinityError`，它已经绑定到节点上，不会再回到调度队列。如果由 ReplicaSet 管理，会出现：
 
@@ -143,7 +143,7 @@ func createNUMANodeList(lh logr.Logger, zones topologyv1alpha2.ZoneList) NUMANod
 
 `type` 不是 `Node` 的 zone、名字解析失败的 zone 都被静默跳过（第 7–15 行）。插件自己的 `pkg/noderesourcetopology/README.md` 演示部分写的是 `numa-node-0`，按这段代码会被全部丢弃；`manifests/noderesourcetopology/worker-node-A.yaml` 里用的是 `node-0`，以后者为准。
 
-顺带一提，`maxNUMAId` 是 64，判断条件是 `> maxNUMAId`，ID 恰好为 64 时会越界访问长度为 64 的数组，好在现实中没有这么多 NUMA 节点。
+`maxNUMAId` 是 64，判断条件是 `> maxNUMAId`，ID 恰好为 64 时会越界访问长度为 64 的数组，好在现实中没有这么多 NUMA 节点。
 
 第二，Topology Manager 的策略和作用域要从 NRT 里读：
 
@@ -269,8 +269,8 @@ PreFilter 不做任何判定，不缩小节点集合，也不返回 `Skip`。它
 
 DefaultPreemption 在某个节点上模拟「驱逐这些受害者后能否放下」时，插件的两个回调这样配合：
 
-- 对每个受害者调用 `RemovePod`，插件把它压入 CycleState 里的受害者栈；
-- 回滚时调用 `AddPod`，从栈里弹出。
+1. 对每个受害者调用 `RemovePod`，插件把它压入 CycleState 里的受害者栈；
+2. 回滚时调用 `AddPod`，从栈里弹出。
 
 `Clone` 做深拷贝，是因为抢占会为每个候选节点克隆一份 CycleState 并发模拟，各节点的受害者集合不能互相污染。抢占关闭时，三个方法都直接返回，CycleState 里没有这个 key。
 
@@ -327,12 +327,12 @@ func (tm *TopologyMatch) Filter(ctx context.Context, cycleState fwk.CycleState, 
 }
 ```
 
-几个早退分支值得逐个看：
+Filter 的早退分支有四处：
 
-- 不请求扩展资源的 BestEffort Pod 直接放行（第 6–9 行），因为 kubelet 不会给它任何对齐；
-- `Fresh=false`（缓存认为数据不可信，比如节点上有外来 Pod）返回 `Unschedulable`（第 15–18 行），原因 `invalid node topology data`；
-- 节点没有 NRT 对象时**放行**（第 19–21 行）。没部署代理的节点、名字不匹配的 NRT，都会让插件对这个节点完全失效；
-- 策略不是 `single-numa-node` 时 `filterHandlerFromTopologyManager` 返回 nil（第 25–28 行），同样放行。`restricted` 和 `best-effort` 节点不受保护。
+1. 不请求扩展资源的 BestEffort Pod 直接放行（第 6–9 行），因为 kubelet 不会给它任何对齐；
+2. `Fresh=false`（缓存认为数据不可信，比如节点上有外来 Pod）返回 `Unschedulable`（第 15–18 行），原因 `invalid node topology data`；
+3. 节点没有 NRT 对象时**放行**（第 19–21 行）。没部署代理的节点、名字不匹配的 NRT，都会让插件对这个节点完全失效；
+4. 策略不是 `single-numa-node` 时 `filterHandlerFromTopologyManager` 返回 nil（第 25–28 行），同样放行。`restricted` 和 `best-effort` 节点不受保护。
 
 所有拒绝都用 `Unschedulable` 而不是 `UnschedulableAndUnresolvable`，所以 DefaultPreemption 会尝试在这些节点上找受害者。拒绝后还会调用 `NodeMaybeOverReserved` 把节点标脏，这是缓存重同步的触发器，第七节细讲。
 
@@ -432,9 +432,9 @@ func isResourceSetSuitable(qos corev1.PodQOSClass, resource corev1.ResourceName,
 }
 ```
 
-- 节点级都没有的资源：立刻失败，原因是该资源名；
-- 所有 zone 都没上报的资源，如果是 ephemeral-storage、storage 或扩展资源（比如没有 NUMA 亲和的设备），视为节点级资源，跳过；如果是 CPU、内存这类原生资源却没有任何 zone 上报，`resourceBitmask` 为空，`And` 之后必然失败；
-- 非 Guaranteed Pod 的 CPU、内存、hugepages 在任何 zone 都算「合适」。kubelet 的 CPU Manager 和 Memory Manager 只给 Guaranteed Pod 做独占分配，Burstable Pod 的这些资源不参与对齐，所以对 Burstable Pod 插件实际只检查设备。
+1. 节点级都没有的资源：立刻失败，原因是该资源名；
+2. 所有 zone 都没上报的资源，如果是 ephemeral-storage、storage 或扩展资源（比如没有 NUMA 亲和的设备），视为节点级资源，跳过；如果是 CPU、内存这类原生资源却没有任何 zone 上报，`resourceBitmask` 为空，`And` 之后必然失败；
+3. 非 Guaranteed Pod 的 CPU、内存、hugepages 在任何 zone 都算「合适」。kubelet 的 CPU Manager 和 Memory Manager 只给 Guaranteed Pod 做独占分配，Burstable Pod 的这些资源不参与对齐，所以对 Burstable Pod 插件实际只检查设备。
 
 ### 5.3 container 作用域：逐容器扣减
 
@@ -603,14 +603,14 @@ func leastAllocatedScore(requested, numaCapacity resource.Quantity) int64 {
 
 另外两种策略：
 
-- `MostAllocated` 是 `requested * 100 / numaCapacity`；
-- `BalancedAllocation` 算各资源 `requested / capacity` 的比例，用 gonum 的 `stat.Variance`（无偏样本方差，除以 n−1）求方差，分数为 `(1 − 方差) × 100`。
+1. `MostAllocated` 是 `requested * 100 / numaCapacity`；
+2. `BalancedAllocation` 算各资源 `requested / capacity` 的比例，用 gonum 的 `stat.Variance`（无偏样本方差，除以 n−1）求方差，分数为 `(1 − 方差) × 100`。
 
 几处与 in-tree `NodeResourcesFit` 不同：
 
-- 分母是 zone 的 `Available`，不是容量。同样是「剩余比例」，in-tree 算的是 `(allocatable − 已请求 − 本 Pod) / allocatable`，这里算的是 `(available − 本 Pod) / available`，与 zone 已经用了多少无关；
-- 只遍历 Pod 请求了的资源，权重表里有但 Pod 没请求的资源不参与；
-- `Quantity.Value()` 对 CPU 向上取整到核，500m 按 1 核算。
+1. 分母是 zone 的 `Available`，不是容量。同样是「剩余比例」，in-tree 算的是 `(allocatable − 已请求 − 本 Pod) / allocatable`，这里算的是 `(available − 本 Pod) / available`，与 zone 已经用了多少无关；
+2. 只遍历 Pod 请求了的资源，权重表里有但 Pod 没请求的资源不参与；
+3. `Quantity.Value()` 对 CPU 向上取整到核，500m 按 1 核算。
 
 用一个算例看「取最小非零」带来的后果：
 
@@ -674,9 +674,9 @@ func normalizeScore(numaNodesCount int, isMinAvgDistance bool, highestNUMAID int
 
 算例：`topologyManagerMaxNUMANodes` 没上报时取默认 8，每档 `100/8 = 12` 分。
 
-- 一个 zone 能放下：`100 − 12 + 6 = 94`。单个 zone 的「平均距离」就是自身距离，所有单 zone 组合都相等，必然拿到加分；
-- 需要两个 zone：`100 − 24 = 76`；若这两个 zone 恰好是距离最近的一对，则为 82；
-- 放不下：0 分。
+1. 一个 zone 能放下：`100 − 12 + 6 = 94`。单个 zone 的「平均距离」就是自身距离，所有单 zone 组合都相等，必然拿到加分；
+2. 需要两个 zone：`100 − 24 = 76`；若这两个 zone 恰好是距离最近的一对，则为 82；
+3. 放不下：0 分。
 
 container 作用域取所有容器中需要 zone 数最多的那个，而距离加分要求每个容器都是最优距离。
 
@@ -806,9 +806,9 @@ func checkPodFingerprintForNode(lh logr.Logger, objs []podData, nodeName, pfpExp
 
 `resyncMethod` 决定指纹的口径，有三种取值：
 
-- `All` 计入所有 Pod；
-- `OnlyExclusiveResources` 只计入持有独占资源的 Pod（整数核的 Guaranteed CPU、Guaranteed 的内存/hugepages、NRT 中出现的设备）；
-- 默认 `Autodetect` 读 NRT 属性 `nodeTopologyPodsFingerprintMethod`，值为 `with-exclusive-resources` 时用后者，否则用前者。
+1. `All` 计入所有 Pod；
+2. `OnlyExclusiveResources` 只计入持有独占资源的 Pod（整数核的 Guaranteed CPU、Guaranteed 的内存/hugepages、NRT 中出现的设备）；
+3. 默认 `Autodetect` 读 NRT 属性 `nodeTopologyPodsFingerprintMethod`，值为 `with-exclusive-resources` 时用后者，否则用前者。
 
 两边口径必须一致，否则指纹永远对不上，节点永远无法 Flush。
 
@@ -836,6 +836,13 @@ func IsForeignPod(pod *corev1.Pod, nrtResources sets.Set[corev1.ResourceName]) b
 }
 ```
 
+四个分支按顺序判断：
+
+1. 还没绑定的 Pod（`nodeName` 为空）：直接返回 false，此时没有可判断的东西（第 3–6 行）；
+2. `schedulerName` 命中已注册的 Profile 名，说明是本调度器自己放的，不叫外来（第 7–10 行）；
+3. `onlyExclusiveResources` 为 false 时，剩下的都算外来（第 11–13 行）；
+4. 否则只有请求了 NRT 中出现的独占资源的 Pod 才算外来（第 14 行）。
+
 `schedProfileNames` 是包级全局变量，每个启用了该插件的 Profile 在 `New` 时注册自己的名字。Pod informer 的 Add、Update、Delete 事件中只要出现了外来 Pod，就调用 `NodeHasForeignPods`。被标记的节点在 `GetCachedNRTCopy` 里返回 `nil` 和 `Fresh=false`：Filter 拒绝、Score 记 0，直到重同步通过指纹校验。
 
 默认 `foreignPodsDetect: All` 意味着 DaemonSet 的 Pod（由默认调度器或直接指定 `nodeName` 创建）也算外来 Pod。每次 DaemonSet 滚动，相关节点都会短暂对 NRT 插件「不可用」。
@@ -846,8 +853,8 @@ func IsForeignPod(pod *corev1.Pod, nrtResources sets.Set[corev1.ResourceName]) b
 
 重同步需要按节点列出 Pod。`podprovider.NewFromHandle` 提供两种来源：
 
-- `Shared`：复用调度器的 Pod informer，加一个 `spec.nodeName` 索引，只保留 `Running` 的 Pod；
-- `Dedicated`（默认）：新建一个独立的 Pod informer，保留所有已绑定、非 `Pending` 的 Pod。
+1. `Shared`：复用调度器的 Pod informer，加一个 `spec.nodeName` 索引，只保留 `Running` 的 Pod；
+2. `Dedicated`（默认）：新建一个独立的 Pod informer，保留所有已绑定、非 `Pending` 的 Pod。
 
 区别在于 Pod 集合的口径。代理计算指纹时看到的是 kubelet 已经知道的 Pod，调度器侧需要尽量用同样的集合。
 
@@ -909,9 +916,9 @@ func (ov *OverReserve) processNRTEvent(nrtEv NRTEvent, lh logr.Logger) int {
 
 这套机制有三个前提：
 
-- 只有 OverReserve 实现了 `GetCachedNUMAPlacementInfo`，Passthrough 和 DiscardReserved 返回 nil；
-- 代理必须上报放置数据；
-- 只解码 `single-numa-node` 策略的节点。
+1. 只有 OverReserve 实现了 `GetCachedNUMAPlacementInfo`，Passthrough 和 DiscardReserved 返回 nil；
+2. 代理必须上报放置数据；
+3. 只解码 `single-numa-node` 策略的节点。
 
 任何一个不满足，Filter 就退化为不考虑受害者的普通判定。抢占关闭时更简单：`RemovePod` 什么都不做，模拟驱逐后 NRT 不变，被 NRT 拒绝的节点永远不会成为抢占候选。
 
@@ -931,9 +938,9 @@ func (tm *TopologyMatch) Reserve(ctx context.Context, state fwk.CycleState, pod 
 
 三种模式的 `PostBind` 各不相同：
 
-- OverReserve 的 `PostBind` 是空实现，预留一直保留到 Flush；
-- DiscardReserved 在 PostBind 时删除预留；
-- Passthrough 全部为空。
+1. OverReserve 的 `PostBind` 是空实现，预留一直保留到 Flush；
+2. DiscardReserved 在 PostBind 时删除预留；
+3. Passthrough 全部为空。
 
 被这个插件拒绝的 Pod 靠下面三类事件重新入队：
 
@@ -992,10 +999,10 @@ func (tm *TopologyMatch) EventsToRegister(_ context.Context) ([]fwk.ClusterEvent
 
 ## 小结
 
-- NRT 插件读取节点代理上报的 `NodeResourceTopology`，在 Filter 中用 kubelet 的 `bitmask` 预演 `single-numa-node` 准入：逐资源求可行 zone 位图再取交集，container 作用域逐容器扣减，pod 作用域整体判定；拒绝时返回 `Unschedulable`，可以触发抢占。
-- 没有 NRT、策略不是 `single-numa-node`、BestEffort Pod，都直接放行；策略和作用域必须由代理通过 `attributes` 上报，zone 名必须是 `node-N`。
-- Score 只对 Guaranteed Pod 生效；前三种策略每个 zone 单独打分、节点取非零最小值，分母是 `Available`，与 kubelet 的实际 zone 选择并不对应；`LeastNUMANodes` 偏好跨越最少 NUMA 的节点，适用于所有策略。
-- NRT 数据天然落后。默认的 Passthrough 每次直接 GET 且不纠偏；OverReserve 在所有 zone 上悲观扣减预留，由 Pod 指纹校验决定何时用新 NRT 替换快照，外来 Pod 会让节点暂时不可用。
-- 抢占模拟依赖 OverReserve 和代理上报的 NUMA 放置数据，默认关闭。
+1. NRT 插件读取节点代理上报的 `NodeResourceTopology`，在 Filter 中用 kubelet 的 `bitmask` 预演 `single-numa-node` 准入：逐资源求可行 zone 位图再取交集，container 作用域逐容器扣减，pod 作用域整体判定；拒绝时返回 `Unschedulable`，可以触发抢占。
+2. 没有 NRT、策略不是 `single-numa-node`、BestEffort Pod，都直接放行；策略和作用域必须由代理通过 `attributes` 上报，zone 名必须是 `node-N`。
+3. Score 只对 Guaranteed Pod 生效；前三种策略每个 zone 单独打分、节点取非零最小值，分母是 `Available`，与 kubelet 的实际 zone 选择并不对应；`LeastNUMANodes` 偏好跨越最少 NUMA 的节点，适用于所有策略。
+4. NRT 数据天然落后。默认的 Passthrough 每次直接 GET 且不纠偏；OverReserve 在所有 zone 上悲观扣减预留，由 Pod 指纹校验决定何时用新 NRT 替换快照，外来 Pod 会让节点暂时不可用。
+5. 抢占模拟依赖 OverReserve 和代理上报的 NUMA 放置数据，默认关闭。
 
 下一篇 [PreemptionToleration](/posts/sched-plugin-31-preemption-toleration/) 进入 PostFilter：同样是抢占，它让受害者可以声明「在多长时间内不愿被抢占」。

@@ -42,8 +42,8 @@ spec:
 
 上面这块 PV 对节点有两条要求：
 
-- `topology.kubernetes.io/region` 为 `us-west1`；
-- `topology.kubernetes.io/zone` 为 `us-west1-a` 或 `us-west1-b`（区域盘可以跨两个可用区挂载，多个可用区用双下划线 `__` 连接）。
+1. `topology.kubernetes.io/region` 为 `us-west1`；
+2. `topology.kubernetes.io/zone` 为 `us-west1-a` 或 `us-west1-b`（区域盘可以跨两个可用区挂载，多个可用区用双下划线 `__` 连接）。
 
 不满足的节点返回 `UnschedulableAndUnresolvable`，原因 `node(s) had no available volume zone`。
 
@@ -61,12 +61,12 @@ var topologyLabels = []string{
 
 这四个标签分成两组：
 
-- `failure-domain.beta.kubernetes.io/zone`、`failure-domain.beta.kubernetes.io/region` 两个旧标签（1.17 起废弃，第 3–4 行）；
-- `topology.kubernetes.io/zone`、`topology.kubernetes.io/region` 两个 GA 标签。
+1. `failure-domain.beta.kubernetes.io/zone`、`failure-domain.beta.kubernetes.io/region` 两个旧标签（1.17 起废弃，第 3–4 行）；
+2. `topology.kubernetes.io/zone`、`topology.kubernetes.io/region` 两个 GA 标签。
 
 PV 上的其它标签一律不管。
 
-判定对象和判定规则都清楚了，剩下的就是几段很短的代码。
+判定对象和判定规则都清楚了，源码要做的只是解析标签、取 PV 拓扑、逐条比对。
 
 ## 二、源码拆解
 
@@ -74,9 +74,9 @@ PV 上的其它标签一律不管。
 
 代码分三部分：
 
-- 结构体保存四个 lister 和一个 feature gate 开关（第 2–7 行）；
-- `pvTopology` 描述一条展开后的 PV 拓扑（第 10–14 行）；
-- `stateData` 是状态，里面只有展开后的 PV 拓扑（第 16–20 行）。
+1. 结构体保存四个 lister 和一个 feature gate 开关（第 2–7 行）；
+2. `pvTopology` 描述一条展开后的 PV 拓扑（第 10–14 行）；
+3. `stateData` 是状态，里面只有展开后的 PV 拓扑（第 16–20 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/volumezone/volume_zone.go
@@ -166,8 +166,8 @@ func (pl *VolumeZone) PreFilter(ctx context.Context, cs fwk.CycleState, pod *v1.
 
 `getErrorAsStatus` 按错误类型分两种：
 
-- NotFound 转成 `UnschedulableAndUnresolvable`；
-- 其它错误转成 `Error`。
+1. NotFound 转成 `UnschedulableAndUnresolvable`；
+2. 其它错误转成 `Error`。
 
 整理一下各种情况：
 
@@ -312,8 +312,8 @@ Filter 里还保留了一个兜底：CycleState 里读不到状态时，现场�
 
 这和前两篇形成了对照：
 
-- VolumeRestrictions、NodeVolumeLimits 的失败与节点上的 Pod 有关，用 `Unschedulable`；
-- VolumeBinding、VolumeZone 的失败与对象属性有关，用 `UnschedulableAndUnresolvable`。
+1. VolumeRestrictions、NodeVolumeLimits 的失败与节点上的 Pod 有关，用 `Unschedulable`；
+2. VolumeBinding、VolumeZone 的失败与对象属性有关，用 `UnschedulableAndUnresolvable`。
 
 到这里，判定逻辑就讲完了。剩下的是它订阅了哪些事件。
 
@@ -339,10 +339,10 @@ func (pl *VolumeZone) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWit
 }
 ```
 
-- StorageClass 新增：只有 `volumeBindingMode` 为 `WaitForFirstConsumer` 的新 class 才 `Queue`。对应 PreFilter 中「StorageClass 不存在」的拒绝：新建一个 Immediate 的 class 也无济于事，因为未绑定的 Immediate PVC 照样会被拒。`volumeBindingMode` 不可变，所以不监听更新。
-- Node 新增/标签更新：无 hint。`UpdateNodeLabel` 本身已经是细分过的事件类型，节点其它字段的变化不会触发。
-- PVC 新增/更新：同命名空间、名字被 Pod 引用就 `Queue`。最典型的是 PVC 的 `volumeName` 被填上。
-- PV 新增/更新：新增一律 `Queue`；更新时用 `getPVTopologies` 分别算出新旧 PV 的拓扑列表，`reflect.DeepEqual` 不同才 `Queue`。PV 的 status、注解频繁变化，这个 hint 能过滤掉绝大多数无关更新。
+1. StorageClass 新增：只有 `volumeBindingMode` 为 `WaitForFirstConsumer` 的新 class 才 `Queue`。对应 PreFilter 中「StorageClass 不存在」的拒绝：新建一个 Immediate 的 class 也无济于事，因为未绑定的 Immediate PVC 照样会被拒。`volumeBindingMode` 不可变，所以不监听更新。
+2. Node 新增/标签更新：无 hint。`UpdateNodeLabel` 本身已经是细分过的事件类型，节点其它字段的变化不会触发。
+3. PVC 新增/更新：同命名空间、名字被 Pod 引用就 `Queue`。最典型的是 PVC 的 `volumeName` 被填上。
+4. PV 新增/更新：新增一律 `Queue`；更新时用 `getPVTopologies` 分别算出新旧 PV 的拓扑列表，`reflect.DeepEqual` 不同才 `Queue`。PV 的 status、注解频繁变化，这个 hint 能过滤掉绝大多数无关更新。
 
 PV 的 hint 没有检查「这块 PV 是不是 Pod 要用的」，任何 PV 的拓扑标签变化都会唤醒所有被 VolumeZone 拒绝的 Pod。拓扑标签很少变，影响不大。
 
@@ -350,7 +350,7 @@ PV 的 hint 没有检查「这块 PV 是不是 Pod 要用的」，任何 PV 的�
 
 ## 四、边界与坑
 
-插件很短，判定也很直接，坑主要来自它和其它插件的分工边界。
+这个插件的坑主要来自它和其它存储插件的分工边界。
 
 **只看 `persistentVolumeClaim` 卷。** generic ephemeral 卷生成的 PVC 绑定的 PV 即使带有 zone 标签，VolumeZone 也不检查。好在 ephemeral 卷基本都走动态供给，拓扑写在 `nodeAffinity` 里，由 VolumeBinding 负责。
 
@@ -375,16 +375,16 @@ VolumeZone 的前身是 `NoVolumeZoneConflict` predicate，它出现在 PV 还�
 
 后来 PV 有了 `spec.nodeAffinity`，表达能力远强于几个固定标签，可以写：
 
-- 任意标签键；
-- `In`/`NotIn` 等操作符；
-- 多个 term 的「或」关系。
+1. 任意标签键；
+2. `In`/`NotIn` 等操作符；
+3. 多个 term 的「或」关系。
 
 CSI 驱动供给出来的 PV 用驱动自己的拓扑键（如 `topology.gke.io/zone`、`topology.ebs.csi.aws.com/zone`）写在 `nodeAffinity` 里，根本不带 `topology.kubernetes.io/zone` 标签。在本文所用的源码树里，`PersistentVolumeLabel` admission 和 PV labeler 都已经不存在了，没有任何组件会自动给 PV 打这几个标签。
 
 所以今天的 VolumeZone 只对两类 PV 起作用：
 
-- 历史遗留的 in-tree PV；
-- 有人手工打了标签的 PV。
+1. 历史遗留的 in-tree PV；
+2. 有人手工打了标签的 PV。
 
 对于新建集群，它几乎总是在 PreFilter 返回 `Skip`，开销只是遍历一次 Pod 的 PVC、从 lister 取 PV 看标签。
 
@@ -403,10 +403,10 @@ CSI 驱动供给出来的 PV 用驱动自己的拓扑键（如 `topology.gke.io/
 
 ## 六、小结
 
-- `VolumeZone` 只检查已绑定 PV 上的四个拓扑标签（beta/GA 的 zone、region），要求节点的同名标签取值落在 PV 的取值集合中，多个可用区用 `__` 分隔。
-- 节点没有任何拓扑标签时直接通过；PV 的 beta 标签可以匹配节点的 GA 标签，反向不行。
-- 未绑定的 `WaitForFirstConsumer` PVC 被跳过；未绑定的 Immediate PVC、PV 或 StorageClass 不存在都在 PreFilter 返回 `UnschedulableAndUnresolvable`，但通常会先被 VolumeBinding 拦下。
-- 所有失败都是 `UnschedulableAndUnresolvable`，标签不会因为驱逐 Pod 而改变，抢占直接跳过这些节点。
-- PV 的 `nodeAffinity` 由 VolumeBinding 检查而不是 NodeAffinity 插件，源码注释里的说法有误；CSI 时代的 PV 基本不带这些标签，VolumeZone 主要服务于历史遗留 PV。
+1. `VolumeZone` 只检查已绑定 PV 上的四个拓扑标签（beta/GA 的 zone、region），要求节点的同名标签取值落在 PV 的取值集合中，多个可用区用 `__` 分隔。
+2. 节点没有任何拓扑标签时直接通过；PV 的 beta 标签可以匹配节点的 GA 标签，反向不行。
+3. 未绑定的 `WaitForFirstConsumer` PVC 被跳过；未绑定的 Immediate PVC、PV 或 StorageClass 不存在都在 PreFilter 返回 `UnschedulableAndUnresolvable`，但通常会先被 VolumeBinding 拦下。
+4. 所有失败都是 `UnschedulableAndUnresolvable`，标签不会因为驱逐 Pod 而改变，抢占直接跳过这些节点。
+5. PV 的 `nodeAffinity` 由 VolumeBinding 检查而不是 NodeAffinity 插件，源码注释里的说法有误；CSI 时代的 PV 基本不带这些标签，VolumeZone 主要服务于历史遗留 PV。
 
 存储段到此结束。下一篇 [PodTopologySpread](/posts/sched-plugin-13-pod-topology-spread/) 回到 Pod 之间的关系：如何把副本均匀地打散到各个拓扑域。

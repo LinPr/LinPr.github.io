@@ -19,9 +19,9 @@ description: "GangScheduling 是 kube-scheduler 内置的 all-or-nothing 插件�
 
 从这一篇开始的三篇（21~23）讲 kube-scheduler 内置的成组调度。它们不是三个互不相干的插件，而是同一条新调度路径上的三个角色：
 
-- **GangScheduling**（本篇）：决定一组 Pod「什么时候可以开始调度」和「这次尝试算不算成功」；
-- **TopologyPlacementGenerator**（[第 22 篇](/posts/sched-plugin-22-topology-placement/)）：把节点按拓扑域切成若干候选 placement，让整组只在一个域里试放；
-- **PodGroupPodsCount**（[第 23 篇](/posts/sched-plugin-23-podgroup-pods-count/)）：在多个可行的 placement 之间，偏向能放下更多 Pod 的那个。
+1. **GangScheduling**（本篇）：决定一组 Pod「什么时候可以开始调度」和「这次尝试算不算成功」；
+2. **TopologyPlacementGenerator**（[第 22 篇](/posts/sched-plugin-22-topology-placement/)）：把节点按拓扑域切成若干候选 placement，让整组只在一个域里试放；
+3. **PodGroupPodsCount**（[第 23 篇](/posts/sched-plugin-23-podgroup-pods-count/)）：在多个可行的 placement 之间，偏向能放下更多 Pod 的那个。
 
 本文基于 Kubernetes master 提交 `aabdf5a2`。这部分代码变化很快，和 v1.36 相比，GangScheduling 已经从「Permit 等待」改成了「PlacementFeasible 判定」，后文会专门对比。
 
@@ -86,8 +86,8 @@ func New(_ context.Context, _ runtime.Object, fh fwk.Handle, fts feature.Feature
 
 两个扩展点分别在调度流程的两头：
 
-- `PreEnqueue`：Pod 进入 activeQ 之前。组里的 Pod 没到齐，整组都不许出队；
-- `PlacementFeasible`：这是 PodGroup 调度周期专有的扩展点。整组 Pod 逐个试放时，每放完一个就问一次「这组现在算成功、还要继续、还是已经没希望」。
+1. `PreEnqueue`：Pod 进入 activeQ 之前。组里的 Pod 没到齐，整组都不许出队；
+2. `PlacementFeasible`：这是 PodGroup 调度周期专有的扩展点。整组 Pod 逐个试放时，每放完一个就问一次「这组现在算成功、还要继续、还是已经没希望」。
 
 它没有 Args，没有 CycleState，也没有 Permit。**它的状态全在 `hierarchyTracker` 里，而这个 tracker 不属于插件本身，是调度器在启动时创建、通过 `Handle` 共享给插件的。**
 
@@ -119,11 +119,19 @@ func New(_ context.Context, _ runtime.Object, fh fwk.Handle, fts feature.Feature
 	SchedulingGroup *PodSchedulingGroup `json:"schedulingGroup,omitempty" protobuf:"bytes,43,opt,name=schedulingGroup"`
 ```
 
-这段注释交代了一段演进：1.35 的第一版 API 让 Pod 直接引用 `Workload`（`spec.workloadRef`），1.36 改成了引用运行时实例 `PodGroup`，原来的 protobuf tag 42 作废保留。现在的分工是：
+这段注释交代了五件事：
 
-- Workload（`scheduling.k8s.io/v1beta1`）：模板，描述一个工作负载由哪些 PodGroup 模板组成，最多 8 个模板，树深最多 4 层；
-- PodGroup：运行时实例，由 Job、JobSet、LWS 这类控制器从模板创建，带 `schedulingPolicy`；
-- Pod：通过 `schedulingGroup` 指向 PodGroup。
+1. 字段演进：1.35 的第一版 API 让 Pod 直接引用 `Workload`（`spec.workloadRef`），1.36 起由 `SchedulingGroup` 取代，旧字段删除，protobuf tag 42 保留占位（第 2–4 行）；
+2. 指向对象：`SchedulingGroup` 指向 Pod 所属的「最近的」运行时分组对象，也就是 PodGroup，不是模板 Workload（第 6–7 行）；
+3. 不可变：字段建立后不能修改，Pod 不能从一个组换到另一个组（第 9 行）；
+4. 名字语义：调度器无法区分命名空间和名字都相同的两个 PodGroup 实例，控制器必须为每个运行时实例生成新名字；同名重建而策略不同时，Pod 的落点可能与策略不符（第 9–13 行）；
+5. 开关：字段受 `GenericWorkload` 控制，且可选（第 15–16 行）。
+
+三个对象的分工则是：
+
+1. Workload（`scheduling.k8s.io/v1beta1`）：模板，描述一个工作负载由哪些 PodGroup 模板组成，最多 8 个模板，树深最多 4 层；
+2. PodGroup：运行时实例，由 Job、JobSet、LWS 这类控制器从模板创建，带 `schedulingPolicy`；
+3. Pod：通过 `schedulingGroup` 指向 PodGroup。
 
 **调度器只关心 PodGroup 和 Pod，Workload 只在校验时用来确认一棵树里的组都来自同一个 Workload（`GetWorkloadName`）。**
 
@@ -238,7 +246,7 @@ func (p *PriorityQueue) isPodGroupMember(pod *v1.Pod) bool {
 }
 ```
 
-`PriorityQueue` 为此多了三个结构，类型注释里写清了它们之间的不变式：
+`PriorityQueue` 为此多了三个结构，类型注释先列出各自的职责，再给出三条生命周期不变式。三个结构分别是：
 
 ```go {linenos=inline}
 // pkg/scheduler/backend/queue/scheduling_queue.go
@@ -254,6 +262,16 @@ func (p *PriorityQueue) isPodGroupMember(pod *v1.Pod) bool {
 //  3. In-flight: If the PodGroup is currently in-flight (popped from the queue and being evaluated),
 //     newly arriving Pods are placed in `pendingPodGroupPods` to wait for the PodGroup to be requeued.
 ```
+
+1. `incompletePodGroupPods`：存放根 PodGroup（或有 CompositePodGroup 时整棵祖先链）还没被 informer 观察到的 Pod，它们暂不进入任何调度队列（第 3 行）；
+2. `pendingPodGroupPods`：存放根组正在调度中时新到达的成员 Pod，等组回队时一起并入（第 4 行）；
+3. `workloadForest`：已观察到的 PodGroup 和 CompositePodGroup 的一致视图，用来从任意 Pod 找到它的根组（第 5 行）。
+
+三条不变式与之一一对应：
+
+1. Incomplete：根 PodGroup 不在 `workloadForest` 里时，Pod 只能停在 `incompletePodGroupPods`（第 8 行）；
+2. Queued：根组已被观察到、且不在调度中时，Pod 被包进 `QueuedPodGroupInfo`，随组出现在 `activeQ`、`backoffQ` 或 `unschedulableEntities`（第 9–10 行）；
+3. In-flight：根组刚被 Pop 出去、正在评估时，新到的 Pod 进 `pendingPodGroupPods`，等组回队再合并（第 11–12 行）。
 
 `addPodGroupMember` 把这三条不变式落实到代码里，按顺序判断四种情况：
 
@@ -341,14 +359,21 @@ func (sched *Scheduler) scheduleOnePodGroup(ctx context.Context, podGroupInfo *f
 }
 ```
 
-`validatePodGroupHierarchy` 值得单独说，因为它会把配置错误直接变成 PodGroup 上的 condition（reason 是 `PodGroupError`）。它检查的是：
+这个函数在进入逐 Pod 试放之前走四步，前三步任何一步失败都交给 `handlePodGroupFailureBeforeScheduling` 并以返回结束：
 
-- 树深不超过 `WorkloadMaxTreeDepth`（4），且第 4 层不能是 CompositePodGroup；
-- 树上所有组引用同一个 Workload；
-- gang 父组不能有 basic 子组；`All` 中断模式的父组不能有 `Single` 子组；
-- 所有 Pod（包括已经调度的）`schedulerName` 相同；
-- 所有 Pod 和子组的优先级等于根组的优先级；
-- 抢占策略一致。
+1. `Cache.UpdateSnapshot` 刷新快照，保证整组看到同一份节点状态（第 4–8 行）；
+2. `reconcilePodGroupWithSnapshot` 用快照里的组对象覆盖队列里的版本，因为从队列 Pop 出来的组对象可能更旧（第 10–16 行）；
+3. `validatePodGroupHierarchy` 校验整棵组树，不通过就结束本轮（第 17–20 行）；
+4. `frameworkForPodGroup` 选出这组使用的 Profile，`skipPodGroupPodSchedule` 之后用 `HasQueuedPodInfos` 判断：没有待调度的成员就直接返回，否则调用 `podGroupCycle`（第 22–30 行）。
+
+`validatePodGroupHierarchy` 会把配置错误直接变成 PodGroup 上的 condition（reason 是 `PodGroupError`）。它检查的是：
+
+1. 树深不超过 `WorkloadMaxTreeDepth`（4），且第 4 层不能是 CompositePodGroup；
+2. 树上所有组引用同一个 Workload；
+3. gang 父组不能有 basic 子组；`All` 中断模式的父组不能有 `Single` 子组；
+4. 所有 Pod（包括已经调度的）`schedulerName` 相同；
+5. 所有 Pod 和子组的优先级等于根组的优先级；
+6. 抢占策略一致。
 
 优先级那一条最容易踩：PodGroup 自己有 `priorityClassName`/`priority` 字段，没设置时 `PodGroupPriority` 返回 0。如果 Pod 设了 `priorityClassName: high`，而 PodGroup 没设，整组会以 `all pods in a pod group hierarchy should have the same priority as the root pod group's priority` 失败。**这类失败反复重试也不会好，必须把优先级同时写到 PodGroup 上。**
 
@@ -429,11 +454,11 @@ func (sched *Scheduler) podGroupSchedulingDefaultAlgorithm(ctx context.Context, 
 }
 ```
 
-这段代码有三处设计值得停下来看。
+这段代码有三处设计。
 
 第一处是 `Scheduled` 的初值（第 14–17 行）：它来自 snapshot 里的 `ScheduledPodsCount()`，数的是这个组里已经 assume 或已经绑定的 Pod。一个 `minCount: 4` 的组如果已经有 3 个 Pod 在跑，第 4 个新来的 Pod 单独就能满足条件，不必等其他人。
 
-第二处更关键：每个 Pod 成功后只在 snapshot 里 assume，不进 cache。`podGroupPodSchedulingAlgorithm` 里调用的是 `AssumeAndReserveInSnapshot`，注释写得很直白：
+第二处更关键：每个 Pod 成功后只在 snapshot 里 assume，不进 cache。`podGroupPodSchedulingAlgorithm` 里调用的是 `AssumeAndReserveInSnapshot`——整组的放置要等到整组提交才算数，snapshot 里的 assume 会被下一次 `UpdateSnapshot` 覆盖掉：
 
 ```go {linenos=inline}
 // pkg/scheduler/schedule_one_podgroup.go
@@ -444,8 +469,8 @@ func (sched *Scheduler) podGroupSchedulingDefaultAlgorithm(ctx context.Context, 
 
 只在 snapshot 里 assume，带来两点效果：
 
-- 后一个 Pod 能「看见」前一个 Pod 占掉的资源，因为它们共享同一个 snapshot；
-- 一旦整组失败，`podGroupSchedulingDefaultAlgorithm` 代码块里 `defer` 的 `revertFns.revert()`（第 3–8 行）会对每个已 assume 的 Pod 依次跑 Unreserve 并从 snapshot 里 Forget。
+1. 后一个 Pod 能「看见」前一个 Pod 占掉的资源，因为它们共享同一个 snapshot；
+2. 一旦整组失败，`podGroupSchedulingDefaultAlgorithm` 代码块里 `defer` 的 `revertFns.revert()`（第 3–8 行）会对每个已 assume 的 Pod 依次跑 Unreserve 并从 snapshot 里 Forget。
 
 即使漏掉了，下一次 `UpdateSnapshot` 也会把这些临时状态冲掉，不会污染 cache。**这是「all-or-nothing」在调度周期内的实现方式。**
 
@@ -468,7 +493,7 @@ func (sched *Scheduler) podGroupSchedulingDefaultAlgorithm(ctx context.Context, 
 
 上一节的循环每试放一个 Pod 就问一次 PlacementFeasible，问的是「这组还有没有希望」。这个插件本身只有两个不等式（第 8–16 行），对应三种返回值。
 
-### 4.1 代码只有十几行
+### 4.1 三个计数决定返回哪个状态
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/gangscheduling/gangscheduling.go
@@ -492,6 +517,12 @@ func (pl *GangScheduling) PlacementFeasible(ctx context.Context, placementCycleS
 	return nil
 }
 ```
+
+两个不等式依次对应三种返回值：
+
+1. `remaining + scheduled < minCount`：剩下的 Pod 全部成功也不够，直接返回 `Unschedulable`，这一轮不再评估后面的 Pod（第 8–11 行）；
+2. `scheduled < minCount`：人还不够，但剩下的 Pod 有机会补上，返回 `Wait` 让框架继续（第 13–16 行）；
+3. 其余情况 `minCount` 已经满足，返回 `nil`（Success），后面的 Pod 仍会继续试放（第 18–20 行）。
 
 `GetMinCount()` 对不同策略的取值是：
 
@@ -548,9 +579,9 @@ func podGroupPotentiallyFeasible(ctx context.Context, schedFwk framework.Framewo
 
 `Success` 之后仍然继续评估剩余的 Pod，因为 minCount 只是下限，能多放就多放；接口注释也要求插件一旦返回 Success，之后都应继续返回 Success。`RunPlacementFeasiblePlugins` 在多个插件之间的合并规则是：
 
-- 遇到 Unschedulable 或 Error 立即返回；
-- 遇到 Wait 记下并继续问下一个插件；
-- 全部 Success 才是 Success。
+1. 遇到 Unschedulable 或 Error 立即返回；
+2. 遇到 Wait 记下并继续问下一个插件；
+3. 全部 Success 才是 Success。
 
 框架允许 PlacementFeasible 返回的只有这四种码，`UnschedulableAndUnresolvable` 会被当成「unexpected status code」变成 Error。
 
@@ -693,8 +724,8 @@ func (ht *HierarchyTracker) propagateReadinessDelta(logger klog.Logger, parentKe
 
 以 minCount=4 的组为例：
 
-- 从 3 个 Pod 涨到 4 个，跨过了 minCount=4，向父组传 +1（第 8–12 行）；
-- 涨到 5 个时 `wasReady` 已经是 true，什么都不传。
+1. 从 3 个 Pod 涨到 4 个，跨过了 minCount=4，向父组传 +1（第 8–12 行）；
+2. 涨到 5 个时 `wasReady` 已经是 true，什么都不传。
 
 父组 `readyChildren` 的变化也只在它自己跨过阈值时才继续往上走。**这样每次 Pod 事件的代价是 O(树深)，而树深被 API 限制在 4 以内。**
 
@@ -757,10 +788,10 @@ func (pl *GangScheduling) PreEnqueue(ctx context.Context, pod *v1.Pod) *fwk.Stat
 
 几个要点：
 
-- **判断的是根组是否就绪，而不是 Pod 自己所在的叶子组。** 一个 CompositePodGroup 下有 3 个子组、`minGroupCount: 2`，只要两个子组凑齐，第三个子组的 Pod 也一起放行，它们会在 PlacementFeasible 那一关再被检验；
-- `findRootGroup` 沿父链往上找，链上任何一个组对象缺失（`genericGroup == nil`）都返回 nil，于是得到「has not been created yet」（第 12–15 行）；
-- 所有失败都是 `UnschedulableAndUnresolvable`（第 14、23、25 行）。对 PreEnqueue 来说这只意味着「不进 activeQ、等事件」，不会触发抢占，和 Filter 阶段的语义略有不同；
-- `rootGroup.GetKey()` 是 `EntityKey`，它的 `String()` 格式是 `类型/命名空间/名字`，所以事件里看到的是 `podgroup/default/train-0` 这样的字符串。
+1. **判断的是根组是否就绪，而不是 Pod 自己所在的叶子组。** 一个 CompositePodGroup 下有 3 个子组、`minGroupCount: 2`，只要两个子组凑齐，第三个子组的 Pod 也一起放行，它们会在 PlacementFeasible 那一关再被检验；
+2. `findRootGroup` 沿父链往上找，链上任何一个组对象缺失（`genericGroup == nil`）都返回 nil，于是得到「has not been created yet」（第 12–15 行）；
+3. 所有失败都是 `UnschedulableAndUnresolvable`（第 14、23、25 行）。对 PreEnqueue 来说这只意味着「不进 activeQ、等事件」，不会触发抢占，和 Filter 阶段的语义略有不同；
+4. `rootGroup.GetKey()` 是 `EntityKey`，它的 `String()` 格式是 `类型/命名空间/名字`，所以事件里看到的是 `podgroup/default/train-0` 这样的字符串。
 
 队列侧还有一条规则让 PreEnqueue 的效果放大到整组：
 
@@ -826,8 +857,8 @@ func (pl *GangScheduling) EventsToRegister(_ context.Context) ([]fwk.ClusterEven
 
 这些 hint 会在两种情况下被用到：
 
-- 组在 PreEnqueue 被拦，`GangScheduling` 记为 gating plugin；
-- PlacementFeasible 返回 Wait/Unschedulable，`podGroupFitError.addPluginStatus` 把 `GangScheduling` 记进 `unschedulablePlugins`，回队时复制到每个 Pod 的 `UnschedulablePlugins`。
+1. 组在 PreEnqueue 被拦，`GangScheduling` 记为 gating plugin；
+2. PlacementFeasible 返回 Wait/Unschedulable，`podGroupFitError.addPluginStatus` 把 `GangScheduling` 记进 `unschedulablePlugins`，回队时复制到每个 Pod 的 `UnschedulablePlugins`。
 
 队列评估一个组时会对组内每个 Pod 跑 hint，只要有一个 Pod 得到 `Queue`，整组就被移出 unschedulableEntities：
 
@@ -842,8 +873,8 @@ func (p *PriorityQueue) isEntityWorthRequeuing(logger klog.Logger, entity framew
 
 这里有一个和单 Pod 调度不同的地方：组内各 Pod 的 `UnschedulablePlugins` 并不相同：
 
-- 场景 A：p2、p6 是自己 Filter 失败，带的是 `NodeResourcesFit` 之类的插件；p1/p3/p4/p5 成功了不回队；
-- 场景 B：p2~p4 带的是各自的 Filter 插件，p1、p5、p6 带的是组的 `podGroupFitError`，里面有 `GangScheduling`。
+1. 场景 A：p2、p6 是自己 Filter 失败，带的是 `NodeResourcesFit` 之类的插件；p1/p3/p4/p5 成功了不回队；
+2. 场景 B：p2~p4 带的是各自的 Filter 插件，p1、p5、p6 带的是组的 `podGroupFitError`，里面有 `GangScheduling`。
 
 于是节点变化（唤醒 p2~p4）和新 Pod 加入（唤醒 p1、p5、p6）都能让这个组重新出队。
 
@@ -886,8 +917,8 @@ func (p *PriorityQueue) isEntityWorthRequeuing(logger klog.Logger, entity framew
 
 结果分两种情况：
 
-- **组成功时，每个成功的 Pod 才真正 `AssumeAndReserveInCache`**，跑 Permit，然后启动各自的绑定 goroutine（第 10–12 行）；
-- 组失败时，即使某个 Pod 自己试放成功，也带着组的状态回队。
+1. **组成功时，每个成功的 Pod 才真正 `AssumeAndReserveInCache`**，跑 Permit，然后启动各自的绑定 goroutine（第 10–12 行）；
+2. 组失败时，即使某个 Pod 自己试放成功，也带着组的状态回队。
 
 最后，调度器把结果写到 PodGroup 的 `status.conditions` 上，类型是 `PodGroupInitiallyScheduled`，reason 有 `Scheduled`、`Unschedulable`、`SchedulerError`、`PodGroupError` 四种。`updatePodGroupCondition` 有一条保护：condition 一旦是 True，后续轮次不会把它改回 False，避免扩容时新 Pod 的失败「污染」一个已经成功启动的组。
 
@@ -920,17 +951,17 @@ func (p *PriorityQueue) isEntityWorthRequeuing(logger klog.Logger, entity framew
 
 回队去向分两种情况：
 
-- **组成功但还有剩余 Pod 时（场景 A 的 p2、p6），组直接回 activeQ，不走 backoff（第 2–8 行）**，并保留原时间戳排在前面，让下一轮立刻为这些 Pod 尝试抢占；
-- 组失败时 `UnschedulableCount` 加一，按 backoff 规则进 backoffQ 或 unschedulableEntities，等 hint 唤醒。
+1. **组成功但还有剩余 Pod 时（场景 A 的 p2、p6），组直接回 activeQ，不走 backoff（第 2–8 行）**，并保留原时间戳排在前面，让下一轮立刻为这些 Pod 尝试抢占；
+2. 组失败时 `UnschedulableCount` 加一，按 backoff 规则进 backoffQ 或 unschedulableEntities，等 hint 唤醒。
 
 ## 八、边界情况与容易误解的地方
 
-- **all-or-nothing 只保证到「调度决定」，不保证到「绑定」。** 组成功之后，每个 Pod 的绑定周期是独立的 goroutine。某个 Pod 的 PreBind（比如卷绑定）失败了，它自己回队重试，已经绑上的兄弟 Pod 不会被撤回。调度器保证的是「同一时刻做出的决定满足 minCount」，后续的执行失败需要控制器或下一轮调度来补救。
-- minCount 是会变的。`minCount` 可变，为的是支持扩缩容。调大 minCount 不会触发任何重新入队（hint 返回 QueueSkip），已经运行的 Pod 也不受影响；调小会唤醒同一棵树里等待的组。API 注释也写明了：一轮调度进行中修改 minCount，可能要到下一轮才生效。
-- 同名 PodGroup 的复用。`schedulingGroup` 的注释特意警告：调度器无法区分同名同命名空间的两个 PodGroup 运行时实例。HierarchyTracker 的 key 是 `(类型, 命名空间, 名字)`，删掉一个 PodGroup 再用同名重建，旧 Pod 和新 Pod 会被算进同一个组。控制器应该为每个运行时实例生成新名字。
-- PreEnqueue 插件的执行顺序不固定。`preEnqueuePluginMap` 是 map，除了上一次的 gating plugin 会被优先执行，其余插件按 map 迭代顺序执行。`SchedulingGates` 和 `GangScheduling` 谁先拦下 Pod 是不确定的，排查时看到的 gating plugin 可能在两者之间变化。
-- Deferred resize 的 Pod 不走组调度。开启 `InPlacePodVerticalScalingSchedulerPreemption` 时，已经在节点上、只是 resize 被推迟的 Pod 会被 `isPodGroupMember` 排除，作为单个 Pod 处理（第 17 篇）。
-- validatePodGroupHierarchy 看的是所有 Pod。包括已经调度的 Pod。一个组跑到一半，有人改了某些 Pod 的优先级类，后续扩容出来的 Pod 也会因为整组校验失败而进不去。
+1. **all-or-nothing 只保证到「调度决定」，不保证到「绑定」。** 组成功之后，每个 Pod 的绑定周期是独立的 goroutine。某个 Pod 的 PreBind（比如卷绑定）失败了，它自己回队重试，已经绑上的兄弟 Pod 不会被撤回。调度器保证的是「同一时刻做出的决定满足 minCount」，后续的执行失败需要控制器或下一轮调度来补救。
+2. minCount 是会变的。`minCount` 可变，为的是支持扩缩容。调大 minCount 不会触发任何重新入队（hint 返回 QueueSkip），已经运行的 Pod 也不受影响；调小会唤醒同一棵树里等待的组。API 注释也写明了：一轮调度进行中修改 minCount，可能要到下一轮才生效。
+3. 同名 PodGroup 的复用。`schedulingGroup` 的注释特意警告：调度器无法区分同名同命名空间的两个 PodGroup 运行时实例。HierarchyTracker 的 key 是 `(类型, 命名空间, 名字)`，删掉一个 PodGroup 再用同名重建，旧 Pod 和新 Pod 会被算进同一个组。控制器应该为每个运行时实例生成新名字。
+4. PreEnqueue 插件的执行顺序不固定。`preEnqueuePluginMap` 是 map，除了上一次的 gating plugin 会被优先执行，其余插件按 map 迭代顺序执行。`SchedulingGates` 和 `GangScheduling` 谁先拦下 Pod 是不确定的，排查时看到的 gating plugin 可能在两者之间变化。
+5. Deferred resize 的 Pod 不走组调度。开启 `InPlacePodVerticalScalingSchedulerPreemption` 时，已经在节点上、只是 resize 被推迟的 Pod 会被 `isPodGroupMember` 排除，作为单个 Pod 处理（第 17 篇）。
+6. validatePodGroupHierarchy 看的是所有 Pod。包括已经调度的 Pod。一个组跑到一半，有人改了某些 Pod 的优先级类，后续扩容出来的 Pod 也会因为整组校验失败而进不去。
 
 ## 九、发散
 
@@ -955,18 +986,18 @@ var _ fwk.PermitPlugin = &GangScheduling{}
 
 那时它由独立的 `GangScheduling` feature gate（1.35 Alpha）控制，两个扩展点分工如下：
 
-- PreEnqueue 直接用 PodGroup lister 和 `PodGroupStates().AllPodsCount()` 判断人数；
-- Permit 则统计 `ScheduledPodsCount()`，不够 minCount 就返回 `Wait` 并带 5 分钟超时，够了就遍历 `AssumedPods()` 逐个 `Allow`。
+1. PreEnqueue 直接用 PodGroup lister 和 `PodGroupStates().AllPodsCount()` 判断人数；
+2. Permit 则统计 `ScheduledPodsCount()`，不够 minCount 就返回 `Wait` 并带 5 分钟超时，够了就遍历 `AssumedPods()` 逐个 `Allow`。
 
 这和 scheduler-plugins 里 Coscheduling 的思路一致：一个个 Pod 先占住资源，在 Permit 处等齐再一起放行。
 
 master 上的版本把这套机制拆掉了：
 
-- 不再有 Permit，也就没有 5 分钟超时。等待发生在**调度周期之内**（逐个试放、snapshot 里 assume），而不是绑定周期之前（cache 里 assume、占着资源等）；
-- **等待的 Pod 不再占用 cache 里的资源，也就不会出现「两个组各占一半资源、互相等到超时」的死锁；**
-- 原来分散在每个 Pod 的 Permit 判断，集中到了 PodGroup 调度周期的 `PlacementFeasible` 一个扩展点；
-- 独立的 `GangScheduling` gate 被去掉，插件跟随 `GenericWorkload` 启用；
-- PreEnqueue 的计数改成增量维护的 HierarchyTracker，以支持 CompositePodGroup 的多层 quorum。
+1. 不再有 Permit，也就没有 5 分钟超时。等待发生在**调度周期之内**（逐个试放、snapshot 里 assume），而不是绑定周期之前（cache 里 assume、占着资源等）；
+2. **等待的 Pod 不再占用 cache 里的资源，也就不会出现「两个组各占一半资源、互相等到超时」的死锁；**
+3. 原来分散在每个 Pod 的 Permit 判断，集中到了 PodGroup 调度周期的 `PlacementFeasible` 一个扩展点；
+4. 独立的 `GangScheduling` gate 被去掉，插件跟随 `GenericWorkload` 启用；
+5. PreEnqueue 的计数改成增量维护的 HierarchyTracker，以支持 CompositePodGroup 的多层 quorum。
 
 out-of-tree 的 Coscheduling 至今仍是 Permit 方案，第 27 篇会把两者放在一起对照。
 
@@ -982,10 +1013,10 @@ PodGroup 调度周期是串行的：主循环拿到一个组之后，要把组�
 
 ## 十、小结
 
-- GangScheduling 只在 `GenericWorkload` 打开时启用，挂在 PreEnqueue 和 PlacementFeasible 两个扩展点，没有参数、没有 CycleState，状态在调度器共享的 `HierarchyTracker` 里。
-- PreEnqueue 看的是根组是否凑够人：叶子 PodGroup 数 Pod（含已调度的），CompositePodGroup 数就绪子组，只在跨越阈值时向上传播；失败一律 `UnschedulableAndUnresolvable`，且一个 Pod 被拦整组被拦。
-- PlacementFeasible 在 PodGroup 调度周期里每试放一个 Pod 调一次：`Remaining + Scheduled < minCount` 立即 Unschedulable，`Scheduled < minCount` 返回 Wait 继续，否则 Success；Basic 策略的 minCount 视为 1。
-- 整组的 all-or-nothing 靠「snapshot 里 assume、失败统一 revert」实现，单个 Pod 不跑 PostFilter，抢占交给 `PodGroupPostFilter`；绑定仍然是每个 Pod 独立进行。
-- 相比 v1.36 的 Permit + 5 分钟超时，master 把等待挪进了调度周期内部，不再提前占用资源。
+1. GangScheduling 只在 `GenericWorkload` 打开时启用，挂在 PreEnqueue 和 PlacementFeasible 两个扩展点，没有参数、没有 CycleState，状态在调度器共享的 `HierarchyTracker` 里。
+2. PreEnqueue 看的是根组是否凑够人：叶子 PodGroup 数 Pod（含已调度的），CompositePodGroup 数就绪子组，只在跨越阈值时向上传播；失败一律 `UnschedulableAndUnresolvable`，且一个 Pod 被拦整组被拦。
+3. PlacementFeasible 在 PodGroup 调度周期里每试放一个 Pod 调一次：`Remaining + Scheduled < minCount` 立即 Unschedulable，`Scheduled < minCount` 返回 Wait 继续，否则 Success；Basic 策略的 minCount 视为 1。
+4. 整组的 all-or-nothing 靠「snapshot 里 assume、失败统一 revert」实现，单个 Pod 不跑 PostFilter，抢占交给 `PodGroupPostFilter`；绑定仍然是每个 Pod 独立进行。
+5. 相比 v1.36 的 Permit + 5 分钟超时，master 把等待挪进了调度周期内部，不再提前占用资源。
 
 开启 `TopologyAwareWorkloadScheduling` 后，上面第 ③ 步之前会多出一个「生成候选 placement」的环节，整组只在一个拓扑域里试放。下一篇讲负责生成 placement 的 [TopologyPlacementGenerator](/posts/sched-plugin-22-topology-placement/)。

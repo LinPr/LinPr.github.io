@@ -165,7 +165,7 @@ PreScore 每个调度周期只执行一次，分两步：
 
 ## 四、Score 与 computeRank
 
-Score 本身很短：两个提前返回，剩下的交给 `computeRank`（第 17 行）。
+`Score` 除了两个提前返回，剩下的计算都在 `computeRank` 里（第 17 行）。
 
 ```go {linenos=inline}
 // pkg/trimaran/lowriskovercommitment/lowriskovercommitment.go
@@ -191,8 +191,8 @@ Score 本身很短：两个提前返回，剩下的交给 `computeRank`（第 17
 
 Score 有两个提前返回 0 分的出口：
 
-- BestEffort Pod：对所有节点都给 0 分，相当于这个插件对 BestEffort Pod **保持中立**，不影响排序；
-- 节点没有指标：让这个节点在这一维垫底。
+1. BestEffort Pod：对所有节点都给 0 分，相当于这个插件对 BestEffort Pod **保持中立**，不影响排序；
+2. 节点没有指标：让这个节点在这一维垫底。
 
 ```go {linenos=inline}
 // pkg/trimaran/lowriskovercommitment/lowriskovercommitment.go
@@ -209,7 +209,13 @@ func (pl *LowRiskOverCommitment) computeRank(logger klog.Logger, metrics []watch
 }
 ```
 
-`GetNodeRequestsAndLimits` 做了两件事：
+`computeRank` 本身分三步：
+
+1. 汇总节点上已有 Pod 的 request/limit，并把待调度 Pod 加进去（第 5 行）；
+2. 对 CPU 和内存各算一次风险（第 6–7 行）；
+3. 取两者中较大的风险，用 `1 − max(...)` 变成排名分（第 8 行）。
+
+第一步用到的 `GetNodeRequestsAndLimits` 做了两件事：
 
 1. 遍历 `NodeInfo` 里的所有 Pod，最后把待调度 Pod 也加进去（第 2 行的 `append(podsOnNode, pod)`）；
 2. 在加它之前保存一份「不含本 Pod」的快照（第 6–10 行）：
@@ -248,9 +254,9 @@ func (pl *LowRiskOverCommitment) computeRank(logger klog.Logger, metrics []watch
 
 得到五个量，下文记为：
 
-- C = Allocatable；
-- R / L = 含本 Pod 的 request / limit 之和；
-- R⁻ / L⁻ = 不含本 Pod 的版本。
+1. C = Allocatable；
+2. R / L = 含本 Pod 的 request / limit 之和；
+3. R⁻ / L⁻ = 不含本 Pod 的版本。
 
 R 和 R⁻ 被截到不超过 C（第 25–29 行），L 和 L⁻ 不截断。
 
@@ -281,8 +287,8 @@ riskLimit = (L − C) / (L − R)    当 L > C
 
 分母 L − R 是「所有 Pod 能在 request 之上额外突发的总量」，分子 L − C 是「其中节点容量兜不住的部分」。比值在 (0, 1] 内，两端分别是：
 
-- limit 刚超过容量时接近 0；
-- R = C，也就是 request 已经占满时，突发量全部兜不住，值为 1。
+1. limit 刚超过容量时接近 0；
+2. R = C，也就是 request 已经占满时，突发量全部兜不住，值为 1。
 
 因为 R ≤ C < L，分母恒为正，不会出现除零。
 
@@ -334,8 +340,8 @@ riskLimit = (L − C) / (L − R)    当 L > C
 
 第一步，μ 和 σ，各有一处处理：
 
-- 用 `CreateResourceStats` 时传入的是零 request（第 3–4 行的 `zeroRequest`），所以 μ 就是节点实际平均用量占 Allocatable 的比例，不加本 Pod；
-- σ 先乘以 `√smoothingWindowSize`（第 9 行）。
+1. 用 `CreateResourceStats` 时传入的是零 request（第 3–4 行的 `zeroRequest`），所以 μ 就是节点实际平均用量占 Allocatable 的比例，不加本 Pod；
+2. σ 先乘以 `√smoothingWindowSize`（第 9 行）。
 
 σ 要放大的原因是：如果观测到的序列是对 n 个独立样本做滑动平均得到的，平均值的方差是原始方差的 1/n，标准差是 1/√n；乘以 √n 可以把标准差还原到原始尺度。Prometheus 的 `instance:node_cpu:ratio` 这类 recording rule 本身就是在若干分钟窗口上算出的速率，默认值 5 对应的就是这种平滑。
 
@@ -401,9 +407,9 @@ func ComputeProbability(mu, sigma, threshold float64) (float64, *BetaDistributio
 
 有三种特殊情况：
 
-- μ = 0 时直接认为概率为 1；
-- σ = 0 时退化成确定值，μ ≤ 阈值取 1，否则取 0（第 4–9 行）；
-- 矩匹配失败时返回 0（风险为 1，第 13–15 行）。
+1. μ = 0 时直接认为概率为 1；
+2. σ = 0 时退化成确定值，μ ≤ 阈值取 1，否则取 0（第 4–9 行）；
+3. 矩匹配失败时返回 0（风险为 1，第 13–15 行）。
 
 第五步，按 limit 做条件化。如果已有 Pod 的 limit 之和 L⁻ 小于容量，那么它们的用量不可能超过 L⁻/C（CPU 会被节流，内存会被 OOM kill）。这时实际用量的分布应该在 L⁻/C 处被截断：
 
@@ -413,8 +419,8 @@ P(X ≤ R⁻/C | X ≤ L⁻/C) = P(X ≤ R⁻/C) / P(X ≤ L⁻/C)      （R⁻ 
 
 代码分两种情况：
 
-- 一般情况下做了这个除法，然后截到 [0, 1]（上面 riskLoad 代码第 26–27 行）；
-- L⁻ = 0 时（节点上只有 BestEffort Pod，或者没有 Pod），代码注释写的是「zero over zero」，直接令 allocProb = 1（第 21–22 行）。
+1. 一般情况下做了这个除法，然后截到 [0, 1]（上面 riskLoad 代码第 26–27 行）；
+2. L⁻ = 0 时（节点上只有 BestEffort Pod，或者没有 Pod），代码注释写的是「zero over zero」，直接令 allocProb = 1（第 21–22 行）。
 
 第六步，`riskLoad = 1 − allocProb`。
 
@@ -460,26 +466,26 @@ score = round(100 × rank)
 
 **节点 A 的 CPU：**
 
-- riskLimit：L = 4000，不大于 C = 4000，得 0。
-- riskLoad：μ = 0.40，σ = 0.04 × √5 = 0.0894，上限 √(0.99 × 0.24) = 0.487，不触发。ν = 0.24 / 0.008 − 1 = 29，α = 11.6，β = 17.4。阈值 R⁻/C = 2000/4000 = 0.5，P(X ≤ 0.5) = 0.8636。L⁻ = 3000 < C，触发条件化：P(X ≤ 0.75) ≈ 1.0000，allocProb 不变。riskLoad = 0.1364。
-- totalRisk = 0.5 × 0 + 0.5 × 0.1364 = 0.0682
+1. riskLimit：L = 4000，不大于 C = 4000，得 0。
+2. riskLoad：μ = 0.40，σ = 0.04 × √5 = 0.0894，上限 √(0.99 × 0.24) = 0.487，不触发。ν = 0.24 / 0.008 − 1 = 29，α = 11.6，β = 17.4。阈值 R⁻/C = 2000/4000 = 0.5，P(X ≤ 0.5) = 0.8636。L⁻ = 3000 < C，触发条件化：P(X ≤ 0.75) ≈ 1.0000，allocProb 不变。riskLoad = 0.1364。
+3. totalRisk = 0.5 × 0 + 0.5 × 0.1364 = 0.0682
 
 **节点 B 的 CPU：**
 
-- riskLimit：L = 7000 > 4000，(7000 − 4000) / (7000 − 2000) = 0.6。
-- riskLoad：μ = 0.30，σ = 0.03 × √5 = 0.0671，ν = 0.21 / 0.0045 − 1 = 45.67，α = 13.70，β = 31.97。阈值 1500/4000 = 0.375，P(X ≤ 0.375) = 0.8644。L⁻ = 6000 ≥ C，不做条件化。riskLoad = 0.1356。
-- totalRisk = 0.5 × 0.6 + 0.5 × 0.1356 = 0.3678
+1. riskLimit：L = 7000 > 4000，(7000 − 4000) / (7000 − 2000) = 0.6。
+2. riskLoad：μ = 0.30，σ = 0.03 × √5 = 0.0671，ν = 0.21 / 0.0045 − 1 = 45.67，α = 13.70，β = 31.97。阈值 1500/4000 = 0.375，P(X ≤ 0.375) = 0.8644。L⁻ = 6000 ≥ C，不做条件化。riskLoad = 0.1356。
+3. totalRisk = 0.5 × 0.6 + 0.5 × 0.1356 = 0.3678
 
 **内存（两节点相同）：**
 
-- riskLimit：L = 11Gi < 16Gi，riskLimit = 0。
-- riskLoad：μ = 0.30，σ = 0.02 × √5 = 0.0447，Beta(31.2, 72.8)，阈值 8/16 = 0.5，P(X ≤ 0.5) 几乎为 1，riskLoad ≈ 0。
-- totalRisk ≈ 0。
+1. riskLimit：L = 11Gi < 16Gi，riskLimit = 0。
+2. riskLoad：μ = 0.30，σ = 0.02 × √5 = 0.0447，Beta(31.2, 72.8)，阈值 8/16 = 0.5，P(X ≤ 0.5) 几乎为 1，riskLoad ≈ 0。
+3. totalRisk ≈ 0。
 
 **结果：**
 
-- A：rank = 1 − max(0.0682, 0) = 0.9318 → 93
-- B：rank = 1 − max(0.3678, 0) = 0.6322 → 63
+1. A：rank = 1 − max(0.0682, 0) = 0.9318 → 93
+2. B：rank = 1 − max(0.3678, 0) = 0.6322 → 63
 
 LROC 选 A。B 的负载更低、request 更少，但已有 Pod 的 limit 之和已经是容量的 1.5 倍（6000m 对 4000m），再放一个 limit 1 核的 Pod 后达到 1.75 倍，最坏情况下有 60% 的突发量没有着落。A 的负载更高，但 limit 没有超卖，唯一的风险来自「当前负载有 13.6% 的概率越过已分配 request」。
 
@@ -532,9 +538,9 @@ LROC 可以看作它的「负载感知」版本：riskLimit 对应静态的 limi
 
 ## 九、小结
 
-- LROC 在 PreScore 中把 Pod 的 request/limit（limit 至少等于 request）写入 CycleState，`Clone` 返回自身；Score 中对 BestEffort Pod 一律给 0 分以保持中立。
-- 每种资源分别计算两部分风险：riskLimit = (L − C)/(L − R)，是突发量落空的比例；riskLoad = 1 − P(X ≤ R⁻/C)，用 μ 和经 √n 还原的 σ 矩匹配出 Beta 分布，在 L⁻ < C 时按 limit 做条件化。
-- totalRisk = w·riskLimit + (1 − w)·riskLoad，rank 取 CPU 与内存的较差者，score = round(100 × rank)。
-- request/limit 部分来自包含 assumed Pod 的 NodeInfo，没有滞后；负载部分仍依赖快照。只接 metrics-server 时，riskLoad 只能是 0 或 1。
+1. LROC 在 PreScore 中把 Pod 的 request/limit（limit 至少等于 request）写入 CycleState，`Clone` 返回自身；Score 中对 BestEffort Pod 一律给 0 分以保持中立。
+2. 每种资源分别计算两部分风险：riskLimit = (L − C)/(L − R)，是突发量落空的比例；riskLoad = 1 − P(X ≤ R⁻/C)，用 μ 和经 √n 还原的 σ 矩匹配出 Beta 分布，在 L⁻ < C 时按 limit 做条件化。
+3. totalRisk = w·riskLimit + (1 − w)·riskLoad，rank 取 CPU 与内存的较差者，score = round(100 × rank)。
+4. request/limit 部分来自包含 assumed Pod 的 NodeInfo，没有滞后；负载部分仍依赖快照。只接 metrics-server 时，riskLoad 只能是 0 或 1。
 
 下一篇是整个系列的最后一篇：[《Peaks》](/posts/sched-plugin-40-peaks/)换了一个优化目标，它不关心性能风险，而是按功耗模型选择让集群功耗增加最少的节点。

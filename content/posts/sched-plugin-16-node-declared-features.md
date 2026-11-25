@@ -21,17 +21,17 @@ description: "NodeDeclaredFeatures 让 kubelet 声明自己支持的特性，调
 
 Kubernetes 的版本偏差策略允许 kubelet 比 kube-apiserver 落后若干个小版本。升级通常是先控制面、后节点，一个大集群的节点滚动升级可能持续数周。这期间会出现这样的情况：
 
-- apiserver 已经认识某个新字段（比如容器的 `restartPolicyRules` 里 `action: RestartAllContainers`），也接受了带这个字段的 Pod；
-- 调度器把 Pod 放到了一个还在跑旧版本 kubelet、或者没开对应 feature gate 的节点上；
-- 旧 kubelet 不认识这个字段，要么静默忽略（行为与用户预期不符），要么在准入时拒绝，Pod 进入 `Failed`，控制器再建一个新 Pod，新 Pod 可能又被调度到同一类节点上。
+1. apiserver 已经认识某个新字段（比如容器的 `restartPolicyRules` 里 `action: RestartAllContainers`），也接受了带这个字段的 Pod；
+2. 调度器把 Pod 放到了一个还在跑旧版本 kubelet、或者没开对应 feature gate 的节点上；
+3. 旧 kubelet 不认识这个字段，要么静默忽略（行为与用户预期不符），要么在准入时拒绝，Pod 进入 `Failed`，控制器再建一个新 Pod，新 Pod 可能又被调度到同一类节点上。
 
 在这个插件出现之前，常见的应对方式是运维手工给新节点打标签，再让工作负载写 `nodeSelector`。这要求每个用户都知道「哪个字段需要哪个版本的 kubelet」，而这正是 Kubernetes 自己最清楚的事情。
 
 `NodeDeclaredFeatures` 的思路是把这份知识写进一个共享库：
 
-- kubelet 启动时，根据自己的 feature gate、容器运行时能力和版本，算出自己支持的特性列表，写进 `Node.status.declaredFeatures`；
-- 调度器从 Pod spec 推断出它需要哪些特性，过滤掉没有声明这些特性的节点；
-- 用户不需要写任何东西，Pod spec 本身就是需求声明。
+1. kubelet 启动时，根据自己的 feature gate、容器运行时能力和版本，算出自己支持的特性列表，写进 `Node.status.declaredFeatures`；
+2. 调度器从 Pod spec 推断出它需要哪些特性，过滤掉没有声明这些特性的节点；
+3. 用户不需要写任何东西，Pod spec 本身就是需求声明。
 
 要让这件事成立，两侧必须对「特性叫什么名字」有一致的理解。下一节的共享库负责的就是这个一致性。
 
@@ -103,9 +103,9 @@ func (f *restartAllContainersFeature) InferForUpdate(oldPodInfo, newPodInfo *typ
 
 三个方法各回答一个问题：
 
-- `Discover`：节点开了这个 gate 就声明（第 2–4 行）；
-- `InferForScheduling`：Pod 只要有一个容器或 init 容器的 `RestartPolicyRules` 里出现 `rule.Action == v1.ContainerRestartRuleActionRestartAllContainers`，就算需要它（第 6–22 行）；
-- `InferForUpdate`：字段不可变，所以更新时永远不需要（第 24–27 行）。
+1. `Discover`：节点开了这个 gate 就声明（第 2–4 行）；
+2. `InferForScheduling`：Pod 只要有一个容器或 init 容器的 `RestartPolicyRules` 里出现 `rule.Action == v1.ContainerRestartRuleActionRestartAllContainers`，就算需要它（第 6–22 行）；
+3. `InferForUpdate`：字段不可变，所以更新时永远不需要（第 24–27 行）。
 
 有的特性的 `Discover` 还依赖容器运行时，比如 `UserNamespacesHostNetworkSupport` 要求 gate 开启并且 CRI 报告支持「user namespace + host network」；它的 `InferForScheduling` 检查 `hostNetwork: true` 且 `hostUsers: false`。
 
@@ -146,8 +146,8 @@ var AllFeatures = []types.Feature{
 
 第三类对 Pod 的调度和更新都不施加约束，声明它们是为了让其它组件读取：
 
-- `DRAOptionalNodeOperations`：注释说明，ResourceClaim 的分配结果要到 PreBind 才确定，PreFilter 推断不出来，这类过滤由 `DynamicResources` 插件自己做；
-- `DRANodeAllocatableResources`：被 apiserver 的准入插件用来校验 ResourceSlice。
+1. `DRAOptionalNodeOperations`：注释说明，ResourceClaim 的分配结果要到 PreBind 才确定，PreFilter 推断不出来，这类过滤由 `DynamicResources` 插件自己做；
+2. `DRANodeAllocatableResources`：被 apiserver 的准入插件用来校验 ResourceSlice。
 
 ### 2.3 从名字到位图
 
@@ -197,8 +197,8 @@ func (b bitmap) IsSubset(other bitmap) (bool, error) {
 
 名字列表到位图的映射在 `mapSorted` 中，它假定输入是有序的，用双指针一次扫描完成。有两个变体：
 
-- `MustMapSorted` 遇到未知名字就 panic；
-- `TryMap` 则跳过未知名字。
+1. `MustMapSorted` 遇到未知名字就 panic；
+2. `TryMap` 则跳过未知名字。
 
 {{< figure src="/images/posts/sched-plugins/16-ndf-bitmap.svg" caption="注册表排序后每个特性占固定的一位；节点声明、Pod 需求都变成同样长度的位图，Filter 只做一次子集判断。下方是同一个库在三个组件里的用法（点击查看大图）" link="/images/posts/sched-plugins/16-ndf-bitmap.svg" >}}
 
@@ -246,6 +246,12 @@ API 字段的定义是一个 `listType=atomic` 的字符串列表：
 	// +listType=atomic
 	DeclaredFeatures []string `json:"declaredFeatures,omitempty" protobuf:"bytes,14,rep,name=declaredFeatures"`
 ```
+
+三条注释各对应一个约束：
+
+1. `DeclaredFeatures` 承载的是节点声明的、与 feature gate 相关的特性名（第 2 行）；
+2. 字段只在 `NodeDeclaredFeatures` gate 开启时由 kubelet 写入，本身是可选的（`+featureGate`、`+optional`，第 3–4 行）；
+3. `+listType=atomic` 表示整个列表作为一个整体替换，没有按元素合并的语义；kubelet 按排序后的注册表顺序写入，所以第五节的事件处理器可以用 `slices.Equal` 直接比较新旧列表（第 5 行）。
 
 与之相比，同在 `NodeStatus` 里的 `features` 字段（`NodeFeatures` 结构体，目前只有一个 `supplementalGroupsPolicy` 布尔值）每增加一个特性都要改 API 类型。`declaredFeatures` 用字符串列表承载，增加特性只需要往注册表里加一个实现，不涉及 API 变更。
 
@@ -435,8 +441,8 @@ func (f *Framework) DiscoverNodeFeatures(cfg *types.NodeConfiguration) []string 
 
 一个特性 GA 之后，最终所有受支持版本的 kubelet 都具备它，再声明、再检查就没有意义了。`MaxVersion` 就是这个「毕业版本」：
 
-- 推断侧用**调度器的版本**比较：调度器版本超过 `MaxVersion`，说明按版本偏差策略，所有合法的 kubelet 都已经支持，不再把它列为需求（`InferForPodScheduling`，第 8–11 行）；
-- 发现侧用 **kubelet 的版本**比较：kubelet 超过 `MaxVersion` 后不再声明它（`DiscoverNodeFeatures`，第 6–8 行），`declaredFeatures` 不会无限增长。
+1. 推断侧用**调度器的版本**比较：调度器版本超过 `MaxVersion`，说明按版本偏差策略，所有合法的 kubelet 都已经支持，不再把它列为需求（`InferForPodScheduling`，第 8–11 行）；
+2. 发现侧用 **kubelet 的版本**比较：kubelet 超过 `MaxVersion` 后不再声明它（`DiscoverNodeFeatures`，第 6–8 行），`declaredFeatures` 不会无限增长。
 
 两侧必须同时停止，否则会出现「调度器还在要求、新 kubelet 已经不声明」的情况。单元测试 `Feature not required, version > MaxVersion` 覆盖了推断侧：调度器版本 1.34.0、特性 `MaxVersion` 1.33.0 时，即使 `InferForScheduling` 返回 true，PreFilter 也返回 `Skip`。
 
@@ -499,8 +505,8 @@ func extractNodeFeaturesChange(newNode *v1.Node, oldNode *v1.Node) fwk.ActionTyp
 
 hint 的判断都很直接：
 
-- `isSchedulableAfterNodeChange`：新增节点一律 `Queue`（并不检查新节点是否满足需求）；节点更新时，`declaredFeatures` 不变返回 `QueueSkip`，变了返回 `Queue`。典型场景是节点 kubelet 升级重启后重新上报。
-- `isSchedulableAfterTargetPodUpdate`：对新旧 Pod spec 各推断一次，需求位图相同返回 `QueueSkip`，不同返回 `Queue`。
+1. `isSchedulableAfterNodeChange`：新增节点一律 `Queue`（并不检查新节点是否满足需求）；节点更新时，`declaredFeatures` 不变返回 `QueueSkip`，变了返回 `Queue`。典型场景是节点 kubelet 升级重启后重新上报。
+2. `isSchedulableAfterTargetPodUpdate`：对新旧 Pod spec 各推断一次，需求位图相同返回 `QueueSkip`，不同返回 `Queue`。
 
 ## 六、另外两道检查：kubelet 准入与 apiserver 准入
 
@@ -613,11 +619,11 @@ kubelet 收到 Pod 更新时也会做一次同样的推断（`HandlePodUpdates` 
 
 ## 小结
 
-- `NodeDeclaredFeatures` 解决版本偏差期间「新功能 Pod 被调度到不支持它的 kubelet」的问题，需求从 Pod spec 自动推断，不需要用户写任何选择器。
-- 推断和发现的逻辑都在 `component-helpers/nodedeclaredfeatures` 的注册表里，每个特性同时实现 `Discover` 和 `InferForScheduling`/`InferForUpdate`；排序后的注册表把名字映射成位图，Filter 只做一次 `&^` 运算。
-- kubelet 启动时声明一次，写进 `status.declaredFeatures`；调度器在 `NodeInfo.SetNode` 时用 `TryMap` 转成位图，未知名字丢弃。
-- 不满足返回 `UnschedulableAndUnresolvable`；为了性能，Filter 不计算缺少的特性名，原因字符串是固定的。
-- `MaxVersion` 让特性在 GA 并度过版本偏差窗口后同时退出声明和检查；推断侧用调度器版本，发现侧用 kubelet 版本。
-- 同一个库还被 kubelet 准入（兜住绕过调度器的 Pod）和 apiserver 准入插件 `NodeDeclaredFeatureValidator`（拦截已绑定 Pod 的不兼容更新）使用。
+1. `NodeDeclaredFeatures` 解决版本偏差期间「新功能 Pod 被调度到不支持它的 kubelet」的问题，需求从 Pod spec 自动推断，不需要用户写任何选择器。
+2. 推断和发现的逻辑都在 `component-helpers/nodedeclaredfeatures` 的注册表里，每个特性同时实现 `Discover` 和 `InferForScheduling`/`InferForUpdate`；排序后的注册表把名字映射成位图，Filter 只做一次 `&^` 运算。
+3. kubelet 启动时声明一次，写进 `status.declaredFeatures`；调度器在 `NodeInfo.SetNode` 时用 `TryMap` 转成位图，未知名字丢弃。
+4. 不满足返回 `UnschedulableAndUnresolvable`；为了性能，Filter 不计算缺少的特性名，原因字符串是固定的。
+5. `MaxVersion` 让特性在 GA 并度过版本偏差窗口后同时退出声明和检查；推断侧用调度器版本，发现侧用 kubelet 版本。
+6. 同一个库还被 kubelet 准入（兜住绕过调度器的 Pod）和 apiserver 准入插件 `NodeDeclaredFeatureValidator`（拦截已绑定 Pod 的不兼容更新）使用。
 
 下一篇的 [DeferredPodScheduling](/posts/sched-plugin-17-deferred-pod-scheduling/) 也和原地扩缩容有关，但它处理的是另一个问题：节点资源不够时，谁来腾地方。

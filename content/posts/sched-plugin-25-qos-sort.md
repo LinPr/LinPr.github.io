@@ -64,6 +64,8 @@ func WithPlugin(name string, factory runtime.PluginFactory) Option {
 }
 ```
 
+注释里「Please don't remove this function」那句解释了这个函数为什么在 kube-scheduler 的代码里搜不到调用方：上游自己的 `main` 不注册任何 out-of-tree 插件，唯一的调用方就是外面这些 `app.WithPlugin(...)`，删掉它就会断掉所有第三方调度器的注册路径。
+
 从 `Setup` 到 in-tree Registry 分三步：
 
 1. `Setup` 把这些 Option 依次作用在一张空的 `outOfTreeRegistry` 上；
@@ -219,8 +221,8 @@ func New(_ context.Context, _ runtime.Object, _ fwk.Handle) (fwk.Plugin, error) 
 
 插件本身只有两部分：
 
-- 空结构体（第 6 行）；
-- `New`（第 11–13 行）不读参数、不持有 `Handle`，也没有对应的 Args 类型和默认值。
+1. 空结构体（第 6 行）；
+2. `New`（第 11–13 行）不读参数、不持有 `Handle`，也没有对应的 Args 类型和默认值。
 
 QueueSort 插件运行在队列里，此时还没有调度周期，因此也谈不上 CycleState。
 
@@ -301,9 +303,9 @@ func GetPodQOS(pod *v1.Pod) v1.PodQOSClass {
 
 `ComputePodQOS` 的规则只看 cpu 和 memory 两种资源，结果分三类：
 
-- 所有容器（含 init 容器）都没有声明 cpu/memory 的 requests 和 limits，是 BestEffort；
-- 每个容器的 cpu 和 memory 都设置了 limits，且汇总后 requests 等于 limits，是 Guaranteed；
-- 其余是 Burstable。
+1. 所有容器（含 init 容器）都没有声明 cpu/memory 的 requests 和 limits，是 BestEffort；
+2. 每个容器的 cpu 和 memory 都设置了 limits，且汇总后 requests 等于 limits，是 Guaranteed；
+3. 其余是 Burstable。
 
 开启 `PodLevelResources` 且 Pod 声明了 `spec.resources` 时，改用 Pod 级资源判断。GPU 之类的扩展资源不影响 QoS，一个只申请了 `nvidia.com/gpu` 的 Pod 仍然是 BestEffort。
 
@@ -378,7 +380,7 @@ QOSSort 现在拿到的是 `QueuedPodInfo`，升级到这套接口后需要先�
 
 ## 六、发散：QoS 在调度之后还意味着什么
 
-上面几条都在调度器内部。而 QoS 这个信号在节点上还有一套完全不同的用法，值得放进来对照。
+上面几条都在调度器内部。而 QoS 这个信号在节点上还有一套完全不同的用法。
 
 kubelet 根据 QoS 设置容器的 `oom_score_adj`：
 
@@ -429,9 +431,9 @@ BestEffort 的 requests 为 0，只要有内存用量就「超过 requests」，
 
 ## 七、小结
 
-- scheduler-plugins 通过 `app.WithPlugin` 把插件编译进一个基于 kube-scheduler 的新二进制，in-tree 插件全部保留；插件由 Profile 启用，Pod 通过 `spec.schedulerName` 选择 Profile。
-- 一个调度器进程只有一个调度队列，比较函数取自第一个 Profile，所有 Profile 的 queueSort 必须相同，因此 QOSSort、TopologicalSort、Coscheduling 三者互斥。
-- QOSSort 的排序键是 `(优先级降序, QoS 等级降序, 入队时间升序)`，QoS 来自 API Server 写入的 `status.qosClass`；它满足严格弱序，也通过 backoffQ 的同窗口排序生效。
-- 它只改变出队顺序，不影响过滤、打分和抢占。
+1. scheduler-plugins 通过 `app.WithPlugin` 把插件编译进一个基于 kube-scheduler 的新二进制，in-tree 插件全部保留；插件由 Profile 启用，Pod 通过 `spec.schedulerName` 选择 Profile。
+2. 一个调度器进程只有一个调度队列，比较函数取自第一个 Profile，所有 Profile 的 queueSort 必须相同，因此 QOSSort、TopologicalSort、Coscheduling 三者互斥。
+3. QOSSort 的排序键是 `(优先级降序, QoS 等级降序, 入队时间升序)`，QoS 来自 API Server 写入的 `status.qosClass`；它满足严格弱序，也通过 backoffQ 的同窗口排序生效。
+4. 它只改变出队顺序，不影响过滤、打分和抢占。
 
 QOSSort 在 PrioritySort 之上加了一层通用信号。[下一篇](/posts/sched-plugin-26-topological-sort/)的 TopologicalSort 也是 QueueSort 插件，它依据的是应用自身的依赖拓扑：同一个应用内，按 AppGroup controller 算好的拓扑顺序出队。

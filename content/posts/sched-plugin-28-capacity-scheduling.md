@@ -38,8 +38,8 @@ profiles:
 
 配置分两段：
 
-- `multiPoint` 把它注册到它实现的所有扩展点；
-- `postFilter` 一段再把默认的 `DefaultPreemption` 关掉。
+1. `multiPoint` 把它注册到它实现的所有扩展点；
+2. `postFilter` 一段再把默认的 `DefaultPreemption` 关掉。
 
 原因后面会讲：`CapacityScheduling` 自带一套抢占，两套抢占同时开着，`DefaultPreemption` 会按纯优先级去驱逐 Pod，完全不理会配额。插件 README 标注的成熟度是 Beta。
 
@@ -397,8 +397,8 @@ func cmp2(x1, x2, y *framework.Resource, bound int64) bool {
 
 语义是「`x1 + x2` 在任一维度上超过 `y`，就返回 true」。比较的维度分两类：
 
-- 四个固定维度总是参与比较（第 3–17 行）；
-- 扩展资源（GPU 之类）只比较 `x1` 里出现的，`y` 里没有定义时用 `bound` 兜底（第 19–27 行）。
+1. 四个固定维度总是参与比较（第 3–17 行）；
+2. 扩展资源（GPU 之类）只比较 `x1` 里出现的，`y` 里没有定义时用 `bound` 兜底（第 19–27 行）。
 
 调用方传入的 `bound` 是：
 
@@ -504,8 +504,8 @@ func (c *CapacityScheduling) PreFilter(ctx context.Context, state fwk.CycleState
 
 得到两个和：
 
-- `nominatedPodsReqInEQWithPodReq`：本 Pod 请求 + 同 Namespace 中优先级不低于本 Pod 的 nominated Pod（第 16–18 行）；
-- `nominatedPodsReqWithPodReq`：上面那部分 + 其他 Namespace 中、所属 quota 尚未超过 `min` 的 nominated Pod。
+1. `nominatedPodsReqInEQWithPodReq`：本 Pod 请求 + 同 Namespace 中优先级不低于本 Pod 的 nominated Pod（第 16–18 行）；
+2. `nominatedPodsReqWithPodReq`：上面那部分 + 其他 Namespace 中、所属 quota 尚未超过 `min` 的 nominated Pod。
 
 nominated Pod 还没有经过 `Reserve`，用量记录里没有它们。如果不把它们算进来，就会出现这样的情况：B 抢占了 A 的 Pod 准备回收自己的 `min`，A 的 Pod 还在优雅退出，此时 C 的 Pod 进来，看到配额还有余量，把这份额度又占了。
 
@@ -557,8 +557,8 @@ func (e ElasticQuotaInfos) aggregatedUsedOverMinWith(podRequest framework.Resour
 
 两道检查：
 
-- 第一道是常规的单租户上限（第 2–4 行）；
-- 第二道决定了这个插件的整体形态（第 6–8 行）：**所有配额内 Pod 的用量总和，永远不能超过所有 `min` 之和**。
+1. 第一道是常规的单租户上限（第 2–4 行）；
+2. 第二道决定了这个插件的整体形态（第 6–8 行）：**所有配额内 Pod 的用量总和，永远不能超过所有 `min` 之和**。
 
 「借用」借的只是其他租户暂时没用上的 `min`，借不到 `min` 总池子之外的资源。
 
@@ -674,6 +674,14 @@ type Interface interface {
 }
 ```
 
+五个方法把整个抢占流程切成五段：
+
+1. `GetOffsetAndNumCandidates`：决定从候选节点的列表里取一个随机偏移开始、一共挑多少个节点进入 dry-run 模拟；
+2. `CandidatesToVictimsMap`：把选中的候选节点整理成「节点 → 待驱逐的 Pod 列表」，列表里同时带上 PDB 违反数，交给执行器；
+3. `PodEligibleToPreemptOthers`：判断抢占者这一轮还要不要再抢，比如上一轮驱逐的受害者还在退出时就不必重复抢占；第二个返回值是拒绝的理由，写进事件；
+4. `SelectVictimsOnNode`：在单个节点的副本上算出「让抢占者放得下」的最小受害者集合，入参的 CycleState 和 NodeInfo 都由调用方深拷贝；
+5. `OrderedScoreFuncs`：多个节点得分相同时依次调用的打分函数，用来挑出最终哪个节点的受害者被驱逐，返回 nil 时走默认规则。
+
 `DefaultPreemption` 是这个接口的一个实现（详见[DefaultPreemption 篇](/posts/sched-plugin-18-default-preemption/)）。`CapacityScheduling` 定义了一个内部类型 `preemptor` 作为另一个实现，在 PostFilter 里临时组装一个 Evaluator（第 7–16 行）：
 
 ```go {linenos=inline}
@@ -725,8 +733,8 @@ func (p *preemptor) GetOffsetAndNumCandidates(n int32) (int32, int32) {
 
 `GetOffsetAndNumCandidates` 返回 `(0, n)`：从第一个节点开始，要求的候选数等于全部潜在节点数。两者的差别：
 
-- `DefaultPreemption` 默认只要 `max(10% 节点数, 100)` 个候选，并从随机偏移开始，找够就停；
-- `CapacityScheduling` 则会把所有节点都模拟一遍。
+1. `DefaultPreemption` 默认只要 `max(10% 节点数, 100)` 个候选，并从随机偏移开始，找够就停；
+2. `CapacityScheduling` 则会把所有节点都模拟一遍。
 
 大集群里，这让一次抢占的耗时随节点数线性增长。
 
@@ -902,9 +910,9 @@ func (p *preemptor) GetOffsetAndNumCandidates(n int32) (int32, int32) {
 
 每个候选受害者加回后有三种结果：
 
-- Filter 不通过（第 8–14 行），这个 Pod 必须走；
-- Filter 通过但配额检查不通过（第 16–22 行），也必须走；
-- 两者都通过，才赦免。
+1. Filter 不通过（第 8–14 行），这个 Pod 必须走；
+2. Filter 通过但配额检查不通过（第 16–22 行），也必须走；
+3. 两者都通过，才赦免。
 
 和 `DefaultPreemption` 相比，多出来的正是第二个 `if`。
 
@@ -916,7 +924,7 @@ func (p *preemptor) GetOffsetAndNumCandidates(n int32) (int32, int32) {
 2. 接着配额检查又不通过，对同一个 Pod 再 `removePod` 一次；
 3. `NodeInfo.RemovePod` 找不到 Pod，返回 `no corresponding pod ... in pods of node` 错误，这个节点的模拟以 `Error` 结束。
 
-这种组合在实际中并不常见，但排查抢占报错时值得知道这条路径。
+这种组合在实际中并不常见，但排查抢占报错时会碰到这条路径。
 
 ### 6.4 算例：借用与回收
 
@@ -926,9 +934,9 @@ func (p *preemptor) GetOffsetAndNumCandidates(n int32) (int32, int32) {
 
 ① A 借用。A 的 Deployment 有 4 个副本。
 
-- a1、a2：让 A 用到 4，正好等于 `min`；
-- a3：检查一 `4 + 2 = 6 ≤ 6`，检查二 `ΣUsed 4 + 2 = 6 ≤ ΣMin 8`，通过，A 开始借用 B 的 `min`；
-- a4：检查一 `6 + 2 = 8 > 6`，`Unschedulable`。
+1. a1、a2：让 A 用到 4，正好等于 `min`；
+2. a3：检查一 `4 + 2 = 6 ≤ 6`，检查二 `ΣUsed 4 + 2 = 6 ≤ ΣMin 8`，通过，A 开始借用 B 的 `min`；
+3. a4：检查一 `6 + 2 = 8 > 6`，`Unschedulable`。
 
 a4 进入 PostFilter：`usedOverMinWith` 判定 `6 + 2 > 4`，A 处于借用状态，只能抢同 Namespace 内优先级更低的 Pod，没有，每个节点都返回 `UnschedulableAndUnresolvable`，a4 留在 Pending。
 
@@ -936,15 +944,15 @@ a4 进入 PostFilter：`usedOverMinWith` 判定 `6 + 2 > 4`，A 处于借用状�
 
 ③ b2 触发回收。b2 在 PreFilter 的两道检查：
 
-- 检查一 `2 + 2 = 4 ≤ 6`，通过；
-- 检查二 `8 + 2 = 10 > 8`，`Unschedulable`，所有节点进入抢占候选。
+1. 检查一 `2 + 2 = 4 ≤ 6`，通过；
+2. 检查二 `8 + 2 = 10 > 8`，`Unschedulable`，所有节点进入抢占候选。
 
 B 的判定：`2 + 2 = 4`，不大于 `min` 4，处于「`min` 被占用」状态，候选受害者是其他 Namespace 中 `Used > Min` 的 Pod。A 的 6 大于 4，A 的所有 Pod 都是候选。
 
 逐个候选节点模拟：
 
-- node1 上有 a1、a2。全部移除后，快照里 A 降到 2，b2 放得下，配额 `2 + 2 + 2 = 6 ≤ 8` 通过。赦免 a1（同优先级时启动更早的更重要，先加回）：节点 `2 + 2 = 4 ≤ 4` 放得下，配额 `4 + 2 + 2 = 8 ≤ 8` 通过，a1 留下。赦免 a2：节点 `6 > 4` 放不下，a2 是受害者。
-- node2 上有 a3、b1。候选只有 a3（b1 是自己人）。移除后 b2 放得下；加回 a3 放不下，a3 是受害者。
+1. node1 上有 a1、a2。全部移除后，快照里 A 降到 2，b2 放得下，配额 `2 + 2 + 2 = 6 ≤ 8` 通过。赦免 a1（同优先级时启动更早的更重要，先加回）：节点 `2 + 2 = 4 ≤ 4` 放得下，配额 `4 + 2 + 2 = 8 ≤ 8` 通过，a1 留下。赦免 a2：节点 `6 > 4` 放不下，a2 是受害者。
+2. node2 上有 a3、b1。候选只有 a3（b1 是自己人）。移除后 b2 放得下；加回 a3 放不下，a3 是受害者。
 
 两个候选节点各有 1 个同优先级的受害者，前四条默认规则都打平，最后按「最高优先级受害者启动时间最晚」选出一个。假设选中 node2：a3 被驱逐，b2 被提名到 node2。
 
@@ -1087,9 +1095,9 @@ informer 驱动的那部分最终一致，`Reserve` 记的那部分各记各的�
 
 把配额放进调度器，换来的是精确：计量发生在 `Reserve`，资源真正被占用的时刻；Pending 的 Pod 不消耗额度。代价是所有逻辑都被 kube-scheduler 的扩展点结构约束住了：
 
-- 一次只调度一个 Pod，配额判断无法感知「这一批 Pod 能不能一起进来」，与 Coscheduling 组合时，gang 的一部分可能把配额占住，剩下的部分却进不来；
-- 抢占只能在单节点内完成，回收效率受碎片影响；
-- 用量记录存在进程内存里，调度器重启时依赖 informer 重放来重建，重放期间（以及 `addElasticQuota` 先到的情况下）用量是逐步恢复的。
+1. 一次只调度一个 Pod，配额判断无法感知「这一批 Pod 能不能一起进来」，与 Coscheduling 组合时，gang 的一部分可能把配额占住，剩下的部分却进不来；
+2. 抢占只能在单节点内完成，回收效率受碎片影响；
+3. 用量记录存在进程内存里，调度器重启时依赖 informer 重放来重建，重放期间（以及 `addElasticQuota` 先到的情况下）用量是逐步恢复的。
 
 社区后来的 Kueue 走的是另一条路：在准入层面以 Job 为单位排队，用 `ClusterQueue` 的 nominal quota、cohort 内借用与 borrowing/lending limit 表达类似的语义，配额满足后才把 Job 放给调度器。
 
@@ -1117,18 +1125,18 @@ scheduler-plugins 升级到下一个 Kubernetes 版本时，`preemptor` 需要�
 
 ### 9.3 配置建议
 
-- `ΣMin` 贴近集群可分配资源，留少量余量；
-- `min`、`max` 写全 cpu、memory，有 GPU 时写上 GPU；
-- 关闭 `DefaultPreemption`，只保留 `CapacityScheduling` 的 PostFilter；
-- 只在一个 Profile 里启用；
-- controller 可选，部署它只是为了看见 `status.used`，并且要记住它只统计 `Running` 的 Pod、不含 overhead。
+1. `ΣMin` 贴近集群可分配资源，留少量余量；
+2. `min`、`max` 写全 cpu、memory，有 GPU 时写上 GPU；
+3. 关闭 `DefaultPreemption`，只保留 `CapacityScheduling` 的 PostFilter；
+4. 只在一个 Profile 里启用；
+5. controller 可选，部署它只是为了看见 `status.used`，并且要记住它只统计 `Running` 的 Pod、不含 overhead。
 
 ## 小结
 
-- `CapacityScheduling` 在调度器内存里维护每个 Namespace 的 `Min`/`Max`/`Used`，`pods` 集合保证 informer 与 `Reserve` 两条路径的计量幂等；`status.used` 由另一个进程写，调度器从不读取。
-- PreFilter 两道检查：本 quota 不超过 `max`，所有 quota 的用量之和不超过 `min` 之和；后者意味着借用只能借别人闲置的 `min`。两者都返回 `Unschedulable`，失败后所有节点进入抢占。
-- PostFilter 复用 v1.36.4 的 `preemption.Evaluator`，自己实现 `preemption.Interface`：抢占者在 `min` 以内时回收借用者的 Pod 且不看优先级，已经在借时只能抢同 Namespace 的低优先级 Pod；赦免时同时检查节点与配额。
-- `min`/`max` 只写部分维度时，未写的 cpu/memory 被当作 0，这是最常见的误配置。
-- EventsToRegister 只注册了 Pod 删除和 ElasticQuota 变化，没有 QueueingHint，任何 Pod 删除都会唤醒所有被它拒绝的 Pod。
+1. `CapacityScheduling` 在调度器内存里维护每个 Namespace 的 `Min`/`Max`/`Used`，`pods` 集合保证 informer 与 `Reserve` 两条路径的计量幂等；`status.used` 由另一个进程写，调度器从不读取。
+2. PreFilter 两道检查：本 quota 不超过 `max`，所有 quota 的用量之和不超过 `min` 之和；后者意味着借用只能借别人闲置的 `min`。两者都返回 `Unschedulable`，失败后所有节点进入抢占。
+3. PostFilter 复用 v1.36.4 的 `preemption.Evaluator`，自己实现 `preemption.Interface`：抢占者在 `min` 以内时回收借用者的 Pod 且不看优先级，已经在借时只能抢同 Namespace 的低优先级 Pod；赦免时同时检查节点与配额。
+4. `min`/`max` 只写部分维度时，未写的 cpu/memory 被当作 0，这是最常见的误配置。
+5. EventsToRegister 只注册了 Pod 删除和 ElasticQuota 变化，没有 QueueingHint，任何 Pod 删除都会唤醒所有被它拒绝的 Pod。
 
 下一篇看 [NetworkOverhead](/posts/sched-plugin-29-network-overhead/)：它关心的不是资源够不够，而是 Pod 之间的网络距离。

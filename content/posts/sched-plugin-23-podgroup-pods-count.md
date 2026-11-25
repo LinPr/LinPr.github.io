@@ -31,7 +31,7 @@ func applyTopologyAwareWorkloadScheduling(config *v1.Plugins) {
 }
 ```
 
-**它是默认插件里少数显式写了 `Weight: 1` 的。** 插件本身极简（第 3–6 行），没有参数，也不读写任何 CycleState：
+**它是默认插件里少数显式写了 `Weight: 1` 的。** 插件没有参数，也不读写任何 CycleState（第 3–6 行）：
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podgrouppodscount/podgroup_pods_count.go
@@ -55,10 +55,10 @@ func New(_ context.Context, _ runtime.Object, h fwk.Handle, fts feature.Features
 
 PlacementScore 插件并不是每次组调度都会跑。回顾第 22 篇的搜索流程，以下几种情况会跳过打分：
 
-- 没开 `TopologyAwareWorkloadScheduling`：组调度走隐式 placement，根本没有「多个候选」；
-- PodGroup 没有拓扑约束：TopologyPlacementGenerator 原样返回父 placement，只有一个候选；
-- NominatedNodeName 快速路径命中：直接采用，不打分；
-- 只找到一个可行 placement：`findBestPodGroupPlacement` 在 `len(successfulResults) == 1` 时直接返回它。
+1. 没开 `TopologyAwareWorkloadScheduling`：组调度走隐式 placement，根本没有「多个候选」；
+2. PodGroup 没有拓扑约束：TopologyPlacementGenerator 原样返回父 placement，只有一个候选；
+3. NominatedNodeName 快速路径命中：直接采用，不打分；
+4. 只找到一个可行 placement：`findBestPodGroupPlacement` 在 `len(successfulResults) == 1` 时直接返回它。
 
 **只有在「有多个可行 placement」时，打分才会发生**：`findBestPlacement`（第 3 行）才会调 `RunPlacementScorePlugins`：
 
@@ -103,6 +103,11 @@ type PodGroupAssignments struct {
 }
 ```
 
+注释说明这是给打分插件用的「临时分配结果」，两个字段：
+
+1. 内嵌的 `*Placement`：候选域本身，名字和节点列表都在这里（第 5 行）；
+2. `ProposedAssignments`：这个 placement 试放时得到的 Pod 到节点的映射，其中的 Pod 一定也存在于 `PodGroupInfo` 里（第 6–9 行）。
+
 `ProposedAssignments` 由 `makeProposedAssignments` 从试放结果里挑出「状态成功且有节点名」的 Pod 构造，也就是这个 placement 里本轮新放下的 Pod。
 
 ## 三、打分：已调度数 + 提议数
@@ -129,8 +134,8 @@ func (pl *PodGroupPodsCount) ScorePlacement(ctx context.Context, state fwk.Place
 
 已调度数从哪来？分两种情况：
 
-- 不开 CompositePodGroup 时，读本组的 `PodGroupState`（第 13–17 行）；
-- 开了以后，用 `helper.GetPodGroupStates` 遍历以当前组为根的整棵子树，把每个叶子 PodGroup 的 `ScheduledPodsCount()` 加起来（第 3–12 行）。
+1. 不开 CompositePodGroup 时，读本组的 `PodGroupState`（第 13–17 行）；
+2. 开了以后，用 `helper.GetPodGroupStates` 遍历以当前组为根的整棵子树，把每个叶子 PodGroup 的 `ScheduledPodsCount()` 加起来（第 3–12 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/podgrouppodscount/podgroup_pods_count.go
@@ -157,8 +162,8 @@ func (pl *PodGroupPodsCount) getScheduledPodsCount(podGroup fwk.PodGroupInfo) (i
 
 注释里那句「reduce the relative difference」说的是：同样是 2 个和 1 个新 Pod 的差距，两种算法给出的结果不同：
 
-- 组里已经有 10 个 Pod 在跑时，原始分是 12 对 11，归一化后是 100 对 91；
-- 只数新 Pod，则是 2 对 1，归一化后是 100 对 50。
+1. 组里已经有 10 个 Pod 在跑时，原始分是 12 对 11，归一化后是 100 对 91；
+2. 只数新 Pod，则是 2 对 1，归一化后是 100 对 50。
 
 前者更符合「整组规模差别不大」的事实。
 
@@ -205,7 +210,7 @@ func (pl *PodGroupPodsCount) NormalizePlacementScore(ctx context.Context, state 
 
 后者把「只差一个 Pod」放大成 50 分的差距，足以压过 NodeResourcesFit 那一侧的任何差别。测试里专门有一个用例「some minimal score that is far from a group of scores located closely」验证归一化不会把这种分布拉开。现在的公式让 PodGroupPodsCount 的分差和 Pod 数的相对差距成正比，另一个打分插件还有发言权。
 
-`maxCount == 0` 的分支（第 13–18 行）值得多看一眼。被打分的 placement 都是「可行」的，可行意味着 PlacementFeasible 返回了 Success。GangScheduling 只有在 `Scheduled >= minCount` 时才返回 Success，而 minCount 至少是 1（Basic 策略也按 1 计），所以 `scheduled + proposed` 至少是 1，`maxCount` 不可能是 0。
+`maxCount == 0` 的分支（第 13–18 行）在正常配置下走不到。被打分的 placement 都是「可行」的，可行意味着 PlacementFeasible 返回了 Success。GangScheduling 只有在 `Scheduled >= minCount` 时才返回 Success，而 minCount 至少是 1（Basic 策略也按 1 计），所以 `scheduled + proposed` 至少是 1，`maxCount` 不可能是 0。
 
 TODO 注释承认这是一个跨插件的隐含假设：如果有人在 Profile 里关掉了 GangScheduling，`RunPlacementFeasiblePlugins` 没有插件可跑，所有 placement 都会被视为可行，此时一个 0 个 Pod 的 placement 就可能让这里报错，整个组调度以 Error 结束。
 
@@ -269,8 +274,8 @@ func (r *resourceAllocationScorer) scorePlacement(
 
 注意两点：
 
-- 单 Pod 的 Score 默认用 `LeastAllocated`（倾向空闲节点、打散），而放置打分固定用 `MostAllocated`（倾向更满的域、装箱）。这是有意的：**组级别希望把大块完整的域留给后来的大组，域内部的节点选择仍然由单 Pod 打分决定**；
-- 资源种类和权重沿用 `NodeResourcesFitArgs.scoringStrategy.resources`，默认是 cpu、memory 各权重 1。它没有实现 `NormalizePlacementScore`，MostAllocated 的结果本身就在 0~100。
+1. 单 Pod 的 Score 默认用 `LeastAllocated`（倾向空闲节点、打散），而放置打分固定用 `MostAllocated`（倾向更满的域、装箱）。这是有意的：**组级别希望把大块完整的域留给后来的大组，域内部的节点选择仍然由单 Pod 打分决定**；
+2. 资源种类和权重沿用 `NodeResourcesFitArgs.scoringStrategy.resources`，默认是 cpu、memory 各权重 1。它没有实现 `NormalizePlacementScore`，MostAllocated 的结果本身就在 0~100。
 
 ### 5.2 一个完整算例
 
@@ -278,9 +283,9 @@ func (r *resourceAllocationScorer) scorePlacement(
 
 设定：`gang.minCount: 4`，队列里 6 个 Pod，每个请求 8 CPU / 32Gi。三个 rack 各有 4 个节点，每个节点 32 CPU / 128Gi，rack 合计 128 CPU / 512Gi。
 
-- rack-a 已占用 72 CPU / 256Gi，四个节点的 CPU 占用分别是 24、24、8、16，内存各 64Gi。按单节点可放数算（CPU 与内存取小）是 1、1、2、2，正好放下 6 个；
-- rack-b 已占用 16 CPU / 64Gi，空间充裕，6 个都放得下；
-- rack-c 已占用 96 CPU / 384Gi，每个节点只剩 8 CPU / 32Gi，只能放 4 个，刚好满足 minCount。
+1. rack-a 已占用 72 CPU / 256Gi，四个节点的 CPU 占用分别是 24、24、8、16，内存各 64Gi。按单节点可放数算（CPU 与内存取小）是 1、1、2、2，正好放下 6 个；
+2. rack-b 已占用 16 CPU / 64Gi，空间充裕，6 个都放得下；
+3. rack-c 已占用 96 CPU / 384Gi，每个节点只剩 8 CPU / 32Gi，只能放 4 个，刚好满足 minCount。
 
 PodGroupPodsCount：原始分 6、6、4，最大值 6，归一化后是 `600/6 = 100`、`100`、`400/6 = 66`。
 
@@ -361,10 +366,10 @@ NodeResourcesFit（MostAllocated）：
 
 打分规则和权重都清楚了，剩下几条边界：
 
-- 打分插件看不到 minCount 以外的「组完整度」。PodGroupPodsCount 只数 Pod，不管 Pod 的角色。一个由 1 个 launcher 和 N 个 worker 组成的组（同一个 PodGroup），「放下 launcher + 3 个 worker」和「放下 4 个 worker」得分相同。需要区分角色时，应该拆成多个 PodGroup，用 CompositePodGroup 组织。
-- 整组不可行的 placement 不参与打分。只有试放结果是 Success 的 placement 才进入 `successfulResults`。PodGroupPodsCount 不会「奖励」一个放了 3 个 Pod 但没达到 minCount=4 的 placement，那个 placement 在 PlacementFeasible 阶段就被淘汰了。
-- **评估到的 placement 数有限。** 第 22 篇讲过，有打分插件时调度器只找 `numFeasiblePlacementsToFind` 个可行 placement 就停。打分是在这个子集里选最优，而不是全局最优。被随机打乱后没轮到评估的 rack，即使能放下更多 Pod 也不会被选中。
-- 打分错误会让整组失败。`ScorePlacement` 里读 `PodGroupStates` 出错（比如 snapshot 里找不到组状态）会返回 Error，`findBestPodGroupPlacement` 把它向上传，组的结果是 Error 而不是降级成随机选一个。
+1. 打分插件看不到 minCount 以外的「组完整度」。PodGroupPodsCount 只数 Pod，不管 Pod 的角色。一个由 1 个 launcher 和 N 个 worker 组成的组（同一个 PodGroup），「放下 launcher + 3 个 worker」和「放下 4 个 worker」得分相同。需要区分角色时，应该拆成多个 PodGroup，用 CompositePodGroup 组织。
+2. 整组不可行的 placement 不参与打分。只有试放结果是 Success 的 placement 才进入 `successfulResults`。PodGroupPodsCount 不会「奖励」一个放了 3 个 Pod 但没达到 minCount=4 的 placement，那个 placement 在 PlacementFeasible 阶段就被淘汰了。
+3. **评估到的 placement 数有限。** 第 22 篇讲过，有打分插件时调度器只找 `numFeasiblePlacementsToFind` 个可行 placement 就停。打分是在这个子集里选最优，而不是全局最优。被随机打乱后没轮到评估的 rack，即使能放下更多 Pod 也不会被选中。
+4. 打分错误会让整组失败。`ScorePlacement` 里读 `PodGroupStates` 出错（比如 snapshot 里找不到组状态）会返回 Error，`findBestPodGroupPlacement` 把它向上传，组的结果是 Error 而不是降级成随机选一个。
 
 ## 七、发散：放置打分和单 Pod 打分的分工
 
@@ -380,13 +385,13 @@ kube-scheduler 现在有两层打分：
 
 一个组的最终落点由两层共同决定：PlacementScore 选出 rack，rack 内每个 Pod 的节点由单 Pod Score 决定。**默认配置下两层的资源倾向相反，组之间装箱、组内部打散。** 如果业务希望组内也尽量紧凑（比如减少跨节点通信），需要把单 Pod 的 NodeResourcesFit 策略改成 MostAllocated，但这会影响所有 Pod 的调度行为，最好放在单独的 Profile 里。
 
-另一个值得关注的设计是放置打分对 DRA 的预留：`ProposedAssignment` 接口提供了 `GetCycleState()`，打分插件可以读到每个 Pod 在试放时写下的 CycleState，比如 DynamicResources 为它挑中的设备。将来按「设备拓扑是否连续」给 placement 打分的插件，可以基于这份数据实现，而不需要重新做一遍分配。
+另一个设计考虑是放置打分对 DRA 的预留：`ProposedAssignment` 接口提供了 `GetCycleState()`，打分插件可以读到每个 Pod 在试放时写下的 CycleState，比如 DynamicResources 为它挑中的设备。将来按「设备拓扑是否连续」给 placement 打分的插件，可以基于这份数据实现，而不需要重新做一遍分配。
 
 ## 八、小结
 
-- PodGroupPodsCount 只在 `TopologyAwareWorkloadScheduling` 打开、且有多个可行 placement 时被调用；原始分是「已调度 Pod 数 + 本 placement 提议的 Pod 数」。
-- 归一化用 `score × 100 / maxCount`，有意不以 minCount 为下界，避免一个 Pod 的差距被放大成几十分；`maxCount == 0` 依赖 GangScheduling 保证不会发生。
-- 默认权重 1，与 NodeResourcesFit 的放置打分（固定 MostAllocated、同样权重 1）等权相加：先保证放得多，再在放得一样多的候选里挑装得更满的。
-- 放置打分的权重可以在 `plugins.placementScore.enabled` 里单独设置，优先于 `multiPoint` 里的权重。
+1. PodGroupPodsCount 只在 `TopologyAwareWorkloadScheduling` 打开、且有多个可行 placement 时被调用；原始分是「已调度 Pod 数 + 本 placement 提议的 Pod 数」。
+2. 归一化用 `score × 100 / maxCount`，有意不以 minCount 为下界，避免一个 Pod 的差距被放大成几十分；`maxCount == 0` 依赖 GangScheduling 保证不会发生。
+3. 默认权重 1，与 NodeResourcesFit 的放置打分（固定 MostAllocated、同样权重 1）等权相加：先保证放得多，再在放得一样多的候选里挑装得更满的。
+4. 放置打分的权重可以在 `plugins.placementScore.enabled` 里单独设置，优先于 `multiPoint` 里的权重。
 
 一个组的 Pod 选定了节点，接下来就进入各自的绑定周期，由 [DefaultBinder](/posts/sched-plugin-24-default-binder/) 把 `spec.nodeName` 写回 API Server。

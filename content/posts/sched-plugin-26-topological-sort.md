@@ -99,6 +99,12 @@ type AppGroupWorkload struct {
 }
 ```
 
+`AppGroupSpec` 的三个字段分工如下：
+
+1. `NumMembers`：组内 Pod 的总数，必填，最小为 1；
+2. `TopologySortingAlgorithm`：选定的拓扑排序算法名，必填，取值就是后文列出的那几个常量；
+3. `Workloads`：组内每个 workload 一项，必填，每项由一个 workload 引用和一份可选的依赖列表组成。
+
 `AppGroupWorkloadInfo` 有 `Kind`、`Name`、`Selector`、`APIVersion`、`Namespace` 五个字段，插件只用 `Selector`，它要和 Pod 上 `appgroup.diktyo.x-k8s.io.workload` 的值对上。
 
 `DependenciesInfo` 除了指向另一个 workload，还带 `MinBandwidth` 和 `MaxNetworkCost`，这两个字段是给 NetworkOverhead 用的，TopologicalSort 不读。
@@ -168,6 +174,8 @@ type AppGroupTopologyInfo struct {
 
 `TopologyOrder` 是一个 `(workload, index)` 列表（第 18 行，元素定义在第 23–29 行），`index` 越小越先调度。插件自己不做拓扑排序，这个列表由 AppGroup controller 计算后写入 status。
 
+status 里另外三个字段——`RunningWorkloads`、`ScheduleStartTime`、`TopologyCalculationTime`——记录组的运行进度和拓扑序的计算时刻，`Less` 一个都不读。
+
 controller 不在 scheduler-plugins 仓库里，而是 diktyo-io 社区单独维护的组件，仓库只提供部署清单 `manifests/appgroup/deploy-appgroup-controller.yaml`。可选的算法在 appgroup-api 里列为常量：
 
 ```go {linenos=inline}
@@ -190,8 +198,8 @@ KEP 用 Online Boutique（11 个 workload，P1 是前端）给出了各算法的
 
 注意方向：按「调用方 → 被调用方」建图，两种算法的顺序正好相反：
 
-- Kahn 算法从入度为 0 的节点开始，排在第一位的是前端 P1，也就是**调用方先出队**；
-- Reverse Kahn 把它倒过来，叶子服务（P11 是 redis-cart）先出队。
+1. Kahn 算法从入度为 0 的节点开始，排在第一位的是前端 P1，也就是**调用方先出队**；
+2. Reverse Kahn 把它倒过来，叶子服务（P11 是 redis-cart）先出队。
 
 这一点在第六节还会回到。
 
@@ -364,8 +372,8 @@ func (ts *TopologicalSort) Less(pInfo1, pInfo2 fwk.QueuedPodInfo) bool {
 
 分两条路：
 
-- 不在同一个 AppGroup（包括两者都没有 label、只有一个有、属于不同 AppGroup）：直接调用 in-tree 的 `PrioritySort.Less`（第 12–15 行），即优先级降序、入队时间升序。代码注释写的是 `follow vanilla QoS Sort`，KEP 和插件 README 也说回退到 QoS 插件的策略，但实际调用的是 `queuesort.PrioritySort`，**不比较 QoS**。
-- 同一个 AppGroup：取出 AppGroup，分别用两个 Pod 的 workload label 在 `TopologyOrder` 里查 index（第 27–29 行），`orderP1 <= orderP2` 时 pInfo1 排前面（第 33 行）。这条路上既不看优先级，也不看入队时间。
+1. 不在同一个 AppGroup（包括两者都没有 label、只有一个有、属于不同 AppGroup）：直接调用 in-tree 的 `PrioritySort.Less`（第 12–15 行），即优先级降序、入队时间升序。代码注释写的是 `follow vanilla QoS Sort`，KEP 和插件 README 也说回退到 QoS 插件的策略，但实际调用的是 `queuesort.PrioritySort`，**不比较 QoS**。
+2. 同一个 AppGroup：取出 AppGroup，分别用两个 Pod 的 workload label 在 `TopologyOrder` 里查 index（第 27–29 行），`orderP1 <= orderP2` 时 pInfo1 排前面（第 33 行）。这条路上既不看优先级，也不看入队时间。
 
 取 AppGroup 的函数按 `namespaces` 顺序逐个尝试：
 
@@ -415,15 +423,15 @@ TopologicalSort 只实现 `QueueSortPlugin`，没有 `EventsToRegister`，也没
 
 **第二处是两套规则的拼接。** 同组 Pod 之间按 index 比，跨组 Pod 之间按优先级比，两套规则放在一个比较函数里，传递性就没了：
 
-- A：`shop/frontend`，index 1，优先级 0
-- C：`shop/redis`，index 4，优先级 1000
-- B：不属于任何 AppGroup，优先级 500
+1. A：`shop/frontend`，index 1，优先级 0
+2. C：`shop/redis`，index 4，优先级 1000
+3. B：不属于任何 AppGroup，优先级 500
 
 三次比较的结果：
 
-- `Less(A, C)` 为 true（同组，1 <= 4）；
-- `Less(C, B)` 为 true（跨组，1000 > 500）；
-- `Less(B, A)` 为 true（跨组，500 > 0）。
+1. `Less(A, C)` 为 true（同组，1 <= 4）；
+2. `Less(C, B)` 为 true（跨组，1000 > 500）；
+3. `Less(B, A)` 为 true（跨组，500 > 0）。
 
 A 在 C 前、C 在 B 前、B 又在 A 前，构成一个环。
 
@@ -439,10 +447,10 @@ A 在 C 前、C 在 B 前、B 又在 A 前，构成一个环。
 
 Pod 带着 `appgroup.diktyo.x-k8s.io` label 却没有对应 AppGroup 的情况并不少见：
 
-- AppGroup 建在了 `args.namespaces` 之外的 namespace；
-- 名字拼错；
-- 先建了 Deployment 后建 AppGroup；
-- AppGroup 被删了而 Pod 还在排队。
+1. AppGroup 建在了 `args.namespaces` 之外的 namespace；
+2. 名字拼错；
+3. 先建了 Deployment 后建 AppGroup；
+4. AppGroup 被删了而 Pod 还在排队。
 
 只要队列里有两个这样的 Pod 需要比较，panic 就会发生在调度队列的堆操作里，调度器框架没有 recover，进程会退出。同一个查找函数在 NetworkOverhead 里多了 `appGroup.GetUID() != ""` 的判断，但同样会在找不到时返回 `nil`，后果放在第 29 篇里讲。
 
@@ -501,10 +509,10 @@ Kubernetes 原生的工具是 [SchedulingGates](/posts/sched-plugin-01-schedulin
 
 ## 七、小结
 
-- TopologicalSort 是 QueueSort 插件，与 QOSSort、Coscheduling 互斥；Pod 通过 `appgroup.diktyo.x-k8s.io` 和 `appgroup.diktyo.x-k8s.io.workload` 两个 label 关联到 AppGroup。
-- 拓扑序由外部的 AppGroup controller 计算，存放在 `status.topologyOrder`，数组按 selector 字典序排列，index 才是顺序；插件只做二分查找和比较。
-- 同组按 index（`<=`）比较，跨组或无组回退 PrioritySort，不比较 QoS。这个组合不满足严格弱序：同 index 互判为「更小」，跨组可以成环。
-- AppGroup 在配置的 namespace 里找不到时，`Less` 会解引用 nil 导致调度器退出；status 为空时整组排序退化。
-- 拓扑序的方向要与 NetworkOverhead 的依赖语义配合，被调用方先出队才能让调用方靠近它。
+1. TopologicalSort 是 QueueSort 插件，与 QOSSort、Coscheduling 互斥；Pod 通过 `appgroup.diktyo.x-k8s.io` 和 `appgroup.diktyo.x-k8s.io.workload` 两个 label 关联到 AppGroup。
+2. 拓扑序由外部的 AppGroup controller 计算，存放在 `status.topologyOrder`，数组按 selector 字典序排列，index 才是顺序；插件只做二分查找和比较。
+3. 同组按 index（`<=`）比较，跨组或无组回退 PrioritySort，不比较 QoS。这个组合不满足严格弱序：同 index 互判为「更小」，跨组可以成环。
+4. AppGroup 在配置的 namespace 里找不到时，`Less` 会解引用 nil 导致调度器退出；status 为空时整组排序退化。
+5. 拓扑序的方向要与 NetworkOverhead 的依赖语义配合，被调用方先出队才能让调用方靠近它。
 
 [下一篇](/posts/sched-plugin-27-coscheduling/)是第三个 QueueSort 插件 Coscheduling，它把同一个 PodGroup 的 Pod 排在一起，并在 Permit 阶段实现 all-or-nothing。

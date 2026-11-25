@@ -42,8 +42,8 @@ profiles:
 
 这是 `manifests/nodemetadata/scheduler-config.yaml` 中的第二个示例，分两端看：
 
-- 节点用 annotation 标注每小时成本（第 13–14 行），越便宜的节点得分越高；
-- Pod 通过 `schedulerName: cost-aware-scheduler`（第 4 行）选择这个 Profile。
+1. 节点用 annotation 标注每小时成本（第 13–14 行），越便宜的节点得分越高；
+2. Pod 通过 `schedulerName: cost-aware-scheduler`（第 4 行）选择这个 Profile。
 
 数据来源就是调度器 snapshot 里的 Node 对象，不需要额外的 informer 或 CRD，外部系统更新 annotation 后，下一个调度周期就能看到。
 
@@ -84,10 +84,10 @@ type NodeMetadataArgs struct {
 
 前四个字段都没有默认值，唯一的默认值是 `MetadataType` 为 `Timestamp` 时 `TimestampFormat` 取 `time.RFC3339`，v1 的 `SetDefaults_NodeMetadataArgs` 和 `New` 里各设了一遍。`ValidateNodeMetadataArgs` 检查：
 
-- `metadataKey` 不能为空；
-- `metadataSource` 只能是 `Label` 或 `Annotation`；
-- `metadataType` 只能是 `Number` 或 `Timestamp`；
-- `scoringStrategy` 只能是四个值之一，且 `Number` 只能配 `Highest`/`Lowest`，`Timestamp` 只能配 `Newest`/`Oldest`。
+1. `metadataKey` 不能为空；
+2. `metadataSource` 只能是 `Label` 或 `Annotation`；
+3. `metadataType` 只能是 `Number` 或 `Timestamp`；
+4. `scoringStrategy` 只能是四个值之一，且 `Number` 只能配 `Highest`/`Lowest`，`Timestamp` 只能配 `Newest`/`Oldest`。
 
 校验失败时 `New` 返回错误，调度器启动失败。所以只在 `plugins.score.enabled` 里写了 `NodeMetadata`、却忘了 `pluginConfig`，调度器起不来，错误信息是 `metadataKey cannot be empty`。
 
@@ -99,7 +99,7 @@ type NodeMetadataArgs struct {
 
 ### 3.1 结构与 Score
 
-`Score` 本身很短，取数和比较都在 `calculateScore` 里，它负责把两类失败降级成哨兵值：
+`Score` 取到节点后交给 `calculateScore`，由它把两类失败降级成哨兵值：
 
 ```go {linenos=inline}
 // pkg/nodemetadata/node_metadata.go
@@ -134,8 +134,8 @@ func (nm *NodeMetadata) Score(ctx context.Context, state framework.CycleState, p
 
 两个设计点：
 
-- **key 不存在、值解析失败，都不报错，而是返回哨兵值 `math.MinInt64`（第 19–23 行）。** 如果这里返回 `Error` 状态，框架会让整个 Pod 的本轮调度失败，一个节点的 annotation 写错就会让所有 Pod 都调度不了。用哨兵值把错误降级为「这个节点在本插件里得最低分」，符合 KEP 中「缺失或格式错误的元数据不应导致调度失败」的要求。
-- `node == nil` 分支里调用了 `nodeInfo.Node().Name`（第 16 行），这本身就是对 nil 指针取字段，会 panic。好在框架传进来的 `NodeInfo` 都来自 snapshot，节点不为空，这个分支实际走不到。
+1. **key 不存在、值解析失败，都不报错，而是返回哨兵值 `math.MinInt64`（第 19–23 行）。** 如果这里返回 `Error` 状态，框架会让整个 Pod 的本轮调度失败，一个节点的 annotation 写错就会让所有 Pod 都调度不了。用哨兵值把错误降级为「这个节点在本插件里得最低分」，符合 KEP 中「缺失或格式错误的元数据不应导致调度失败」的要求。
+2. `node == nil` 分支里调用了 `nodeInfo.Node().Name`（第 16 行），这本身就是对 nil 指针取字段，会 panic。好在框架传进来的 `NodeInfo` 都来自 snapshot，节点不为空，这个分支实际走不到。
 
 ### 3.2 两条解析路径
 
@@ -186,8 +186,8 @@ func (nm *NodeMetadata) parseTimestampValue(value string) (int64, error) {
 
 两条路径的共同思路是：**把「偏好方向」编码到原始分的符号里，让归一化永远是「原始分越大越好」。** 具体有两处：
 
-- `Lowest` 取负（第 10–13 行）；
-- `Newest` 用负的年龄（第 30–33 行）。
+1. `Lowest` 取负（第 10–13 行）；
+2. `Newest` 用负的年龄（第 30–33 行）。
 
 于是归一化代码不需要知道策略是什么。
 
@@ -267,10 +267,10 @@ func (nm *NodeMetadata) NormalizeScore(ctx context.Context, state framework.Cycl
 
 和 [NodeResourcesAllocatable](/posts/sched-plugin-33-node-resources-allocatable/) 的 min-max 相比，这里多了一层「保留 0 分」的设计：
 
-- 求极值时跳过哨兵值（第 7–9 行），否则 `MinInt64` 会把区间撑到天文数字，所有有效节点都挤在同一个分数上；
-- 无效节点固定为 `MinNodeScore`（0）（第 45–47 行），有效节点映射到 `[1, 100]`，`newRange` 是 99 而不是 100（第 26、42 行）；
-- 所有有效节点值相同时，它们都得 1 分而不是 0 分（第 29–37 行），依然和无效节点拉开差距；
-- 全部无效时都是 0 分（第 19–23 行），插件不起作用。
+1. 求极值时跳过哨兵值（第 7–9 行），否则 `MinInt64` 会把区间撑到天文数字，所有有效节点都挤在同一个分数上；
+2. 无效节点固定为 `MinNodeScore`（0）（第 45–47 行），有效节点映射到 `[1, 100]`，`newRange` 是 99 而不是 100（第 26、42 行）；
+3. 所有有效节点值相同时，它们都得 1 分而不是 0 分（第 29–37 行），依然和无效节点拉开差距；
+4. 全部无效时都是 0 分（第 19–23 行），插件不起作用。
 
 这样做的意义是：「没有数据」和「数据最差」被明确区分开。如果不预留，`Lowest` 策略下成本最高的节点会得 0 分，与没有标注成本的节点并列，而运维通常希望先用已知成本的节点。
 
@@ -300,10 +300,10 @@ func (nm *NodeMetadata) NormalizeScore(ctx context.Context, state framework.Cycl
 
 前三条来自「字符串解析 + 整数运算 + label 规范」这个组合，最后一条是插件的定位。
 
-- label 值的格式限制：label 值最长 63 个字符，只能包含字母数字、`-`、`_`、`.`，且必须以字母数字开头和结尾。这带来两个后果：RFC3339 时间戳含有 `:`，不能作为 label 值，`metadataSource: Label` 配 `Timestamp` 时必须换成 `2006-01-02` 这类格式（`manifests/nodemetadata/scheduler-config.yaml` 第四个示例正是这么做的）；负数以 `-` 开头，也不能写进 label。annotation 没有这些限制，需要时间精度或负数时用 annotation。
-- ParseFloat 接受的写法比想象的多：`"1e3"`、`"0x1p-2"`、`"Inf"`、`"NaN"` 都能解析成功。超出 int64 范围的浮点数（包括 `Inf`、`NaN`）转成 int64 的结果在 Go 规范里是实现相关的，在 amd64 上通常得到 `MinInt64`，恰好与哨兵值相同而被当作无效，但不应依赖这个巧合。KEP 也把「值恰好等于 `math.MinInt64` 时会被当成无效」列为已知限制。
-- 归一化乘法可能溢出：`(score − min) × 99` 是 int64 乘法，有效值的极差超过约 9.3e16 时会溢出，产生负数或超过 100 的分数。**框架在汇总分数前会检查每个插件的分数是否落在 `[0, 100]`，越界则返回错误，这个 Pod 本轮调度失败。** 秒级时间戳和常见的业务数字远到不了这个量级，但用纳秒时间戳当 `Number` 就有可能碰到。
-- 它只是偏好：KEP 强调这个插件是 advisory 的，它和其他打分插件按权重相加，不能保证 Pod 一定落在分数最高的节点上，也不会在 annotation 变化后迁移已运行的 Pod。需要硬约束时应使用 NodeAffinity。
+1. label 值的格式限制：label 值最长 63 个字符，只能包含字母数字、`-`、`_`、`.`，且必须以字母数字开头和结尾。这带来两个后果：RFC3339 时间戳含有 `:`，不能作为 label 值，`metadataSource: Label` 配 `Timestamp` 时必须换成 `2006-01-02` 这类格式（`manifests/nodemetadata/scheduler-config.yaml` 第四个示例正是这么做的）；负数以 `-` 开头，也不能写进 label。annotation 没有这些限制，需要时间精度或负数时用 annotation。
+2. ParseFloat 接受的写法比想象的多：`"1e3"`、`"0x1p-2"`、`"Inf"`、`"NaN"` 都能解析成功。超出 int64 范围的浮点数（包括 `Inf`、`NaN`）转成 int64 的结果在 Go 规范里是实现相关的，在 amd64 上通常得到 `MinInt64`，恰好与哨兵值相同而被当作无效，但不应依赖这个巧合。KEP 也把「值恰好等于 `math.MinInt64` 时会被当成无效」列为已知限制。
+3. 归一化乘法可能溢出：`(score − min) × 99` 是 int64 乘法，有效值的极差超过约 9.3e16 时会溢出，产生负数或超过 100 的分数。**框架在汇总分数前会检查每个插件的分数是否落在 `[0, 100]`，越界则返回错误，这个 Pod 本轮调度失败。** 秒级时间戳和常见的业务数字远到不了这个量级，但用纳秒时间戳当 `Number` 就有可能碰到。
+4. 它只是偏好：KEP 强调这个插件是 advisory 的，它和其他打分插件按权重相加，不能保证 Pod 一定落在分数最高的节点上，也不会在 annotation 变化后迁移已运行的 Pod。需要硬约束时应使用 NodeAffinity。
 
 ## 六、发散：和 NodeAffinity 加权偏好的对比
 
@@ -323,9 +323,9 @@ func (nm *NodeMetadata) NormalizeScore(ctx context.Context, state framework.Cycl
 
 ## 小结
 
-- `NodeMetadata` 读取一个 label 或 annotation，`Number` 按 `Highest`/`Lowest`、`Timestamp` 按 `Newest`/`Oldest` 打分，偏好方向编码在原始分的符号里。
-- 缺失或解析失败的节点返回 `MinInt64` 哨兵值，归一化时被固定为 0 分；有效节点映射到 `[1, 100]`，保证有数据的节点排在前面。
-- 数值经 `int64()` 向零截断（KEP 说「四舍五入」与代码不符），小数差异会被抹平；label 值不能包含 `:` 也不能以 `-` 开头。
-- 所有参数都没有默认值（时间格式除外），未配置 `pluginConfig` 会导致调度器启动失败。
+1. `NodeMetadata` 读取一个 label 或 annotation，`Number` 按 `Highest`/`Lowest`、`Timestamp` 按 `Newest`/`Oldest` 打分，偏好方向编码在原始分的符号里。
+2. 缺失或解析失败的节点返回 `MinInt64` 哨兵值，归一化时被固定为 0 分；有效节点映射到 `[1, 100]`，保证有数据的节点排在前面。
+3. 数值经 `int64()` 向零截断（KEP 说「四舍五入」与代码不符），小数差异会被抹平；label 值不能包含 `:` 也不能以 `-` 开头。
+4. 所有参数都没有默认值（时间格式除外），未配置 `pluginConfig` 会导致调度器启动失败。
 
 下一篇 [PodState](/posts/sched-plugin-35-pod-state/) 同样是一个小型打分插件，它看的不是节点的属性，而是节点上 Pod 的状态。

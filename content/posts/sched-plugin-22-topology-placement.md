@@ -81,11 +81,12 @@ type TopologyConstraint struct {
 }
 ```
 
-几个约束直接写在 API 里：
+结合字段注释，这个约束有四条规则：
 
-- 最多一个 topology 项（`maxItems=1`）；
-- 整个 `schedulingConstraints` 字段不可变；
-- 没有该标签或标签值为空的节点不属于任何域。
+1. 一个组最多一个 topology 项（`+k8s:maxItems=1`，第 5 行、第 9 行）；每一项的 `Key` 是必填的节点标签名，比如 `topology.kubernetes.io/rack`（第 16 行、第 21–25 行）；
+2. 同一 PodGroup 的所有 Pod 必须落在同一个域实例里；不同 PodGroup 即使来自同一个 PodGroupTemplate，也可以落在不同的域（第 17–18 行）；
+3. 没有该标签、或标签值为空的节点不属于任何域，组里的 Pod 不能放到这些节点上（第 19–20 行）；
+4. 整个 `schedulingConstraints` 字段不可变。
 
 一个完整的例子：
 
@@ -126,6 +127,11 @@ type Placement struct {
 	Nodes []NodeInfo
 }
 ```
+
+注释定义了两个字段各自的含义：
+
+1. `Name`：placement 的唯一名字，只用于诊断和调试；同一个插件返回的名字不能重复，也不能含 `/`，框架合并多个插件的 placement 时用 `/` 拼接名字（第 6–11 行）；
+2. `Nodes`：这个 placement 允许使用的节点，调度器只在其中为整组选节点（第 12–14 行）。
 
 一个 placement 就是「一个名字 + 一组节点」。**注意 `Nodes` 里存的是 snapshot 里的 `NodeInfo` 指针（第 14 行），不是节点名**，这一点在后面 `AssumePlacement` 会用到。
 
@@ -186,10 +192,10 @@ func (pl *TopologyPlacement) GeneratePlacements(ctx context.Context, state fwk.P
 
 {{< figure src="/images/posts/sched-plugins/22-generate.svg" link="/images/posts/sched-plugins/22-generate.svg" caption="GeneratePlacements 的五种情况：无约束、首次调度、已有 Pod 锁定域、域冲突报错、父 placement 里没有所需的域（点击查看大图）" >}}
 
-- topology key 只取第一项。`getTopologyKey` 对 PodGroup 和 CompositePodGroup 分别读 `Spec.SchedulingConstraints.Topology[0].Key`，注释写着「Right now, we only support a single topology constraint on the API level」。
-- **没有约束就原样返回 `parentPlacement`。** 这是一个约定：框架看到「只返回了一个 placement，而且就是传进来的那个指针」，就知道这个插件不想约束，会把它从合并里剔除（见第四节）。返回一个内容相同的新 placement 是不行的，那会被当成「有约束」。
-- **节点按标签值分桶，空值和缺失都跳过（第 23–29 行）。** 这和 API 注释一致。一个常见的误配是只给部分节点打了 rack 标签，结果没打标签的节点对这个组完全不可见，看起来像是「集群资源够却调度不上」。
-- placement 的 Name 直接用标签值。对 rack 标签来说就是 `r1`、`r2`。由于是从 map 里遍历出来的，返回顺序每次不同，接口注释也提醒插件「must not rely on their order」。
+1. topology key 只取第一项。`getTopologyKey` 对 PodGroup 和 CompositePodGroup 分别读 `Spec.SchedulingConstraints.Topology[0].Key`，注释写着「Right now, we only support a single topology constraint on the API level」。
+2. **没有约束就原样返回 `parentPlacement`。** 这是一个约定：框架看到「只返回了一个 placement，而且就是传进来的那个指针」，就知道这个插件不想约束，会把它从合并里剔除（见第四节）。返回一个内容相同的新 placement 是不行的，那会被当成「有约束」。
+3. **节点按标签值分桶，空值和缺失都跳过（第 23–29 行）。** 这和 API 注释一致。一个常见的误配是只给部分节点打了 rack 标签，结果没打标签的节点对这个组完全不可见，看起来像是「集群资源够却调度不上」。
+4. placement 的 Name 直接用标签值。对 rack 标签来说就是 `r1`、`r2`。由于是从 map 里遍历出来的，返回顺序每次不同，接口注释也提醒插件「must not rely on their order」。
 
 ### 3.3 已调度 Pod 锁定域
 
@@ -225,9 +231,9 @@ func (pl *TopologyPlacement) getScheduledPodsTopologyDomain(topologyKey string, 
 
 三种错误（第 10–19 行）都会让 `GeneratePlacements` 返回 `Error` 状态，整个组调度周期以 Error 结束（不是 Unschedulable），PodGroup 的 condition reason 会是 `SchedulerError`。什么时候会走到这里？
 
-- 节点标签被改了：组里的 Pod 已经在 r2 的节点上跑，有人把其中一个节点的标签改成了 r3；
-- Pod 不是通过这条路径调度的：比如在打开 feature gate 之前已经调度了一部分，或者有 Pod 直接写了 `nodeName`；
-- 已调度的 Pod 落在了没有标签的节点上。
+1. 节点标签被改了：组里的 Pod 已经在 r2 的节点上跑，有人把其中一个节点的标签改成了 r3；
+2. Pod 不是通过这条路径调度的：比如在打开 feature gate 之前已经调度了一部分，或者有 Pod 直接写了 `nodeName`；
+3. 已调度的 Pod 落在了没有标签的节点上。
 
 **这些都不是「等一等就能好」的状态，所以返回 Error 而非 Unschedulable 是合理的**：它会在日志和 PodGroup condition 里留下明确的错误信息，而不是悄无声息地一直重试。
 
@@ -237,9 +243,9 @@ func (pl *TopologyPlacement) getScheduledPodsTopologyDomain(topologyKey string, 
 
 PodGroup 调度周期里有三层状态：
 
-- `PodGroupCycleState`：整个组一份；
-- `PlacementCycleState`：每个候选 placement 一份；
-- 每个 Pod 自己的 `CycleState`。
+1. `PodGroupCycleState`：整个组一份；
+2. `PlacementCycleState`：每个候选 placement 一份；
+3. 每个 Pod 自己的 `CycleState`。
 
 接口允许生成插件通过 `state.PlacementState(placement).Write(...)` 给某个 placement 挂上数据，后续这个 placement 里每个 Pod 的 Filter/Score 都能通过 `GetPlacementCycleState()` 读到。
 
@@ -295,9 +301,9 @@ func (f *frameworkImpl) RunPlacementGeneratePlugins(ctx context.Context, state f
 
 需要注意的几点：
 
-- **返回空列表的含义是「没有可行的 placement」（第 17–19 行）**，框架直接给出 `Unschedulable`，失败插件记为 `TopologyPlacementGenerator`。图里的情况 E 就是这样：组里已有 Pod 在 r2，而父 placement（比如 CompositePodGroup 选中的 zone-a）里没有 r2 的节点；
-- 指针比较 `result.Placements[0] == inputPlacement`（第 23–25 行）就是 3.2 节说的「不约束」约定；
-- 多个插件都给出约束时，`mergePlacements` 对它们做笛卡尔积（第 33–37 行），节点取交集，名字用 `/` 连接，交集为空的组合直接丢掉。这也是 `validatePlacementNames` 禁止名字里出现 `/`、禁止同一插件返回重名的原因。
+1. **返回空列表的含义是「没有可行的 placement」（第 17–19 行）**，框架直接给出 `Unschedulable`，失败插件记为 `TopologyPlacementGenerator`。图里的情况 E 就是这样：组里已有 Pod 在 r2，而父 placement（比如 CompositePodGroup 选中的 zone-a）里没有 r2 的节点；
+2. 指针比较 `result.Placements[0] == inputPlacement`（第 23–25 行）就是 3.2 节说的「不约束」约定；
+3. 多个插件都给出约束时，`mergePlacements` 对它们做笛卡尔积（第 33–37 行），节点取交集，名字用 `/` 连接，交集为空的组合直接丢掉。这也是 `validatePlacementNames` 禁止名字里出现 `/`、禁止同一插件返回重名的原因。
 
 当前 in-tree 只有这一个生成插件，所以默认配置下不会触发合并。
 
@@ -336,16 +342,16 @@ func (s *Snapshot) AssumePlacement(placement *fwk.Placement) error {
 
 assume 之后，下面三处都只看这个 placement 的节点：
 
-- `SchedulePod` 里的 `NumNodesInPlacement`；
-- `prefilterNodes` 里的 `ListNodesInPlacement`；
-- PreFilterResult 和 NominatedNodeName 用到的 `GetNodeInPlacement`。
+1. `SchedulePod` 里的 `NumNodesInPlacement`；
+2. `prefilterNodes` 里的 `ListNodesInPlacement`；
+3. PreFilterResult 和 NominatedNodeName 用到的 `GetNodeInPlacement`。
 
 **逐 Pod 算法本身一行没改，就被限定在了一个 rack 里。**
 
 两个细节：
 
-- placement 里的节点必须是 snapshot 里同一个 `NodeInfo` 实例（第 20–23 行），生成插件不能自己构造或复制 NodeInfo；
-- placement 覆盖全部节点时等同于没有 placement（第 7–12 行），省去建集合的开销。
+1. placement 里的节点必须是 snapshot 里同一个 `NodeInfo` 实例（第 20–23 行），生成插件不能自己构造或复制 NodeInfo；
+2. placement 覆盖全部节点时等同于没有 placement（第 7–12 行），省去建集合的开销。
 
 还要注意，**placement 限制的是「候选节点」，不是「插件能看到的集群」。** `RunPreFilterPlugins` 传给各插件的 `nodes` 参数来自 `SnapshotSharedLister().NodeInfos().List()`，而 `Snapshot.List()` 返回的是全部节点，所以 `PodTopologySpread`、`InterPodAffinity` 在 PreFilter 里统计已有 Pod 分布时，看到的仍是整个集群；被 placement 挡在外面的只是 Filter 和 Score 的候选节点。
 
@@ -377,8 +383,8 @@ NNN 一般是上一轮整组抢占留下的。抢占已经在某个 rack 里腾�
 
 第二个设计点是数量（第 4–13 行），分两种情况：
 
-- 有 PlacementScore 插件时，要找的可行 placement 数由 `numFeasiblePlacementsToFind` 决定；
-- 没有打分插件时只找 1 个，找到第一个可行的就用。
+1. 有 PlacementScore 插件时，要找的可行 placement 数由 `numFeasiblePlacementsToFind` 决定；
+2. 没有打分插件时只找 1 个，找到第一个可行的就用。
 
 ```go {linenos=inline}
 // pkg/scheduler/schedule_one_podgroup.go
@@ -420,13 +426,13 @@ func (sched *Scheduler) evaluatePlacement(ctx context.Context, schedFwk framewor
 
 ## 五、边界情况
 
-搜索流程走完，几处边界值得单独列出来：
+搜索流程走完，还剩几处边界：
 
-- **不可行的 placement 不计入「够数」。** `numToFind` 数的是可行的 placement。如果 40 个 rack 里只有 2 个放得下，调度器会把 40 个全部试一遍。每次试放能被 PlacementFeasible 提前判死，代价仍然不小。拓扑域很多、资源又紧张的集群，组调度的耗时主要花在这里，可以看 `scheduler_placement_evaluations_total{result="infeasible"}` 和 `scheduler_placement_evaluation_duration_seconds`。
-- 全部不可行时的报错只反映第一个 placement。没有一个可行时，返回的消息是 `0/N placements are available, first placement status: ...`，后半段只是第一个被评估的 placement 的失败原因（打乱后的第一个），不代表所有 rack 都是同一个原因。代码注释也说「Which one we report is otherwise arbitrary」。
-- **拓扑约束只是「同一个域」，不是「尽量紧凑」。** 插件保证整组在同一个 rack，但 rack 内部 Pod 怎么分布，仍然由逐 Pod 的 Score 插件决定。想要 rack 内也尽量集中，需要配合节点打分策略。
-- 标签值不能含 `/`，在这里恰好不是问题。placement 名字禁止 `/`，而名字就是标签值。Kubernetes 的标签值本身不允许 `/`，所以这条校验对 TopologyPlacement 永远不会触发，但第三方生成插件如果用节点名、路径之类做名字就要注意。
-- 和 PodTopologySpread 同时使用。如果 PodGroup 要求同一个 rack，而 Pod 模板里又写了按 rack 打散的 `DoNotSchedule` 约束，两者是矛盾的：placement 已经把候选节点限定在一个 rack 里，PodTopologySpread 却要求 rack 之间的 skew 不超过 maxSkew。结果通常是组里只能放下很少的 Pod，触发 PlacementFeasible 的 Unschedulable。
+1. **不可行的 placement 不计入「够数」。** `numToFind` 数的是可行的 placement。如果 40 个 rack 里只有 2 个放得下，调度器会把 40 个全部试一遍。每次试放能被 PlacementFeasible 提前判死，代价仍然不小。拓扑域很多、资源又紧张的集群，组调度的耗时主要花在这里，可以看 `scheduler_placement_evaluations_total{result="infeasible"}` 和 `scheduler_placement_evaluation_duration_seconds`。
+2. 全部不可行时的报错只反映第一个 placement。没有一个可行时，返回的消息是 `0/N placements are available, first placement status: ...`，后半段只是第一个被评估的 placement 的失败原因（打乱后的第一个），不代表所有 rack 都是同一个原因。代码注释也说「Which one we report is otherwise arbitrary」。
+3. **拓扑约束只是「同一个域」，不是「尽量紧凑」。** 插件保证整组在同一个 rack，但 rack 内部 Pod 怎么分布，仍然由逐 Pod 的 Score 插件决定。想要 rack 内也尽量集中，需要配合节点打分策略。
+4. 标签值不能含 `/`，在这里恰好不是问题。placement 名字禁止 `/`，而名字就是标签值。Kubernetes 的标签值本身不允许 `/`，所以这条校验对 TopologyPlacement 永远不会触发，但第三方生成插件如果用节点名、路径之类做名字就要注意。
+5. 和 PodTopologySpread 同时使用。如果 PodGroup 要求同一个 rack，而 Pod 模板里又写了按 rack 打散的 `DoNotSchedule` 约束，两者是矛盾的：placement 已经把候选节点限定在一个 rack 里，PodTopologySpread 却要求 rack 之间的 skew 不超过 maxSkew。结果通常是组里只能放下很少的 Pod，触发 PlacementFeasible 的 Unschedulable。
 
 ## 六、发散
 
@@ -453,9 +459,9 @@ PodGroup 不写 `schedulingConstraints` 时，TopologyPlacement 原样返回父 
 
 ## 七、小结
 
-- TopologyPlacementGenerator 只实现 `PlacementGenerate`，按 PodGroup/CompositePodGroup 的 `schedulingConstraints.topology[0].key` 把父 placement 的节点按标签值分桶，每个非空域一个 placement；无标签或空标签的节点被排除。
-- 没有拓扑约束时原样返回父 placement 指针，框架据此识别为「不约束」；返回空列表会让框架给出 `Unschedulable: no feasible placements found`。
-- 组里已有调度过的 Pod 时，只返回那个域；已调度 Pod 跨了多个域或在无标签节点上，返回 Error。
-- placement 通过 `Snapshot.AssumePlacement` 限定逐 Pod 算法的候选节点；调度器按 `percentageOfPlacementsToScore`（默认自适应）找够若干个可行 placement 后停止，有 NominatedNodeName 时优先评估它所在的 placement。
+1. TopologyPlacementGenerator 只实现 `PlacementGenerate`，按 PodGroup/CompositePodGroup 的 `schedulingConstraints.topology[0].key` 把父 placement 的节点按标签值分桶，每个非空域一个 placement；无标签或空标签的节点被排除。
+2. 没有拓扑约束时原样返回父 placement 指针，框架据此识别为「不约束」；返回空列表会让框架给出 `Unschedulable: no feasible placements found`。
+3. 组里已有调度过的 Pod 时，只返回那个域；已调度 Pod 跨了多个域或在无标签节点上，返回 Error。
+4. placement 通过 `Snapshot.AssumePlacement` 限定逐 Pod 算法的候选节点；调度器按 `percentageOfPlacementsToScore`（默认自适应）找够若干个可行 placement 后停止，有 NominatedNodeName 时优先评估它所在的 placement。
 
 找到多个可行 placement 之后，靠什么挑出最好的一个？下一篇讲 [PodGroupPodsCount](/posts/sched-plugin-23-podgroup-pods-count/)。

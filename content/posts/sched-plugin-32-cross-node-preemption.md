@@ -28,7 +28,7 @@ description: "CrossNodePreemption 想解决 in-tree 抢占无法跨节点选受�
 
 `pkg/crossnodepreemption/` 下的 `cross_node_preemption.go`、`candidate.go` 和测试文件，正文全部包在 `/* ... */` 里，编译出来只剩一行 `package crossnodepreemption`。README 标注的成熟度是 Sample（「用于演示和启发」）。也就是说，它不会出现在任何可运行的调度器里，没有扩展点、没有默认权重、没有 feature gate 可言。
 
-但这份代码值得读：它清楚地暴露了 in-tree 抢占模型的边界，而 Kubernetes 主干最近几个版本正在以另一种方式跨过这条边界。本文涉及主干的部分以 master 提交 `aabdf5a2` 为准。
+但这份代码清楚地暴露了 in-tree 抢占模型的边界，而 Kubernetes 主干最近几个版本正在以另一种方式跨过这条边界。本文涉及主干的部分以 master 提交 `aabdf5a2` 为准。
 
 ## 一、它要解决什么问题
 
@@ -66,17 +66,17 @@ scheduled due to "cross node" constraints such as PodTopologySpread and PodAntiA
 
 用 YAML 的语言说，场景里有三方：
 
-- 抢占者 `p` 带 `foo` 标签、优先级 100，要求按 zone 分布、`maxSkew: 1`、`whenUnsatisfiable: DoNotSchedule`（第 3–4 行）；
-- zone1 的 node-a、node-b 各有一个带 `foo` 的低优先级 Pod（第 6–7 行）；
-- zone2 只有 node-x，它的 `pods` 容量是 1（第 13 行的 `Capacity(onePodRes)`），已经被一个优先级同为 100 的 `pod-x`（第 8 行）占满。
+1. 抢占者 `p` 带 `foo` 标签、优先级 100，要求按 zone 分布、`maxSkew: 1`、`whenUnsatisfiable: DoNotSchedule`（第 3–4 行）；
+2. zone1 的 node-a、node-b 各有一个带 `foo` 的低优先级 Pod（第 6–7 行）；
+3. zone2 只有 node-x，它的 `pods` 容量是 1（第 13 行的 `Capacity(onePodRes)`），已经被一个优先级同为 100 的 `pod-x`（第 8 行）占满。
 
 {{< figure src="/images/posts/sched-plugins/32-why-cross-node.svg" link="/images/posts/sched-plugins/32-why-cross-node.svg" caption="zone1 的 foo 计数来自两个节点，单节点抢占每次只能移除其中一个；只有同时移除 pod-a 与 pod-b，p 才能放进 zone1（点击查看大图）" >}}
 
 逐个节点看 in-tree 抢占能做什么：
 
-- node-x：唯一的 Pod 是 `pod-x`，优先级不低于 `p`，不是候选受害者，`SelectVictimsOnNode` 返回 `UnschedulableAndUnresolvable`。
-- node-a：候选受害者只有 `pod-a`。移除后 zone1 还剩 `pod-b`，把 `p` 放进来，zone1 计数 2、zone2 计数 0，skew 为 2，超过 1，Filter 失败。
-- node-b：与 node-a 对称，同样失败。
+1. node-x：唯一的 Pod 是 `pod-x`，优先级不低于 `p`，不是候选受害者，`SelectVictimsOnNode` 返回 `UnschedulableAndUnresolvable`。
+2. node-a：候选受害者只有 `pod-a`。移除后 zone1 还剩 `pod-b`，把 `p` 放进来，zone1 计数 2、zone2 计数 0，skew 为 2，超过 1，Filter 失败。
+3. node-b：与 node-a 对称，同样失败。
 
 三个节点都失败，`p` 无法调度。而只要同时驱逐 `pod-a` 和 `pod-b`，zone1 计数变为 1，skew 为 1，`p` 放在 node-a 或 node-b 上都满足约束。测试期望的结果正是这两个候选。
 
@@ -139,6 +139,14 @@ func (pl *CrossNodePreemption) PostFilter(ctx context.Context, state *framework.
 		return "", status
 	}
 ```
+
+这五步依次是：
+
+1. `PodEligibleToPreemptOthers`：确认抢占者还有资格抢别人，不合格时直接返回空提名节点（第 2–6 行）；
+2. `FindCandidates`：找出所有可能让 Pod 放下的候选，这里换成了跨节点的枚举（第 8–12 行）；
+3. `CallExtenders`：把候选交给注册的 Extender 再过滤一轮（第 14–15 行）；
+4. `SelectCandidate`：从剩下的候选里挑出最优的一个（第 17–18 行）；
+5. `PrepareCandidate`：提名之前的准备工作，in-tree 的实现会驱逐受害者、清掉该节点上低优先级 Pod 的 `NominatedNodeName`（第 20–23 行）。
 
 除了第二步换成了自己的 `FindCandidates`（第 8–9 行），其余都直接调用 `defaultpreemption` 包当时导出的包级函数。这一点决定了它为什么现在编译不过，第四节再说。
 
@@ -207,10 +215,10 @@ func dfs(pods []*v1.Pod, i int, path []*v1.Pod, result *[]dp.Candidate, f dryRun
 
 `dfs` 是最朴素的子集枚举，只有两条规则：
 
-- 每个 Pod 选或不选（第 34–36 行）；
-- 递归到底时对当前子集调用一次 `dryRunOnePass`（第 29–31 行）。
+1. 每个 Pod 选或不选（第 34–36 行）；
+2. 递归到底时对当前子集调用一次 `dryRunOnePass`（第 29–31 行）。
 
-注释写得很坦白：`We have 2^len(pods) choices in total.`（第 18 行）
+注释直接写明：`We have 2^len(pods) choices in total.`（第 18 行）
 
 `append(path, pods[i])` 这种写法在 Go 里有一个经典隐患：如果 `path` 的底层数组还有空余容量，两个分支会共享底层数组，后一个分支的 `append` 可能覆盖前一个分支已经保存的元素。
 
@@ -267,7 +275,7 @@ func dryRunOnePass(ctx context.Context, preemptor *v1.Pod, pods []*v1.Pod, nodeL
 
 ### 2.4 candidate：受害者不在提名节点上
 
-模拟通过的子集会变成一个候选，结构很简单，但它把「一个节点上的受害者」放宽成了「一组 Pod」：
+模拟通过的子集会变成一个候选。`candidate` 把「一个节点上的受害者」放宽成了「一组 Pod」：
 
 ```go {linenos=inline}
 // pkg/crossnodepreemption/candidate.go（已注释）
@@ -285,10 +293,10 @@ func (s *candidate) Victims() *extenderv1.Victims {
 }
 ```
 
-几个字段的含义：
+这个结构只有两个字段，`Victims()` 把它们转成 extender 协议的结构，有两处需要注意：
 
-- `name` 是提名节点，`victims` 是一组分布在多个节点上的 Pod（第 3–4 行）。这在语义上已经超出了 `Victims` 结构原本的含义，它在 extender 协议里表示「这个节点上要驱逐的 Pod」；
-- `NumPDBViolations` 固定为 0（第 11 行），PDB 完全没有参与。
+1. `name` 是提名节点，`victims` 是一组分布在多个节点上的 Pod（第 3–4 行）：两者之间没有「受害者必须在这个节点上」的约束。这在语义上已经超出了 `Victims` 结构原本的含义，它在 extender 协议里表示「这个节点上要驱逐的 Pod」；
+2. `NumPDBViolations` 固定为 0（第 11 行），PDB 完全没有参与。
 
 ## 三、为什么只是示例
 
@@ -323,11 +331,11 @@ README 的说法是：
 
 即使不考虑性能，这份代码也只是「演示思路」的水平：
 
-- 同一节点上的多个受害者：循环里每个受害者都 `nodeLister.Get` 再 `Clone` 一次自己的节点（2.3 节 `dryRunOnePass` 代码第 9–10 行）。如果 `pod-a1`、`pod-a2` 都在 node-a，会产生两份 node-a 副本，每份只少一个 Pod，Filter 在任何一份上都看不到「两个都移除」的效果。资源类的抢占（一个节点要腾出两个 Pod 的空间）在这里会被误判为失败。
-- 只在受害者所在节点上检查。注释承认了这一点（2.3 节代码第 17 行）：`a complete search space is ALL nodes, but that would be expensive`。驱逐 zone1 的 Pod 之后，抢占者也许放在 zone1 的第三个节点上最合适，但那个节点没有受害者，不会被检查。
-- 忽略 PDB：`NumPDBViolations` 恒为 0，`SelectCandidate` 的第一条规则（PDB 违反最少）失效。
-- 受害者优先级的判定过于宽松：只要求「低于抢占者」，没有 `PodEligibleToPreemptOthers` 之外的任何约束，也没有赦免步骤，产出的受害者集合不保证是极小的。
-- `CandidatesToVictimsMap` 的前提被打破：选最优 candidate 时，in-tree 的实现会把 candidate 列表转成 `map[节点名]*Victims`，同一节点的多个 candidate 只保留最后一个（第 4 行）。v1.36.4 的源码对此有明确说明：
+1. 同一节点上的多个受害者：循环里每个受害者都 `nodeLister.Get` 再 `Clone` 一次自己的节点（2.3 节 `dryRunOnePass` 代码第 9–10 行）。如果 `pod-a1`、`pod-a2` 都在 node-a，会产生两份 node-a 副本，每份只少一个 Pod，Filter 在任何一份上都看不到「两个都移除」的效果。资源类的抢占（一个节点要腾出两个 Pod 的空间）在这里会被误判为失败。
+2. 只在受害者所在节点上检查。注释承认了这一点（2.3 节代码第 17 行）：`a complete search space is ALL nodes, but that would be expensive`。驱逐 zone1 的 Pod 之后，抢占者也许放在 zone1 的第三个节点上最合适，但那个节点没有受害者，不会被检查。
+3. 忽略 PDB：`NumPDBViolations` 恒为 0，`SelectCandidate` 的第一条规则（PDB 违反最少）失效。
+4. 受害者优先级的判定过于宽松：只要求「低于抢占者」，没有 `PodEligibleToPreemptOthers` 之外的任何约束，也没有赦免步骤，产出的受害者集合不保证是极小的。
+5. `CandidatesToVictimsMap` 的前提被打破：选最优 candidate 时，in-tree 的实现会把 candidate 列表转成 `map[节点名]*Victims`，同一节点的多个 candidate 只保留最后一个（第 4 行）。v1.36.4 的源码对此有明确说明：
 
 ```go {linenos=inline}
 // k8s.io/kubernetes@v1.36.4/pkg/scheduler/framework/preemption/preemption.go
@@ -415,10 +423,10 @@ type Interface interface {
 
 但这种做法处处违背接口的约定：
 
-- 每个节点的评估是独立并行的，同一个远端 Pod 会出现在多个节点的候选里，彼此没有协调；
-- `CandidatesToVictimsMap` 和 extender 协议都把 `Victims` 理解为「该节点上的受害者」，支持抢占的 extender 收到跨节点受害者时行为不可预期；
-- `SelectCandidate` 的默认打分（最高受害者优先级、受害者数量等）照样能用，但「受害者分散在几个节点上」这种代价没有体现；
-- 搜索空间问题依然存在：选哪些远端 Pod，接口没有提供任何帮助。
+1. 每个节点的评估是独立并行的，同一个远端 Pod 会出现在多个节点的候选里，彼此没有协调；
+2. `CandidatesToVictimsMap` 和 extender 协议都把 `Victims` 理解为「该节点上的受害者」，支持抢占的 extender 收到跨节点受害者时行为不可预期；
+3. `SelectCandidate` 的默认打分（最高受害者优先级、受害者数量等）照样能用，但「受害者分散在几个节点上」这种代价没有体现；
+4. 搜索空间问题依然存在：选哪些远端 Pod，接口没有提供任何帮助。
 
 换句话说，Evaluator 的扩展点是为「同节点、换规则」设计的：换候选规则（PreemptionToleration）、换配额语义（CapacityScheduling）都很顺手；要改变「受害者在哪里」这个维度，就只能像 CrossNodePreemption 当年那样绕过 Evaluator，自己写整个 PostFilter。
 
@@ -439,6 +447,12 @@ master 提交 `aabdf5a2` 中，`SelectVictimsOnNode` 的签名多了 `allPossibl
 	SelectVictimsOnNode(ctx context.Context, cycleState fwk.CycleState, preemptor *v1.Pod, nodeInfo fwk.NodeInfo, allPossibleVictims []*DomainVictim, pdbs []*policy.PodDisruptionBudget) ([]*v1.Pod, int, *fwk.Status)
 ```
 
+这次签名变化有三点写在注释里：
+
+1. 方法要做的事没变：在选中的节点上找最小的受害者集合，让抢占者能放下（第 2–3 行）；
+2. 新增的 `allPossibleVictims` 可以包含分布在其它节点上的 Pod，例如 PodGroup 的成员（第 4 行）；
+3. 输入的所有权写清楚了：`cycleState` 由调用方克隆，`nodeInfo` 是快照副本（第 5 行）。
+
 `DomainVictim` 是一个「不可分割的受害单元」，附带它影响到的所有节点（第 9 行的 `affectedNodes`）：
 
 ```go {linenos=inline}
@@ -454,6 +468,11 @@ type DomainVictim struct {
 }
 ```
 
+结构上有两部分：
+
+1. 内嵌 `Victim`，沿用原有的受害者表示（第 6 行）；
+2. 额外带一个 `affectedNodes`，键是节点名、值是那个节点的 `NodeInfo`，覆盖组内成员所在的每个节点（第 9 行），用来估算一次驱逐波及的范围。
+
 当一个 Pod 属于 disruption mode 为 `All` 的 PodGroup 时，驱逐它就意味着驱逐整个组，组内其他成员可能在别的节点上。`DefaultPreemption.SelectVictimsOnNode` 处理这种受害者的方式，正好就是第四节描述的那条「违背约定」的路，只不过现在写进了约定：
 
 ```go {linenos=inline}
@@ -465,7 +484,13 @@ type DomainVictim struct {
 	// against mainNode here.
 ```
 
-目标节点仍然只有一个，远端节点只通过 `PreFilterExtensions` 更新 CycleState，不修改 `NodeInfo`（第 2–4 行）。这和 CrossNodePreemption 的 `dryRunOnePass` 是同一个机制，区别在于受害者集合不是搜出来的，而是由 PodGroup 的成员关系决定的，搜索空间仍然是线性的。
+目标节点仍然只有一个，远端节点只通过 `PreFilterExtensions` 更新 CycleState，不修改 `NodeInfo`。注释把这条规则拆成了三点：
+
+1. Filter 只对主节点跑，注释里叫 `mainNode`（第 5–6 行）；
+2. 只因 `DomainVictim` 的成员在那里而受牵连的远端节点，其 `NodeInfo` 故意不被改动（第 2 行）；
+3. 远端节点改走 `PreFilterExtension` 的 Remove/AddPod，让插件更新 CycleState 里的计数，例如拓扑分布的 skew 和 Pod 间亲和的计数（第 3–4 行）；在 Filter 里直接读远端 `NodeInfo` 的插件会看到旧值，注释认为可以接受（第 4–6 行）。
+
+这和 CrossNodePreemption 的 `dryRunOnePass` 是同一个机制，区别在于受害者集合不是搜出来的，而是由 PodGroup 的成员关系决定的，搜索空间仍然是线性的。
 
 ### 5.2 整组抢占：以整个集群为域
 
@@ -477,7 +502,7 @@ type DomainVictim struct {
 // preemption where a preemptor is a pod group and the domain is the whole cluster.
 ```
 
-它的算法值得和 CrossNodePreemption 对照，分两步：
+它的算法和 CrossNodePreemption 的暴力枚举方向相反，分两步：
 
 1. 把全集群所有可抢的受害者一次性移除，调用整组调度函数确认能放下；
 2. 按重要性从高到低逐个加回，加回后整组仍能放下就赦免，否则确定为受害者。
@@ -490,19 +515,19 @@ type DomainVictim struct {
 
 把上面两点合起来，一个可用的单 Pod 跨节点抢占大致应该是：
 
-- 受害者候选限定在与失败约束相关的拓扑域内，而不是全集群，例如 PodTopologySpread 失败时只看相关 zone 内匹配 `labelSelector` 的低优先级 Pod；
-- 用「全部移除、逐个赦免」代替子集枚举，把复杂度降到线性；
-- 对同一节点上的多个受害者只克隆一次节点，对远端节点只走 `PreFilterExtensions`；
-- 认真计算 PDB 违反数，并让选择逻辑感知受害者跨越的节点数。
+1. 受害者候选限定在与失败约束相关的拓扑域内，而不是全集群，例如 PodTopologySpread 失败时只看相关 zone 内匹配 `labelSelector` 的低优先级 Pod；
+2. 用「全部移除、逐个赦免」代替子集枚举，把复杂度降到线性；
+3. 对同一节点上的多个受害者只克隆一次节点，对远端节点只走 `PreFilterExtensions`；
+4. 认真计算 PDB 违反数，并让选择逻辑感知受害者跨越的节点数。
 
 即使做到这些，它仍然改变了抢占的既有语义：一个 Pod 的调度失败，可能导致别的节点、别的 zone 上的 Pod 被驱逐。这种「爆炸半径」正是上游迟迟没有在单 Pod 层面引入跨节点抢占的原因，主干选择先在 PodGroup 这种语义上本来就跨节点的场景里打开这扇门。
 
 ## 小结
 
-- `CrossNodePreemption` 在 `cfeb3aa` 中整体被注释，`main.go` 也没有注册它，它只是一份 Sample 级别的思路演示，基于早已不存在的框架 API。
-- 它要解决的是拓扑类约束（PodTopologySpread、zone 级反亲和）下单节点抢占无能为力的问题：zone 的计数来自多个节点，单节点抢占每次只能移除其中一部分。
-- 实现是对全部低优先级 Pod 做 2ⁿ 子集枚举，每个子集克隆受害者所在节点、通过 `RunPreFilterExtensionRemovePod` 更新 CycleState、再在这些节点上跑 Filter；没有剪枝，忽略 PDB，同节点多受害者的处理也有错误。
-- v1.36.4 的 `preemption.Interface` 以「单节点副本」为评估单位，适合换规则，不适合换受害者的范围。
-- 主干的方向是让受害者以 PodGroup 为单位跨节点（`DomainVictim`，远端节点只走 `PreFilterExtensions`），并用「全部移除、逐个赦免」的线性算法代替暴力搜索。
+1. `CrossNodePreemption` 在 `cfeb3aa` 中整体被注释，`main.go` 也没有注册它，它只是一份 Sample 级别的思路演示，基于早已不存在的框架 API。
+2. 它要解决的是拓扑类约束（PodTopologySpread、zone 级反亲和）下单节点抢占无能为力的问题：zone 的计数来自多个节点，单节点抢占每次只能移除其中一部分。
+3. 实现是对全部低优先级 Pod 做 2ⁿ 子集枚举，每个子集克隆受害者所在节点、通过 `RunPreFilterExtensionRemovePod` 更新 CycleState、再在这些节点上跑 Filter；没有剪枝，忽略 PDB，同节点多受害者的处理也有错误。
+4. v1.36.4 的 `preemption.Interface` 以「单节点副本」为评估单位，适合换规则，不适合换受害者的范围。
+5. 主干的方向是让受害者以 PodGroup 为单位跨节点（`DomainVictim`，远端节点只走 `PreFilterExtensions`），并用「全部移除、逐个赦免」的线性算法代替暴力搜索。
 
 下一篇进入打分插件 [NodeResourcesAllocatable](/posts/sched-plugin-33-node-resources-allocatable/)：它和 in-tree 的 NodeResourcesFit 都按可分配资源打分，但偏好的方向可以反过来。

@@ -93,8 +93,8 @@ func New(_ context.Context, _ runtime.Object, _ fwk.Handle, fts feature.Features
 
 结构体里的两个布尔值（第 4–7 行）是 feature gate 的快照，在 `New`（第 49–54 行）里通过 `feature.Features` 传入，运行期不再查询全局 gate：
 
-- `InPlacePodVerticalScalingSchedulerPreemption`（1.37 Alpha，默认关）：原地扩容被推迟的 Pod 已经在节点上运行，节点被 cordon 不影响它扩容，所以 PreFilter 返回 `Skip`（第 18–20 行），Filter 也直接放行（第 26–28 行）。上一篇讲过这类 Pod 是唯一带着 `nodeName` 进入调度周期的 Pod。
-- `TaintTolerationComparisonOperators`（1.35 Alpha，默认关）：允许 toleration 使用 `Lt`/`Gt` 数值比较，这里只是透传给容忍判断函数，第 05 篇细讲。
+1. `InPlacePodVerticalScalingSchedulerPreemption`（1.37 Alpha，默认关）：原地扩容被推迟的 Pod 已经在节点上运行，节点被 cordon 不影响它扩容，所以 PreFilter 返回 `Skip`（第 18–20 行），Filter 也直接放行（第 26–28 行）。上一篇讲过这类 Pod 是唯一带着 `nodeName` 进入调度周期的 Pod。
+2. `TaintTolerationComparisonOperators`（1.35 Alpha，默认关）：允许 toleration 使用 `Lt`/`Gt` 数值比较，这里只是透传给容忍判断函数，第 05 篇细讲。
 
 对普通 Pod，PreFilter 返回 `nil, nil`（第 21 行）：既不缩小节点范围，也不 `Skip`。插件没有 CycleState，Filter 每次直接读 Node 对象。
 
@@ -147,8 +147,8 @@ func (nc *Controller) doNoScheduleTaintingPass(ctx context.Context, nodeName str
 
 这个函数把节点的状态统一翻译成 `NoSchedule` 污点：
 
-- 节点条件：`Ready=False` 变成 `not-ready`，`MemoryPressure=True` 变成 `memory-pressure`（第 6–15 行的映射）；
-- cordon：`spec.unschedulable=true` 变成 `unschedulable`（第 16–22 行）。
+1. 节点条件：`Ready=False` 变成 `not-ready`，`MemoryPressure=True` 变成 `memory-pressure`（第 6–15 行的映射）；
+2. cordon：`spec.unschedulable=true` 变成 `unschedulable`（第 16–22 行）。
 
 **这样做的好处是只需要一种机制（污点与容忍）就能表达「哪些 Pod 可以无视节点的某种状态」。** DaemonSet 控制器给它创建的每个 Pod 都加上了一组默认容忍，其中就有这一条（第 2–6 行）：
 
@@ -177,9 +177,9 @@ func (nc *Controller) doNoScheduleTaintingPass(ctx context.Context, nodeName str
 
 构造的污点没有 `Value`，所以以下三种容忍都能生效：
 
-- `operator: Exists` 且 key 为 `node.kubernetes.io/unschedulable`；
-- `operator: Equal`、key 相同、`value` 为空；
-- key 为空、`operator: Exists` 的「容忍一切」。
+1. `operator: Exists` 且 key 为 `node.kubernetes.io/unschedulable`；
+2. `operator: Equal`、key 相同、`value` 为空；
+3. key 为空、`operator: Exists` 的「容忍一切」。
 
 effect 必须为空或 `NoSchedule`，写成 `NoExecute` 的容忍不算。
 
@@ -204,11 +204,15 @@ func (pl *NodeUnschedulable) EventsToRegister(_ context.Context) ([]fwk.ClusterE
 }
 ```
 
-两个事件：节点新增或污点变化（第 5 行）；Pod 自己的容忍发生变化（第 10 行）。
+这段注册里有两处订阅、一处显式不订阅，共三条：
+
+1. `Node` 的 `Add | UpdateNodeTaint`（第 5 行）：节点新增或污点变化，cordon、uncordon 和 `kubectl taint` 都算，hint 是 `isSchedulableAfterNodeChange`；
+2. `TargetPod` 的 `UpdatePodToleration`（第 10 行）：Pod 自己的容忍发生变化，hint 是 `isSchedulableAfterTargetPodTolerationChange`；
+3. 不注册 `UpdateNodeLabel`：注释说明启用 QueueingHint 后不再使用 preCheck，而节点标签变化也不改变 `spec.unschedulable` 的值。
 
 ### 4.1 uncordon 被翻译成 UpdateNodeTaint
 
-这里有一个容易漏掉的细节：插件注册的是 `UpdateNodeTaint`，而 uncordon 改的是 `spec.unschedulable`，不是污点。两者的连接点在调度器把 Node 更新翻译成事件的地方：
+插件注册的是 `UpdateNodeTaint`，而 uncordon 改的是 `spec.unschedulable`，不是污点。两者的连接点在调度器把 Node 更新翻译成事件的地方：
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/events.go
@@ -251,8 +255,8 @@ func (pl *NodeUnschedulable) isSchedulableAfterNodeChange(logger klog.Logger, po
 
 **只有两种情况返回 `Queue`**（第 11–15 行的两个条件）：
 
-- 节点从 cordon 变为 uncordon；
-- 新增了一个没被 cordon 的节点。
+1. 节点从 cordon 变为 uncordon；
+2. 新增了一个没被 cordon 的节点。
 
 其他的污点变化（比如有人给节点加了别的污点）返回 `QueueSkip`。hint 只看事件里的节点，不看 Pod 被哪个节点拒绝过，所以集群里任何一个节点 uncordon，所有被 `NodeUnschedulable` 拒绝过的 Pod 都会被唤醒一次。
 
@@ -309,7 +313,7 @@ func (pl *NodeUnschedulable) isSchedulableAfterTargetPodTolerationChange(logger 
 
 **`NodeUnschedulable` 不实现 `PreFilterExtensions`。** 它的判定只依赖 Node 和待调度 Pod 自身，与节点上有哪些 Pod 无关，抢占模拟时增删 Pod 不会改变结果，不需要 `AddPod`/`RemovePod`。
 
-这个字段之所以还在，需要一点历史来解释。最后交代一下 cordon 从独立谓词演变成现在这个结构的过程。
+这个字段之所以还在，要从 cordon 从独立谓词演变成现在这个结构的历史说起。
 
 ## 六、发散：从 spec 字段到污点的演进
 
@@ -319,22 +323,22 @@ func (pl *NodeUnschedulable) isSchedulableAfterTargetPodTolerationChange(logger 
 
 **`spec.unschedulable` 没有被同样删除，因为它是 kubectl cordon、各种运维工具和云厂商节点池管理的公共接口，改不动。** 于是留下了现在的结构：
 
-- 运维操作写 spec；
-- 控制器补污点；
-- 调度器用 `NodeUnschedulable` 守住异步窗口，并用同一个容忍作为例外条件，保持两边语义一致。
+1. 运维操作写 spec；
+2. 控制器补污点；
+3. 调度器用 `NodeUnschedulable` 守住异步窗口，并用同一个容忍作为例外条件，保持两边语义一致。
 
 对生产环境的启示是：
 
-- 想让某类 Pod 能进入 cordon 的节点（比如节点维护时仍需要运行的诊断工具），给它加 `node.kubernetes.io/unschedulable:NoSchedule` 的容忍，不需要别的手段；
-- 想要「尽量别去」而不是「绝对别去」，用自定义的 `PreferNoSchedule` 污点，不要用 cordon；
-- 排查「节点 uncordon 了 Pod 却还 Pending」时，看事件里最近一次失败的插件：如果已经从 `NodeUnschedulable` 变成 `TaintToleration`，说明在等控制器删污点，检查 kube-controller-manager 是否正常。
+1. 想让某类 Pod 能进入 cordon 的节点（比如节点维护时仍需要运行的诊断工具），给它加 `node.kubernetes.io/unschedulable:NoSchedule` 的容忍，不需要别的手段；
+2. 想要「尽量别去」而不是「绝对别去」，用自定义的 `PreferNoSchedule` 污点，不要用 cordon；
+3. 排查「节点 uncordon 了 Pod 却还 Pending」时，看事件里最近一次失败的插件：如果已经从 `NodeUnschedulable` 变成 `TaintToleration`，说明在等控制器删污点，检查 kube-controller-manager 是否正常。
 
 ## 七、小结
 
-- `NodeUnschedulable` 的 Filter：`spec.unschedulable` 为真且 Pod 不容忍 `node.kubernetes.io/unschedulable:NoSchedule` 时返回 `UnschedulableAndUnresolvable`，原因 `node(s) were unschedulable`，不会触发抢占。
-- 对普通 Pod，PreFilter 返回 `nil, nil`；只有被推迟扩容的 Pod（Alpha gate）返回 `Skip`。插件没有 CycleState、没有 Score、没有 `PreFilterExtensions`。
-- uncordon 在调度器里被翻译成 `UpdateNodeTaint` 事件，hint 只在节点从 cordon 变为可调度、或新增一个可调度节点时返回 `Queue`；Pod 新增容忍时，只有新容忍覆盖了 unschedulable 污点才返回 `Queue`。
-- node-lifecycle-controller 会异步补上同名污点，调度器直接读 spec 来覆盖这段时间差；uncordon 后 Pod 可能先后被两个插件拒绝和唤醒。
-- kubelet 不检查 cordon，绕过调度器的 Pod 可以运行在 cordon 掉的节点上。
+1. `NodeUnschedulable` 的 Filter：`spec.unschedulable` 为真且 Pod 不容忍 `node.kubernetes.io/unschedulable:NoSchedule` 时返回 `UnschedulableAndUnresolvable`，原因 `node(s) were unschedulable`，不会触发抢占。
+2. 对普通 Pod，PreFilter 返回 `nil, nil`；只有被推迟扩容的 Pod（Alpha gate）返回 `Skip`。插件没有 CycleState、没有 Score、没有 `PreFilterExtensions`。
+3. uncordon 在调度器里被翻译成 `UpdateNodeTaint` 事件，hint 只在节点从 cordon 变为可调度、或新增一个可调度节点时返回 `Queue`；Pod 新增容忍时，只有新容忍覆盖了 unschedulable 污点才返回 `Queue`。
+4. node-lifecycle-controller 会异步补上同名污点，调度器直接读 spec 来覆盖这段时间差；uncordon 后 Pod 可能先后被两个插件拒绝和唤醒。
+5. kubelet 不检查 cordon，绕过调度器的 Pod 可以运行在 cordon 掉的节点上。
 
 [下一篇](/posts/sched-plugin-05-taint-toleration/)读 `TaintToleration`：它同时有 Filter 和 Score，三种污点效果在调度器、kubelet、taint-eviction-controller 之间各有分工。

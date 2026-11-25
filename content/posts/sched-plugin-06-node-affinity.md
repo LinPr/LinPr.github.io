@@ -164,26 +164,26 @@ func (t *nodeSelectorTerm) match(nodeLabels labels.Set, nodeFields fields.Set) (
 
 匹配分两层：
 
-- term 之间是 OR：遍历 term（第 10–19 行），任何一个命中就返回 `true`；
-- 单个 term 内是 AND：`matchExpressions` 被转成一个 `labels.Selector`（多条 requirement 叠加即 AND），`matchFields` 被转成 `fields.AndSelectors`，两者又是 AND（第 23–34 行）。
+1. term 之间是 OR：遍历 term（第 10–19 行），任何一个命中就返回 `true`；
+2. 单个 term 内是 AND：`matchExpressions` 被转成一个 `labels.Selector`（多条 requirement 叠加即 AND），`matchFields` 被转成 `fields.AndSelectors`，两者又是 AND（第 23–34 行）。
 
-有三个细节只有读代码才看得到：
+三个细节决定了实际行为：
 
-- 空 term 不匹配任何节点。`NewLazyErrorNodeSelector` 解析时会跳过 `matchExpressions` 和 `matchFields` 都为空的 term（注释写的是 `nil or empty term selects no objects`）。所以写一个空 term 想表达「任意节点」是行不通的，它等于什么都没写，如果这是唯一的 term，Pod 哪儿也去不了。
-- `matchFields` 只认 `metadata.name`。`extractNodeFields` 只往 `fields.Set` 里放了这一个键；API 校验也只允许 `In`/`NotIn`，并且必须恰好一个值。
-- 解析错误是「懒」的。名字里的 `Lazy` 指只有在没有任何 term 命中时才把解析错误返回。这是为了兼容历史上 apiserver 校验不严时存进 etcd 的非法值（校验代码里至今有 `allowInvalidLabelValueInRequiredNodeAffinity` 这样的开关）。**一个 term 写错了，不影响其他 term 正常匹配。**
+1. 空 term 不匹配任何节点。`NewLazyErrorNodeSelector` 解析时会跳过 `matchExpressions` 和 `matchFields` 都为空的 term（注释写的是 `nil or empty term selects no objects`）。所以写一个空 term 想表达「任意节点」是行不通的，它等于什么都没写，如果这是唯一的 term，Pod 哪儿也去不了。
+2. `matchFields` 只认 `metadata.name`。`extractNodeFields` 只往 `fields.Set` 里放了这一个键；API 校验也只允许 `In`/`NotIn`，并且必须恰好一个值。
+3. 解析错误是「懒」的。名字里的 `Lazy` 指只有在没有任何 term 命中时才把解析错误返回。这是为了兼容历史上 apiserver 校验不严时存进 etcd 的非法值（校验代码里至今有 `allowInvalidLabelValueInRequiredNodeAffinity` 这样的开关）。**一个 term 写错了，不影响其他 term 正常匹配。**
 
 操作符方面：
 
-- `In`/`NotIn`/`Exists`/`DoesNotExist` 对应 `selection` 包里的同名操作；
-- `Gt`/`Lt` 会把标签值当整数比较；
-- `NotIn` 和 `DoesNotExist` 对没有这个标签的节点返回 true，这经常被用来「排除某类节点」。
+1. `In`/`NotIn`/`Exists`/`DoesNotExist` 对应 `selection` 包里的同名操作；
+2. `Gt`/`Lt` 会把标签值当整数比较；
+3. `NotIn` 和 `DoesNotExist` 对没有这个标签的节点返回 true，这经常被用来「排除某类节点」。
 
-语义到这里就完整了。下面按扩展点顺序看插件怎么用它。
+这些规则都在 component-helpers 的 `nodeaffinity` 包里实现，插件在它外面加上 PreFilterResult 的推导和打分的归一化。下面按扩展点顺序看插件这一层。
 
 ## 三、源码按扩展点拆
 
-插件本身很薄，重点在两处：PreFilter 怎么缩小候选集，Score 怎么归一化。
+重点在两处：PreFilter 怎么缩小候选集，Score 怎么归一化。
 
 ### 3.1 结构体、工厂与参数
 
@@ -227,8 +227,8 @@ func New(_ context.Context, plArgs runtime.Object, h fwk.Handle, fts feature.Fea
 
 注意这里用的解析函数：
 
-- required 部分是 `NewNodeSelector`（第 13 行），不是 Pod 用的 `NewLazyErrorNodeSelector`；
-- preferred 部分用的是 `NewPreferredSchedulingTerms`（第 18 行）。
+1. required 部分是 `NewNodeSelector`（第 13 行），不是 Pod 用的 `NewLazyErrorNodeSelector`；
+2. preferred 部分用的是 `NewPreferredSchedulingTerms`（第 18 行）。
 
 **管理员写的配置没有历史包袱，任何解析错误都会在 `ValidateNodeAffinityArgs` 阶段直接让调度器启动失败。** `NodeAffinityArgs` 只有一个字段 `AddedAffinity`，默认为空，表示所有节点都满足。
 
@@ -302,7 +302,7 @@ func (s *preFilterState) Clone() fwk.StateData {
 
 `Clone` 直接返回自身。CycleState 在抢占模拟、nominated Pod 二次过滤时会被克隆，但这份状态只取决于待调度 Pod 和节点标签，与节点上有哪些 Pod 无关，没有必要深拷贝。同理 `PreFilterExtensions()` 返回 `nil`：抢占时往节点上增删 Pod，不会改变节点亲和的结论。
 
-后半段是这个插件最有意思的部分：
+后半段从 required 亲和里推导候选节点：
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodeaffinity/node_affinity.go
@@ -342,13 +342,13 @@ func (s *preFilterState) Clone() fwk.StateData {
 
 它把 required 亲和里的 `metadata.name In [...]` 提取出来，和语义保持一致：
 
-- term 内取交集（第 7–17 行，AND）；
-- term 间取并集（第 24 行，OR）。
+1. term 内取交集（第 7–17 行，AND）；
+2. term 间取并集（第 24 行，OR）。
 
 **只要有一个 term 不含节点名条件，那个 term 可能被任何节点命中，就不能缩小，直接返回 `nil`（第 19–23 行）。** 注意 `nodeNames` 有 `nil` 和「非 nil 但为空」两种状态，最后的返回分两种情况：
 
-- 「非 nil 但为空」说明每个 term 的节点名条件内部自相矛盾，返回 `UnschedulableAndUnresolvable`（第 28–29 行），原因串 `pod affinity terms conflict`；
-- 能确定集合时返回 `PreFilterResult`（第 30–31 行）。
+1. 「非 nil 但为空」说明每个 term 的节点名条件内部自相矛盾，返回 `UnschedulableAndUnresolvable`（第 28–29 行），原因串 `pod affinity terms conflict`；
+2. 能确定集合时返回 `PreFilterResult`（第 30–31 行）。
 
 `NotIn` 不参与推导：排除一个节点名并不能把候选集缩小到一个可枚举的集合。
 
@@ -426,7 +426,7 @@ func (pl *NodeAffinity) Filter(ctx context.Context, state fwk.CycleState, pod *v
 
 Filter 里还有一个兜底：读不到 PreFilter 状态时现场解析。这是为「在配置里禁用了 NodeAffinity 的 PreFilter 但保留 Filter」这种组合准备的。正常情况下 PreFilter 返回 `Skip` 时 Filter 根本不会被调用，走不到这条分支。
 
-淘汰到这里就完了。评分阶段换了一套输入：只看 preferred 亲和，不再看能不能去。
+评分阶段换了一套输入：只看 preferred 亲和，不再看能不能去。
 
 ### 3.4 PreScore 与 Score：权重求和
 
@@ -468,8 +468,8 @@ func (pl *NodeAffinity) Score(ctx context.Context, state fwk.CycleState, pod *v1
 
 没有 preferred 亲和的 Pod 在 PreScore 返回 `Skip`（第 7–10 行），Score 和 NormalizeScore 都不会执行，这个插件在总分里贡献 0。和 PreFilter 不同，PreScore 遇到解析错误是直接报错的（`fwk.AsStatus(err)`）。`NewPreferredSchedulingTerms` 不是 lazy 的，对 term 的处理分两种：
 
-- 权重为 0 或 preference 为空的 term 会被静默跳过；
-- **有解析错误的 term 会让整个调度周期失败**。
+1. 权重为 0 或 preference 为空的 term 会被静默跳过；
+2. **有解析错误的 term 会让整个调度周期失败**。
 
 单个节点的原始分是命中 term 的权重之和（第 6–11 行逐个 term 判断，命中就把 `weight` 累加）：
 
@@ -509,8 +509,8 @@ func (pl *NodeAffinity) NormalizeScore(ctx context.Context, state fwk.CycleState
 
 如果把权重换成 30 和 10，原始分变成 40、30、10、0，最大值 40 被放大到 100，结果是 100、75、25、0。可以看出两点：
 
-- **归一化之后只有相对权重有意义**：30/10 和 75/25 打出的分完全一样，把 preferred 权重全部乘以 2 不会让节点亲和在总分里变得更重要。要调整它和其他插件的相对重要性，只能改插件权重。
-- 归一化以「当前这批可行节点里的最大值」为基准。如果所有可行节点都命中同样的 term，它们都得 100，这个插件对排序没有任何贡献；如果都不命中，都得 0。
+1. **归一化之后只有相对权重有意义**：30/10 和 75/25 打出的分完全一样，把 preferred 权重全部乘以 2 不会让节点亲和在总分里变得更重要。要调整它和其他插件的相对重要性，只能改插件权重。
+2. 归一化以「当前这批可行节点里的最大值」为基准。如果所有可行节点都命中同样的 term，它们都得 100，这个插件对排序没有任何贡献；如果都不命中，都得 0。
 
 ### 3.5 EventsToRegister 与 QueueingHint
 
@@ -527,7 +527,7 @@ func (pl *NodeAffinity) EventsToRegister(_ context.Context) ([]fwk.ClusterEventW
 
 只订阅节点新增和标签变更两类事件（第 4 行）。框架在 `extractNodeLabelsChange` 里用 `equality.Semantic.DeepEqual` 比较新旧标签，只有标签真的变了才产生 `UpdateNodeLabel`。节点心跳、condition、allocatable 变化都不会触发这个插件的 hint。
 
-hint 函数的判断顺序值得逐行看：
+hint 函数按顺序判断四步：
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/nodeaffinity/node_affinity.go
@@ -604,7 +604,7 @@ PreFilter 和 Filter 开头都有一段 `IsPodResizeDeferred` 判断。`InPlaceP
 
 这种 Pod 已经在节点上了，节点亲和没有重新判断的意义，所以 PreFilter 返回 `Skip`，Filter 直接放行。相关的资源计算在 [NodeResourcesFit](/posts/sched-plugin-08-node-resources-fit/) 和 [DeferredPodScheduling](/posts/sched-plugin-17-deferred-pod-scheduling/) 里。
 
-插件的所有扩展点讲完了。剩下的是不走正常路径的组合。
+扩展点到 `SignPod` 为止。剩下的是不走正常路径的组合。
 
 ## 四、边界情况与坑
 
@@ -621,8 +621,8 @@ PreFilter 和 Filter 开头都有一段 `IsPodResizeDeferred` 判断。`InPlaceP
 
 **`metadata.name` 亲和和 `nodeName` 不是一回事。**
 
-- 前者仍然经过完整的调度流程，资源、端口、污点都会检查，失败了会 Pending 并且可以抢占；
-- 后者完全不经过调度器。
+1. 前者仍然经过完整的调度流程，资源、端口、污点都会检查，失败了会 Pending 并且可以抢占；
+2. 后者完全不经过调度器。
 
 DaemonSet 早年用 `nodeName`，后来改为节点亲和，就是为了让 DaemonSet Pod 也能享受抢占和统一的资源判定。
 
@@ -634,8 +634,8 @@ DaemonSet 早年用 `nodeName`，后来改为节点亲和，就是为了让 Daem
 
 **preferred 和 `TaintToleration` 的打分是两套归一化。**
 
-- `TaintToleration` 用反向归一化（软污点越多越差）；
-- `NodeAffinity` 用正向归一化（命中权重越多越好）。
+1. `TaintToleration` 用反向归一化（软污点越多越差）；
+2. `NodeAffinity` 用正向归一化（命中权重越多越好）。
 
 两者权重分别是 3 和 2，一个节点同时有一个 `PreferNoSchedule` 污点且命中全部 preferred term，两项在总分里会部分抵消。
 
@@ -647,10 +647,10 @@ DaemonSet 早年用 `nodeName`，后来改为节点亲和，就是为了让 Daem
 
 `component-helpers/scheduling/corev1/nodeaffinity` 是一个只依赖 `k8s.io/api` 和 `apimachinery` 的小包，使用者包括：
 
-- kube-scheduler 的 `NodeAffinity` 插件；
-- kubelet 准入 `generalFilter`，Pod 被直接写了 `nodeName` 时它是唯一的把关者；
-- DaemonSet 控制器判断「这个节点要不要跑 DaemonSet Pod」；
-- `NewRequiredNodeAffinity` 的注释还点名了「工作负载控制器评估 Pod 模板」这类没有 Pod 对象的调用方。
+1. kube-scheduler 的 `NodeAffinity` 插件；
+2. kubelet 准入 `generalFilter`，Pod 被直接写了 `nodeName` 时它是唯一的把关者；
+3. DaemonSet 控制器判断「这个节点要不要跑 DaemonSet Pod」；
+4. `NewRequiredNodeAffinity` 的注释还点名了「工作负载控制器评估 Pod 模板」这类没有 Pod 对象的调用方。
 
 调度器的语义和其他组件不一致，会导致 Pod 被调度过去后被 kubelet 拒绝，然后控制器再创建、再调度、再被拒绝，形成循环。把匹配逻辑抽到 staging 仓库里由各组件共用，是从根上消除这种不一致。读节点亲和问题时，先确认问题出在「匹配语义」还是「调度器流程」，前者去 component-helpers 找，后者才看插件。
 
@@ -658,23 +658,23 @@ DaemonSet 早年用 `nodeName`，后来改为节点亲和，就是为了让 Daem
 
 `PreFilterResult` 是一个通用机制，任何插件都可以用它缩小候选集，但在 in-tree 插件里只有两个会返回非空结果：
 
-- `NodeName`：Pod 已经带着 `spec.nodeName` 时返回这一个节点；
-- `NodeAffinity`：日常最常命中的。
+1. `NodeName`：Pod 已经带着 `spec.nodeName` 时返回这一个节点；
+2. `NodeAffinity`：日常最常命中的。
 
 它的局限也很明显：只能从「枚举节点名」的条件里推导，`zone In [cn-a]` 这种标签条件即使只命中一个节点，也不会被推导出来。原因是调度器要从标签反查节点需要一个标签索引，而 `NodeInfo` 快照里没有这种索引，构造它的成本比直接跑 Filter 还高。
 
 ### 5.3 生产建议
 
-- 把「必须」和「最好」分开写：硬性的放 required，能退让的放 preferred。required 写得过严，扩容时新节点忘记打标签就会出现大面积 Pending。
-- 多 Profile 场景下，用 `addedAffinity` 比在每个工作负载上写亲和更不容易遗漏，但要记得给 DaemonSet 留出口：DaemonSet 的 Pod 默认用的是 `default-scheduler`，一般不受其他 Profile 的 `addedAffinity` 影响；如果把 DaemonSet 也指向了带 `addedAffinity` 的 Profile，节点池外的节点上那份 Pod 会一直 Pending。
-- 排查「为什么没去我想要的节点」时，先看 preferred 的绝对权重有没有意义：如果所有可行节点都命中了同样的 term，这个插件在这次调度里等于没打分。
+1. 把「必须」和「最好」分开写：硬性的放 required，能退让的放 preferred。required 写得过严，扩容时新节点忘记打标签就会出现大面积 Pending。
+2. 多 Profile 场景下，用 `addedAffinity` 比在每个工作负载上写亲和更不容易遗漏，但要记得给 DaemonSet 留出口：DaemonSet 的 Pod 默认用的是 `default-scheduler`，一般不受其他 Profile 的 `addedAffinity` 影响；如果把 DaemonSet 也指向了带 `addedAffinity` 的 Profile，节点池外的节点上那份 Pod 会一直 Pending。
+3. 排查「为什么没去我想要的节点」时，先看 preferred 的绝对权重有没有意义：如果所有可行节点都命中了同样的 term，这个插件在这次调度里等于没打分。
 
 ## 六、小结
 
-- `NodeAffinity` 的 required 语义是 `addedAffinity` AND `nodeSelector` AND（term₁ OR term₂ …），term 内部 `matchExpressions` 与 `matchFields` 全部 AND；空 term 不匹配任何节点。
-- PreFilter 对无约束的 Pod 返回 `Skip`，并从 `metadata.name In` 条件推导 `PreFilterResult`，DaemonSet Pod 因此只在目标节点上跑 Filter；节点名条件互相矛盾时返回 `UnschedulableAndUnresolvable`。
-- Filter 的两种失败都是 `UnschedulableAndUnresolvable`，抢占不会考虑这些节点。
-- Score 是命中 preferred term 的权重和，按当前最大值正向归一化到 0 到 100，再乘以插件权重 2；只有相对权重有意义。
-- QueueingHint 只在节点新增且匹配、或标签从不匹配变为匹配时返回 `Queue`。
+1. `NodeAffinity` 的 required 语义是 `addedAffinity` AND `nodeSelector` AND（term₁ OR term₂ …），term 内部 `matchExpressions` 与 `matchFields` 全部 AND；空 term 不匹配任何节点。
+2. PreFilter 对无约束的 Pod 返回 `Skip`，并从 `metadata.name In` 条件推导 `PreFilterResult`，DaemonSet Pod 因此只在目标节点上跑 Filter；节点名条件互相矛盾时返回 `UnschedulableAndUnresolvable`。
+3. Filter 的两种失败都是 `UnschedulableAndUnresolvable`，抢占不会考虑这些节点。
+4. Score 是命中 preferred term 的权重和，按当前最大值正向归一化到 0 到 100，再乘以插件权重 2；只有相对权重有意义。
+5. QueueingHint 只在节点新增且匹配、或标签从不匹配变为匹配时返回 `Queue`。
 
 节点标签对上了，下一关是节点上的端口：[NodePorts](/posts/sched-plugin-07-node-ports/) 检查 `hostPort` 有没有被占用，它是默认 Filter 链里少数返回可抢占状态码的插件之一。

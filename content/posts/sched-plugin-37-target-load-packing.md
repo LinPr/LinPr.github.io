@@ -17,9 +17,9 @@ description: "Trimaran 四个插件的第一篇。先拆共用的数据链路：
 
 Trimaran 是 scheduler-plugins 里 `pkg/trimaran/` 下四个插件的统称：`TargetLoadPacking`、`LoadVariationRiskBalancing`、`LowRiskOverCommitment`、`Peaks`。本文基于 scheduler-plugins 提交 `cfeb3aa`（依赖 Kubernetes v1.36.4）和它锁定的 `github.com/paypal/load-watcher v0.2.4`。四个插件在 Pod 调度过程中的位置相同：
 
-- 都只实现 Score，不实现 PreFilter/Filter，因此**不会让任何 Pod 变成 Unschedulable**；`LowRiskOverCommitment` 另外实现了 PreScore。
-- 都不在 in-tree 默认 Profile 里，没有 feature gate，需要运行 scheduler-plugins 自己的调度器二进制（`cmd/scheduler/main.go` 里通过 `app.WithPlugin` 注册），并在 `profiles[].plugins.score.enabled` 里显式启用。没有写 weight 时，框架会把 0 改成 1（`pkg/scheduler/framework/runtime/framework.go` 里的 `getValidScoreWeights`）。
-- 都没有实现 `EnqueueExtensions`。这不是遗漏：框架只为 PreEnqueue、PreFilter、Filter、Reserve、Permit、PlacementFeasible 插件收集入队事件（`shouldHaveEnqueueExtensions`），Score 插件不会拒绝 Pod，也就不存在「被它拒绝后什么事件能让 Pod 重新入队」的问题。
+1. 都只实现 Score，不实现 PreFilter/Filter，因此**不会让任何 Pod 变成 Unschedulable**；`LowRiskOverCommitment` 另外实现了 PreScore。
+2. 都不在 in-tree 默认 Profile 里，没有 feature gate，需要运行 scheduler-plugins 自己的调度器二进制（`cmd/scheduler/main.go` 里通过 `app.WithPlugin` 注册），并在 `profiles[].plugins.score.enabled` 里显式启用。没有写 weight 时，框架会把 0 改成 1（`pkg/scheduler/framework/runtime/framework.go` 里的 `getValidScoreWeights`）。
+3. 都没有实现 `EnqueueExtensions`。这不是遗漏：框架只为 PreEnqueue、PreFilter、Filter、Reserve、Permit、PlacementFeasible 插件收集入队事件（`shouldHaveEnqueueExtensions`），Score 插件不会拒绝 Pod，也就不存在「被它拒绝后什么事件能让 Pod 重新入队」的问题。
 
 本文先把四个插件共用的数据链路讲清楚，再看 `TargetLoadPacking`（下文简称 TLP）的打分曲线。
 
@@ -29,8 +29,8 @@ Trimaran 是 scheduler-plugins 里 `pkg/trimaran/` 下四个插件的统称：`T
 
 Trimaran 的 KEP（`kep/61-Trimaran-real-load-aware-scheduling`）给出的动机是：应用的使用者很难估准 request，有的干脆不写；而所有 in-tree 打分插件都不看实际利用率。于是出现两种浪费：
 
-- request 偏大的节点实际很空，却被当作满载；
-- request 偏小的节点实际很忙，却继续接收 Pod。
+1. request 偏大的节点实际很空，却被当作满载；
+2. request 偏小的节点实际很忙，却继续接收 Pod。
 
 TLP 的目标是让每个被使用的节点的实际 CPU 利用率都接近一个目标值 T（默认 40%）。低于 T 的节点优先装满，超过 T 的节点开始被「惩罚」。下面这个 Pod，在 TLP 看来会占用 1 核，而不是它的 request 500m，原因在 3.2 节：
 
@@ -102,13 +102,13 @@ type WatcherMetrics struct {
 
 一个节点对应一组 `Metric`，用 `Type`（CPU/Memory/…）和 `Operator`（AVG/STD/Latest）区分。另外两个字段后文会反复用到：
 
-- `Value` 是**百分比**（第 28 行）；
-- `Window.End` 是这份数据的采集时刻（第 20 行），后面的滞后补偿会用到它。
+1. `Value` 是**百分比**（第 28 行）；
+2. `Window.End` 是这份数据的采集时刻（第 20 行），后面的滞后补偿会用到它。
 
 `Watcher` 的取数分内外两侧：
 
-- 内部维护 15m、10m、5m 三个窗口，每个窗口一个 goroutine，每分钟拉一次，每个窗口只保留最近 5 份结果；
-- 对外的 `GetLatestWatcherMetrics("15m")` 优先返回 15 分钟窗口的最新一份，没有时再依次退到 10 分钟、5 分钟。
+1. 内部维护 15m、10m、5m 三个窗口，每个窗口一个 goroutine，每分钟拉一次，每个窗口只保留最近 5 份结果；
+2. 对外的 `GetLatestWatcherMetrics("15m")` 优先返回 15 分钟窗口的最新一份，没有时再依次退到 10 分钟、5 分钟。
 
 ### 2.2 三种 metrics provider
 
@@ -139,8 +139,8 @@ Prometheus provider 对每个窗口发 `avg_over_time` 和 `stddev_over_time` �
 
 这里有两个前提：
 
-- 集群里要有 `instance:node_cpu:ratio` 这类 recording rule（来自 node-exporter 的配套规则）；
-- `instance` 标签的值必须等于 Kubernetes Node 的名字，否则插件按节点名查不到数据。
+1. 集群里要有 `instance:node_cpu:ratio` 这类 recording rule（来自 node-exporter 的配套规则）；
+2. `instance` 标签的值必须等于 Kubernetes Node 的名字，否则插件按节点名查不到数据。
 
 另外，它一轮会查询 17 个指标（CPU、内存、网络、磁盘、Kepler/Scaphandre 能耗）× 2 种算子，三个窗口每分钟各一轮，大约每分钟 100 次查询，Trimaran 只用得到其中 CPU 和内存这几个。
 
@@ -186,6 +186,11 @@ type TrimaranSpec struct {
 }
 ```
 
+两个字段对应两种接入方式：
+
+1. `MetricProvider`（第 17 行）：在调度器进程内直接访问指标源，具体由 `MetricProviderSpec` 的 `Type`、`Address`、`Token`、`InsecureSkipVerify` 四个字段描述（第 3–12 行）；
+2. `WatcherAddress`（第 19 行）：指向独立运行的 load-watcher 服务。
+
 默认值逻辑：
 
 ```go {linenos=inline}
@@ -220,8 +225,8 @@ func SetDefaultTrimaranSpec(args *TrimaranSpec) {
 	}
 ```
 
-- 服务模式：load-watcher 作为独立 Deployment 运行，插件每次刷新发一个 `GET <watcherAddress>/watcher`，超时 55 秒。
-- 库模式：`NewLibraryClient` 在调度器进程里 new 一个 `Watcher` 并调用 `StartWatching()`。需要注意，`StartWatching` 不只是启动拉取 goroutine，它还会在 `:2020` 端口起一个 HTTP server，并把 `/watcher`、`/watcher/health` 注册到 `http.DefaultServeMux`：
+1. 服务模式：load-watcher 作为独立 Deployment 运行，插件每次刷新发一个 `GET <watcherAddress>/watcher`，超时 55 秒。
+2. 库模式：`NewLibraryClient` 在调度器进程里 new 一个 `Watcher` 并调用 `StartWatching()`。`StartWatching` 不只是启动拉取 goroutine，它还会在 `:2020` 端口起一个 HTTP server，并把 `/watcher`、`/watcher/health` 注册到 `http.DefaultServeMux`：
 
 ```go {linenos=inline}
 // github.com/paypal/load-watcher@v0.2.4/pkg/watcher/watcher.go
@@ -262,6 +267,8 @@ type Collector struct {
 }
 ```
 
+结构里只有三样东西：load-watcher 客户端、最近一次拉到的整份 `WatcherMetrics`、以及保护它的读写锁（第 13、15、17 行）。注释还交代了为什么不共享缓存：几个 Trimaran 插件的优化目标可能相互冲突，不建议同时启用，所以每个插件实例各带一个 Collector。
+
 Collector 的刷新分三步：
 
 1. `NewCollector` 先同步调用一次 `updateMetrics`，这次失败只打日志，不会让插件创建失败；
@@ -292,8 +299,8 @@ func (collector *Collector) GetNodeMetrics(logger klog.Logger, nodeName string) 
 
 `getAllMetrics` 在读锁下把结构体复制一份再返回。这里是浅拷贝，`NodeMetricsMap` 仍指向同一个 map，但 `updateMetrics` 每次都是整体替换 `collector.metrics`，不会原地修改旧 map，所以读到的旧 map 不会被并发写。四个插件对 `metrics == nil` 的处理一致：直接返回 `fwk.MinNodeScore`（0）。`metrics` 为 nil 有两种情况：
 
-- 快照从未填充（第 5–8 行）；
-- 节点不在 `NodeMetricsMap` 里（第 10–13 行）。
+1. 快照从未填充（第 5–8 行）；
+2. 节点不在 `NodeMetricsMap` 里（第 10–13 行）。
 
 新加入、还没被采集到的节点会在这一维得 0 分。
 
@@ -565,10 +572,10 @@ func (pl *TargetLoadPacking) Score(ctx context.Context, cycleState fwk.CycleStat
 
 判断条件用时间戳 t 和快照的 `Window.End` 比较（第 9–10 行），满足任一条件就认为指标里还没有这个 Pod，按 3.2 节的规则补加它的预测用量：
 
-- t 晚于 End；
-- t 在 End 之前 60 秒以内。
+1. t 晚于 End；
+2. t 在 End 之前 60 秒以内。
 
-注释里说得很直白：指标代理的上报周期假设为 60 秒，一个 Pod 真正体现在指标里可能需要 0 到 120 秒，这里取平均值 60 秒，偶尔重复计算一次「问题不大」。
+这里的 60 秒是一个固定假设：指标代理每 60 秒上报一次，一个 Pod 真正体现在指标里可能需要 0 到 120 秒，代码取平均值 60 秒；偶尔把同一个 Pod 重复计算一次，代价也可以接受。
 
 `info.Pod.Spec.Overhead.Cpu()` 在 `Overhead` 为 nil 时也是安全的，因为 `ResourceList` 是 map 类型，对 nil map 调用 `Cpu()` 会返回零值 Quantity。
 
@@ -614,14 +621,14 @@ score(U) =  ⎨ T × (100 − U) / (100 − T)    T < U ≤ 100
 
 这两条直线是怎么定出来的，看端点就清楚：
 
-- 上升段过 `(0, T)` 和 `(T, 100)`，斜率是 `(100−T)/T`。空节点得 T 分而不是 0 分。KEP 的解释是：被看好的节点要拿到足够高的分数，才不会被其它打分插件轻易抵消。
-- 下降段过 `(T, T)` 和 `(100, 0)`，斜率是 `−T/(100−T)`。
-- 在 U = T 处，左极限是 100，右极限是 T，**曲线在这里断开，落差为 100 − T**。T 越小，落差越大。
+1. 上升段过 `(0, T)` 和 `(T, 100)`，斜率是 `(100−T)/T`。空节点得 T 分而不是 0 分。KEP 的解释是：被看好的节点要拿到足够高的分数，才不会被其它打分插件轻易抵消。
+2. 下降段过 `(T, T)` 和 `(100, 0)`，斜率是 `−T/(100−T)`。
+3. 在 U = T 处，左极限是 100，右极限是 T，**曲线在这里断开，落差为 100 − T**。T 越小，落差越大。
 
 这个形状意味着两种行为：
 
-- 所有节点都低于 T 时，**最接近 T 的节点得分最高**，Pod 往已经有一定负载的节点上堆，这就是装箱（best fit）；
-- 一旦某个节点会被推过 T，它的分数立即跌到 T 以下，而且越热分越低，这时在过热节点之间是分散（least fit）。
+1. 所有节点都低于 T 时，**最接近 T 的节点得分最高**，Pod 往已经有一定负载的节点上堆，这就是装箱（best fit）；
+2. 一旦某个节点会被推过 T，它的分数立即跌到 T 以下，而且越热分越低，这时在过热节点之间是分散（least fit）。
 
 下降段的最高分 T 恰好等于上升段的最低分 T（空节点的分数），所以「把节点推过目标」不会比「放到空节点」更好。这一点保证了装箱不会越过目标值。
 
@@ -641,9 +648,9 @@ score(U) =  ⎨ T × (100 − U) / (100 − T)    T < U ≤ 100
 
 再看补偿的作用。假设 20 秒前，另一个 Pod 刚被绑定到 B，它只有 `requests.cpu: 500m`、没有 limit。它绑定的时刻在当前快照的 `Window.End` 之后（或在 End 前 60 秒以内），所以会被计入 `missingCPUUtilMillis`：
 
-- 预测用量 = round(500 × 1.5) = 750m，占 9.375%；
-- U = 25 + 12.5 + 9.375 = 46.875，越过了 T；
-- 分数 = 40 × (100 − 46.875) / 60 = 35.42 → 35。
+1. 预测用量 = round(500 × 1.5) = 750m，占 9.375%；
+2. U = 25 + 12.5 + 9.375 = 46.875，越过了 T；
+3. 分数 = 40 × (100 − 46.875) / 60 = 35.42 → 35。
 
 B 从 96 分跌到 35 分，A 以 74 分胜出。如果没有补偿，接下来几十秒内的 Pod 都会挤到 B 上，直到新的指标反映出真实负载，B 可能已经远超目标。
 
@@ -713,18 +720,18 @@ TLP 只影响新 Pod 落在哪里，不会迁移老 Pod。要让节点真正被�
 
 **目标值怎么选。** KEP 建议「想达到 X%，就配 X − 10」。结合上面的分析，这 10 个百分点要覆盖三部分：
 
-- assumed Pod 不可见导致的扎堆；
-- Prometheus 均值窗口带来的低估；
-- 负载本身的波动。
+1. assumed Pod 不可见导致的扎堆；
+2. Prometheus 均值窗口带来的低估；
+3. 负载本身的波动。
 
 如果负载波动大，单靠调小 T 并不精确。下一个插件 `LoadVariationRiskBalancing` 把标准差直接放进了模型。
 
 ## 六、小结
 
-- Trimaran 的数据链路是「指标源 → load-watcher → Collector 每 30 秒一份快照」，再加上「informer → `PodAssignEventHandler` 实时记录刚绑定的 Pod」。前者提供历史负载，后者弥补滞后。四个插件里只有 TLP 真正读取了后者。
-- 库模式会在调度器进程里起 `:2020` 的 HTTP server，同一进程内的多个 Trimaran 实例会因重复注册 `/watcher` 而 panic；Prometheus 下默认跳过 TLS 校验。
-- TLP 按 limit → request×1.5 → 1000m 预测 Pod 用量，用 Capacity 换算预测利用率 U，分段打分：U ≤ T 时线性上升到 100，超过 T 立刻跌到 T 以下再线性下降，超过 100 得 0。效果是先装箱到 T，再在热节点之间分散。
-- 补偿条件以 `Window.End` 为基准，覆盖 End 之后和 End 前 60 秒内绑定的 Pod。它覆盖不了 assumed Pod，也覆盖不了 Prometheus 长窗口均值的稀释效应。
-- 拿不到指标的节点得 0 分，所有路径都返回 Success，TLP 永远不会让 Pod 调度失败。
+1. Trimaran 的数据链路是「指标源 → load-watcher → Collector 每 30 秒一份快照」，再加上「informer → `PodAssignEventHandler` 实时记录刚绑定的 Pod」。前者提供历史负载，后者弥补滞后。四个插件里只有 TLP 真正读取了后者。
+2. 库模式会在调度器进程里起 `:2020` 的 HTTP server，同一进程内的多个 Trimaran 实例会因重复注册 `/watcher` 而 panic；Prometheus 下默认跳过 TLS 校验。
+3. TLP 按 limit → request×1.5 → 1000m 预测 Pod 用量，用 Capacity 换算预测利用率 U，分段打分：U ≤ T 时线性上升到 100，超过 T 立刻跌到 T 以下再线性下降，超过 100 得 0。效果是先装箱到 T，再在热节点之间分散。
+4. 补偿条件以 `Window.End` 为基准，覆盖 End 之后和 End 前 60 秒内绑定的 Pod。它覆盖不了 assumed Pod，也覆盖不了 Prometheus 长窗口均值的稀释效应。
+5. 拿不到指标的节点得 0 分，所有路径都返回 Success，TLP 永远不会让 Pod 调度失败。
 
 TLP 只看 CPU 均值。下一篇[《LoadVariationRiskBalancing》](/posts/sched-plugin-38-load-variation-risk-balancing/)把 CPU 和内存的均值、标准差都放进「风险」模型，目标从「装到某个水位」变成「让各节点风险持平」。

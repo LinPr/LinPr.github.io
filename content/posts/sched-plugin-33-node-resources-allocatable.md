@@ -56,8 +56,8 @@ type NodeResourcesAllocatableArgs struct {
 
 默认值和校验分别在两个函数里：
 
-- 默认值在 v1 的 `SetDefaults_NodeResourcesAllocatableArgs`：`resources` 为空时用 `cpu: 1<<20, memory: 1`，`mode` 为空时用 `Least`；
-- 校验在 `ValidateNodeResourcesAllocatableArgs`：每个资源的权重必须大于 0（没有上限），`mode` 只能是 `Least` 或 `Most`。
+1. 默认值在 v1 的 `SetDefaults_NodeResourcesAllocatableArgs`：`resources` 为空时用 `cpu: 1<<20, memory: 1`，`mode` 为空时用 `Least`；
+2. 校验在 `ValidateNodeResourcesAllocatableArgs`：每个资源的权重必须大于 0（没有上限），`mode` 只能是 `Least` 或 `Most`。
 
 `allocatable.go` 里还有一个同名的 `validateResources` 函数，是没有被调用的遗留代码，实际生效的是 `apis/config/validation` 中的版本。
 
@@ -126,8 +126,8 @@ func NewAllocatable(ctx context.Context, allocArgs runtime.Object, h fwk.Handle)
 
 打分分两层：
 
-- 外层的 `score` 负责取数（第 15–17 行）；
-- 真正加权的是构造时传进来的闭包（第 19 行）。
+1. 外层的 `score` 负责取数（第 15–17 行）；
+2. 真正加权的是构造时传进来的闭包（第 19 行）。
 
 ```go {linenos=inline}
 // pkg/noderesources/resource_allocation.go
@@ -156,8 +156,8 @@ func (r *resourceAllocationScorer) score(
 
 `calculateResourceAllocatableRequest` 会算出节点的 allocatable 和「已请求 + 本 Pod 请求」两个值，请求量按资源类型分两种算法：
 
-- CPU/内存用 `GetNonZeroRequested`（未声明 request 的容器按 100m/200Mi 计）；
-- ephemeral-storage 和扩展资源用 `GetRequested`。
+1. CPU/内存用 `GetNonZeroRequested`（未声明 request 的容器按 100m/200Mi 计）；
+2. ephemeral-storage 和扩展资源用 `GetRequested`。
 
 但真正打分的闭包根本不看 `requested`：
 
@@ -236,8 +236,8 @@ func (alloc *Allocatable) NormalizeScore(ctx context.Context, state fwk.CycleSta
 
 归一化有两种情况：
 
-- 标准的 min-max 线性映射（第 22 行）：本轮可行节点中原始分最高的得 100，最低的得 0；
-- 所有节点规格相同时 `oldRange == 0`（第 19–20 行），全部 0 分，插件对同构集群不起作用，这是合理的。
+1. 标准的 min-max 线性映射（第 22 行）：本轮可行节点中原始分最高的得 100，最低的得 0；
+2. 所有节点规格相同时 `oldRange == 0`（第 19–20 行），全部 0 分，插件对同构集群不起作用，这是合理的。
 
 ## 四、算例
 
@@ -261,10 +261,10 @@ func (alloc *Allocatable) NormalizeScore(ctx context.Context, state fwk.CycleSta
 
 `Least` 模式归一化：最高 −20383，最低 −326143，区间 305760。
 
-- small：`(−20383 + 326143) × 100 / 305760 = 100`
-- medium：`244608 × 100 / 305760 = 80`
-- memheavy：`187072 × 100 / 305760 = 61`
-- large：0
+1. small：`(−20383 + 326143) × 100 / 305760 = 100`
+2. medium：`244608 × 100 / 305760 = 80`
+3. memheavy：`187072 × 100 / 305760 = 61`
+4. large：0
 
 `Most` 模式正好镜像：small 0、medium 20、memheavy 38、large 100。
 
@@ -326,10 +326,10 @@ min-max 依赖本轮的候选集合。同一个 medium 节点，候选集合里�
 
 打分逻辑本身没有分支，容易踩的都在量纲和边界上。
 
-- 不看是否放得下：插件对放不下的节点也照常打分，依赖 Filter 先把它们排除。
-- 权重无上限，可能溢出：`allocatable × weight` 是 int64 乘法。内存按字节计，1TiB 约 1.1e12，再乘一个 1e7 的权重就超过了 int64 上限（约 9.2e18），**分数会回绕成负数**。CPU 权重设到百万量级没问题，内存权重保持 1 即可。
-- 扩展资源按原始数量参与：GPU 数量是个位数，不配大权重几乎不起作用；配了大权重又可能压过 CPU/内存。混用时最好单独算一下各项贡献。
-- `requested` 的计算被浪费：每个节点每次打分都会遍历 Pod 的容器算请求量，结果不用。开销不大，但如果在超大集群上做性能剖析时看到它，不必奇怪。
+1. 不看是否放得下：插件对放不下的节点也照常打分，依赖 Filter 先把它们排除。
+2. 权重无上限，可能溢出：`allocatable × weight` 是 int64 乘法。内存按字节计，1TiB 约 1.1e12，再乘一个 1e7 的权重就超过了 int64 上限（约 9.2e18），**分数会回绕成负数**。CPU 权重设到百万量级没问题，内存权重保持 1 即可。
+3. 扩展资源按原始数量参与：GPU 数量是个位数，不配大权重几乎不起作用；配了大权重又可能压过 CPU/内存。混用时最好单独算一下各项贡献。
+4. `requested` 的计算被浪费：每个节点每次打分都会遍历 Pod 的容器算请求量，结果不用。开销不大，但如果在超大集群上做性能剖析时看到它，不必奇怪。
 
 ## 七、发散：按规格打分的适用边界
 
@@ -343,9 +343,9 @@ min-max 依赖本轮的候选集合。同一个 medium 节点，候选集合里�
 
 ## 小结
 
-- `NodeResourcesAllocatable` 只实现 Score，原始分为 `±Σ(allocatable × 权重)/Σ权重`，与节点上已运行的 Pod 和本 Pod 的请求都无关，再用 min-max 映射到 `[0, 100]`。
-- 默认 `mode: Least`、权重 `cpu: 1<<20, memory: 1`，1 毫核约等于 1 MiB，内存通常占主导，CPU 稀缺的集群应调大 CPU 权重。
-- 它与 `NodeResourcesFit` 的比例型打分正交，默认组合下两者方向相反；Allocatable 的区分度更大，会在小节点填满之前占上风。
-- 分数依赖本轮候选集合，权重无上限可能导致 int64 溢出。
+1. `NodeResourcesAllocatable` 只实现 Score，原始分为 `±Σ(allocatable × 权重)/Σ权重`，与节点上已运行的 Pod 和本 Pod 的请求都无关，再用 min-max 映射到 `[0, 100]`。
+2. 默认 `mode: Least`、权重 `cpu: 1<<20, memory: 1`，1 毫核约等于 1 MiB，内存通常占主导，CPU 稀缺的集群应调大 CPU 权重。
+3. 它与 `NodeResourcesFit` 的比例型打分正交，默认组合下两者方向相反；Allocatable 的区分度更大，会在小节点填满之前占上风。
+4. 分数依赖本轮候选集合，权重无上限可能导致 int64 溢出。
 
 下一篇 [NodeMetadata](/posts/sched-plugin-34-node-metadata/) 把这种「静态偏好」推到更一般的形式：任意一个节点 label 或 annotation 都可以变成打分依据。

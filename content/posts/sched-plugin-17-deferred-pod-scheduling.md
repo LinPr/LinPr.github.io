@@ -21,8 +21,8 @@ description: "原地扩容放不下时会被 kubelet 标记为 Deferred，新 ga
 
 原地扩缩容允许直接修改运行中 Pod 的 `resources`，不用重建 Pod。kubelet 收到修改后先做准入，有两种结果：
 
-- 节点剩余资源够，就分配并让容器运行时调整 cgroup；
-- 不够，就把这次 resize 标记为**推迟**。
+1. 节点剩余资源够，就分配并让容器运行时调整 cgroup；
+2. 不够，就把这次 resize 标记为**推迟**。
 
 对应的状态定义如下：
 
@@ -39,8 +39,8 @@ description: "原地扩容放不下时会被 kubelet 标记为 Deferred，新 ga
 
 两种「放不下」的含义不同：
 
-- `Infeasible`（第 8 行）是节点总容量都放不下，再等也没用；
-- `Deferred`（第 4 行）是「理论上放得下，但现在被其它 Pod 占着」。
+1. `Infeasible`（第 8 行）是节点总容量都放不下，再等也没用；
+2. `Deferred`（第 4 行）是「理论上放得下，但现在被其它 Pod 占着」。
 
 被推迟的 resize 会留在 kubelet 的 pending 列表里，等节点上有 Pod 退出、资源被释放时重试。
 
@@ -109,9 +109,9 @@ Pod 卡在 `Deferred`，调度器要接手。第一步是让它重新回到队�
 
 三个状态转换对应三个动作：
 
-- 进入 Deferred 时入队（第 7–11 行）；
-- 离开 Deferred（kubelet 完成了 resize，或者用户撤回了修改）时出队（第 12–16 行）；
-- 持续 Deferred 期间 spec 再变（比如用户把目标值又改大了）时更新队列里的副本（第 17–20 行）。
+1. 进入 Deferred 时入队（第 7–11 行）；
+2. 离开 Deferred（kubelet 完成了 resize，或者用户撤回了修改）时出队（第 12–16 行）；
+3. 持续 Deferred 期间 spec 再变（比如用户把目标值又改大了）时更新队列里的副本（第 17–20 行）。
 
 `addPod`（调度器重启后 informer 首次同步）和 `deletePod` 也有对应处理。注意 `updateAssignedPodInCache` 照常执行（第 23 行）：这个 Pod 同时存在于缓存和队列中，这一点后面会再提到。
 
@@ -132,11 +132,13 @@ func (p *PriorityQueue) isPodGroupMember(pod *v1.Pod) bool {
 }
 ```
 
+注释给出的理由是这类 Pod 已经在节点上运行，resize 是对单个 Pod 的资源调整，没有「整组一起放行」的语义；注释同时注明这段实现会在 Beta 阶段重新评估（第 4–6 行）。
+
 失败处理侧，`handleSchedulingFailure` 原本有一个保护：如果 informer 里的 Pod 已经有了 `spec.nodeName`（比如 extender 绑定超时但实际成功了），就不再放回队列。Deferred 的 Pod 天生有 `nodeName`，所以对它的处理有三处不同：
 
-- 这个保护要绕开；
-- 它不应该被设置 `nominatedNodeName`；
-- 不应该改 `PodScheduled` 条件，函数在入队之后直接返回（第 5–7 行）。
+1. 这个保护要绕开；
+2. 它不应该被设置 `nominatedNodeName`；
+3. 不应该改 `PodScheduled` 条件，函数在入队之后直接返回（第 5–7 行）。
 
 ```go {linenos=inline}
 // pkg/scheduler/schedule_one.go
@@ -181,9 +183,9 @@ Pod 就这样回到了队列。接下来的问题是：它走一遍调度周期�
 
 道理很直接：Pod 不换节点，节点亲和、污点、端口、卷、拓扑分布、Pod 间亲和在它绑定时都已经检查过了，现在唯一变化的是资源需求。这次调度周期里真正干活的只有三个 Filter：
 
-- `NodeName`：没有 PreFilter，不在 Skip 之列，它的 Filter 负责把候选范围收缩到 Pod 当前所在的节点（其它节点返回 `UnschedulableAndUnresolvable`）；
-- `NodeResourcesFit`：负责资源判断；
-- 本文的主角 `DeferredPodScheduling`。
+1. `NodeName`：没有 PreFilter，不在 Skip 之列，它的 Filter 负责把候选范围收缩到 Pod 当前所在的节点（其它节点返回 `UnschedulableAndUnresolvable`）；
+2. `NodeResourcesFit`：负责资源判断；
+3. 本文的主角 `DeferredPodScheduling`。
 
 PostFilter 也做了同样的分工：`DynamicResources` 的 PostFilter（释放闲置 ResourceClaim）对 Deferred Pod 直接返回 `Unschedulable`，只让 `DefaultPreemption` 工作。
 
@@ -226,9 +228,9 @@ func adjustDeltasToAccomodateCacheDiscrepancy(opts ResourceRequestsOptions, podR
 
 用集成测试 `TestDeferredResizePodPreemption` 的第一个用例算一遍。输入：
 
-- 节点 cpu allocatable 300m；
-- victim-1 低优先级，请求 200m；
-- preemptor 已分配 100m，spec 改成 300m。
+1. 节点 cpu allocatable 300m；
+2. victim-1 低优先级，请求 200m；
+3. preemptor 已分配 100m，spec 改成 300m。
 
 计算分三步：
 
@@ -238,8 +240,8 @@ func adjustDeltasToAccomodateCacheDiscrepancy(opts ResourceRequestsOptions, podR
 
 `NodeResourcesFit` 的 QueueingHint 也做了相应调整：对 Deferred Pod，其它节点上的 Pod 删除、缩容、节点变化一律 `QueueSkip`，只有同一节点上的事件才可能 `Queue`。gate 开启时它还多注册了两个扩容事件，都需要重新评估是否要抢占：
 
-- 同节点其它 Pod 扩容（抢走了 Deferred Pod 等待的余量）；
-- 目标 Pod 自身再扩容。
+1. 同节点其它 Pod 扩容（抢走了 Deferred Pod 等待的余量）；
+2. 目标 Pod 自身再扩容。
 
 ## 五、插件源码
 
@@ -376,7 +378,7 @@ Permit 返回 `UnschedulableAndUnresolvable`（第 9 行），让 Pod 以「被 
 
 为什么不在 Filter 通过后直接让 Pod 离开队列？因为「放得下」只是调度器基于自己缓存的判断，kubelet 用自己的用量记录做准入，两者之间有时间差，实际执行也可能再次推迟。Pod 留在队列里，同节点再出现资源竞争（其它 Pod 扩容抢走余量）时，`NodeResourcesFit` 的扩容 hint 会把它重新拉回来评估。
 
-### 5.5 一个值得留意的实现细节
+### 5.5 已在缓存中的 Pod 过不了 Assume
 
 按 `prepareForBindingCycle` 的顺序，Permit 之前先执行 `AssumeAndReserveInCache`，第一步是把 Pod「假定」进调度器缓存：
 
@@ -451,16 +453,16 @@ func (pl *DeferredPodScheduling) EventsToRegister(_ context.Context) ([]fwk.Clus
 	return fwk.QueueSkip, nil
 ```
 
-- 节点更新（第 2–4 行、第 10–13 行）：只关心 Pod 所在节点，只在「禁止 → 允许」时 `Queue`。「允许 → 禁止」和其它字段的变化都 `QueueSkip`。所有者列表从两个变成一个仍然是「禁止」，不会唤醒。
-- 节点新增：只有名字等于 Pod 的 `nodeName`、且没有禁止 resize 抢占时 `Queue`。正常情况下 Pod 所在的节点不会「新增」，这对应的是节点对象被删除后又以同名重建的情况。
+1. 节点更新（第 2–4 行、第 10–13 行）：只关心 Pod 所在节点，只在「禁止 → 允许」时 `Queue`。「允许 → 禁止」和其它字段的变化都 `QueueSkip`。所有者列表从两个变成一个仍然是「禁止」，不会唤醒。
+2. 节点新增：只有名字等于 Pod 的 `nodeName`、且没有禁止 resize 抢占时 `Queue`。正常情况下 Pod 所在的节点不会「新增」，这对应的是节点对象被删除后又以同名重建的情况。
 
 两个 hint 的开头都先检查 gate 和 `IsPodResizeDeferred`，对普通 Pod 一律 `QueueSkip`，因为普通 Pod 不可能被这个插件拒绝。
 
 集成测试 `TestDeferredResizeNodePreemptionPolicy` 的三个子用例对应三种情况：
 
-- 禁止策略生效不会唤醒 Pod；
-- 撤掉禁止策略会让 Pod 的调度尝试次数增加；
-- 其它节点的策略变化不会唤醒 Pod。
+1. 禁止策略生效不会唤醒 Pod；
+2. 撤掉禁止策略会让 Pod 的调度尝试次数增加；
+3. 其它节点的策略变化不会唤醒 Pod。
 
 事件注册到此为止。剩下的是一些不看代码不容易想到的边界。
 
@@ -494,15 +496,15 @@ Vertical Pod Autoscaler 的 `InPlaceOrRecreate` 更新模式会先尝试原地�
 
 `DisableResizePreemption` 给了运维一个节点级的「不要因为扩容而驱逐」的开关。适合的场景包括：
 
-- 节点上跑着不能被打断的任务（比如正在做检查点的训练作业）；
-- 节点即将下线维护时不希望产生额外的驱逐。由于它是所有者列表，配合自动化工具使用时，每个工具只管理自己的那一项，不会互相覆盖。
+1. 节点上跑着不能被打断的任务（比如正在做检查点的训练作业）；
+2. 节点即将下线维护时不希望产生额外的驱逐。由于它是所有者列表，配合自动化工具使用时，每个工具只管理自己的那一项，不会互相覆盖。
 
 ## 小结
 
-- kubelet 把放不下的原地扩容标记为 `PodResizePending/Deferred`；gate `InPlacePodVerticalScalingSchedulerPreemption`（1.37 Alpha，默认关闭）开启后，kubelet 不再为 resize 做抢占，事件处理器把这类已绑定的 Pod 重新送进调度队列。
-- 调度周期中几乎所有插件对它 `Skip`，只有 `NodeName`（锁定当前节点）、`DeferredPodScheduling` 和 `NodeResourcesFit`（按缓存差值做增量判断）工作，资源不足时由 `DefaultPreemption` 驱逐同节点的低优先级 Pod。
-- `DeferredPodScheduling` 的 Filter 检查节点的 `spec.podPreemptionPolicy.disableResizePreemption`，非空即 `UnschedulableAndUnresolvable`；Permit 对放得下的 Pod 返回 `UnschedulableAndUnresolvable`，意在让它停在队列里等 kubelet 执行。
-- 它被插在 `NodeResourcesFit` **之前**、`NodeName` 之后：保证禁止策略导致的失败记在它名下，策略撤销时它的 `UpdateNodePreemptionPolicy` hint 能唤醒 Pod。
-- 在 `aabdf5a2` 上，「放得下」的路径会先在 `AssumePod` 处以 `Error` 结束，到不了 Permit；它没有实现 `SignPlugin`，开启 gate 会关闭整个 Profile 的批量调度。
+1. kubelet 把放不下的原地扩容标记为 `PodResizePending/Deferred`；gate `InPlacePodVerticalScalingSchedulerPreemption`（1.37 Alpha，默认关闭）开启后，kubelet 不再为 resize 做抢占，事件处理器把这类已绑定的 Pod 重新送进调度队列。
+2. 调度周期中几乎所有插件对它 `Skip`，只有 `NodeName`（锁定当前节点）、`DeferredPodScheduling` 和 `NodeResourcesFit`（按缓存差值做增量判断）工作，资源不足时由 `DefaultPreemption` 驱逐同节点的低优先级 Pod。
+3. `DeferredPodScheduling` 的 Filter 检查节点的 `spec.podPreemptionPolicy.disableResizePreemption`，非空即 `UnschedulableAndUnresolvable`；Permit 对放得下的 Pod 返回 `UnschedulableAndUnresolvable`，意在让它停在队列里等 kubelet 执行。
+4. 它被插在 `NodeResourcesFit` **之前**、`NodeName` 之后：保证禁止策略导致的失败记在它名下，策略撤销时它的 `UpdateNodePreemptionPolicy` hint 能唤醒 Pod。
+5. 在 `aabdf5a2` 上，「放得下」的路径会先在 `AssumePod` 处以 `Error` 结束，到不了 Permit；它没有实现 `SignPlugin`，开启 gate 会关闭整个 Profile 的批量调度。
 
 下一篇进入 PostFilter，拆解本文反复出现的 [DefaultPreemption](/posts/sched-plugin-18-default-preemption/)。

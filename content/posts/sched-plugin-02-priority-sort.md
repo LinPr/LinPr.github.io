@@ -19,7 +19,7 @@ description: "PrioritySort 是默认的 QueueSort 插件，只有一个 Less 方
 
 ## 一、插件本身
 
-插件的全部逻辑都在 `Less` 里，先把代码看完。
+插件的全部逻辑都在 `Less` 里。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/queuesort/priority_sort.go
@@ -68,7 +68,7 @@ type QueueSortPlugin interface {
 
 参数类型是 `QueuedEntityInfo`，不是 `QueuedPodInfo`（接口里写的是 `Less(QueuedEntityInfo, QueuedEntityInfo)`，第 11 行）。开启 `GenericWorkload` 后，队列里排队的除了单个 Pod，还有整个 PodGroup（`QueuedPodGroupInfo`），两种 entity 放在同一个堆里比较。Less 只依赖接口上的 `GetPriority()` 和 `GetTimestamp()`，不关心 entity 是什么类型。
 
-这个插件值得一读的地方不在 Less 本身，而在它的两个输入：priority 从哪里来，timestamp 从哪里来。
+真正决定出队顺序的不是 Less 本身，而是它的两个输入：priority 从哪里来，timestamp 从哪里来。
 
 ## 二、priority 从哪里来
 
@@ -98,6 +98,11 @@ func PodPriority(pod *v1.Pod) int32 {
 }
 ```
 
+`PodPriority` 有两条分支：
+
+1. `spec.priority` 非空时直接返回它的值（第 3–5 行），这个函数不读 `priorityClassName`；
+2. 为 `nil` 时返回 0（第 9 行）。注释解释了 `nil` 的来历：Pod 创建时既没有 `globalDefault` 的 PriorityClass，`priorityClassName` 也是空的，只能按静态默认值处理。
+
 `spec.priority` 不是创建者填的，而是 API Server 的 `Priority` 准入插件在创建 Pod 时根据 `priorityClassName` 解析出来的：
 
 ```go {linenos=inline}
@@ -121,9 +126,9 @@ func PodPriority(pod *v1.Pod) int32 {
 
 解析规则在 `establishPriority` 和 `getDefaultPriority` 里：
 
-- 写了 `priorityClassName`：查这个 PriorityClass，不存在就拒绝创建（`no PriorityClass with name ... was found`）；
-- 没写：找 `globalDefault: true` 的 PriorityClass。如果因为竞争出现了多个，取 `value` 最小的那个；
-- 一个 globalDefault 都没有：priority 为 0，`preemptionPolicy` 为 `PreemptLowerPriority`。
+1. 写了 `priorityClassName`：查这个 PriorityClass，不存在就拒绝创建（`no PriorityClass with name ... was found`）；
+2. 没写：找 `globalDefault: true` 的 PriorityClass。如果因为竞争出现了多个，取 `value` 最小的那个；
+3. 一个 globalDefault 都没有：priority 为 0，`preemptionPolicy` 为 `PreemptLowerPriority`。
 
 Pod 更新时，准入插件只是把新对象里缺失的 `priority` 和 `preemptionPolicy` 从旧对象补回来。`spec.priority` 和 `spec.priorityClassName` 都不在 `ValidatePodUpdate` 的可变字段白名单里，所以 **Pod 的优先级在整个生命周期内不变**。
 
@@ -145,8 +150,8 @@ PriorityClass 本身也是一样：`value` 和 `preemptionPolicy` 不可修改�
 
 自定义的 PriorityClass 最大是 10 亿。名字以 `system-` 开头的被保留，只能是两个内置类：
 
-- `system-cluster-critical`：20 亿；
-- `system-node-critical`：20 亿 + 1000。
+1. `system-cluster-critical`：20 亿；
+2. `system-node-critical`：20 亿 + 1000。
 
 所以不管业务侧怎么配，**CoreDNS、kube-proxy 这类用内置类的 Pod 总是排在所有业务 Pod 前面**。
 
@@ -209,9 +214,9 @@ func (p *PriorityQueue) AddUnschedulablePodIfNotPresent(ctx context.Context, pIn
 
 除此之外，下面三种情况都不会改 `Timestamp`：
 
-- entity 在 `unschedulableEntities`、`backoffQ`、`activeQ` 之间移动；
-- Pod 对象被更新；
-- 周期性刷新（`flushUnschedulableEntitiesLeftover` 改的是另一个字段 `FlushTimestamp`）。
+1. entity 在 `unschedulableEntities`、`backoffQ`、`activeQ` 之间移动；
+2. Pod 对象被更新；
+3. 周期性刷新（`flushUnschedulableEntitiesLeftover` 改的是另一个字段 `FlushTimestamp`）。
 
 刷新的效果是：**同优先级内，失败过的 Pod 排到后面去**。下图是一个例子。
 
@@ -323,7 +328,7 @@ func (bq *backoffQueue) lessBackoffCompletedWithPriority(entity1, entity2 framew
 
 这也是第 25~27 篇的三个 out-of-tree QueueSort 插件（`QOSSort`、`TopologicalSort`、`Coscheduling`）互斥的原因，而且一旦启用，同一个调度器进程里所有 profile 都要换成同一个。
 
-QueueSort 的职责到这里就讲完了：它只决定谁先出队。而 `spec.priority` 这个字段在调度周期里还会被读到，不看完那几处，就说不清「高优先级」到底意味着什么。
+QueueSort 的职责只有一件：决定谁先出队。而 `spec.priority` 这个字段在调度周期里还会被读到，不看完那几处，就说不清「高优先级」到底意味着什么。
 
 ## 六、优先级在队列之外的作用
 
@@ -383,7 +388,7 @@ func rankMemoryPressure(pods []*v1.Pod, stats statsFunc) {
 
 **一个 PriorityClass 同时影响了「先调度谁」「可以赶走谁」「节点紧张时先赶走谁」三件事**，设计 PriorityClass 体系时要一起考虑。
 
-三处正常路径上的用法看完了，下面是几种经常被误解的情况。
+三处正常路径之外，还有几种经常被误解的情况。
 
 ## 七、边界情况与常见误解
 
@@ -391,8 +396,8 @@ func rankMemoryPressure(pods []*v1.Pod, stats statsFunc) {
 
 **同优先级不是严格的 FIFO。** 原因有两个：
 
-- 刷新 `Timestamp` 的规则让失败过的 Pod 排到后面；
-- 调度器重启（或 leader 切换）后，队列由 informer 的全量 List 重建，所有 Pending Pod 的 `Timestamp` 都变成重建时刻，原来的先后关系就丢了。
+1. 刷新 `Timestamp` 的规则让失败过的 Pod 排到后面；
+2. 调度器重启（或 leader 切换）后，队列由 informer 的全量 List 重建，所有 Pending Pod 的 `Timestamp` 都变成重建时刻，原来的先后关系就丢了。
 
 依赖「先创建先调度」的业务逻辑不可靠，需要严格顺序应当用 gate 或 `TopologicalSort` 之类的插件显式控制。
 
@@ -406,19 +411,19 @@ func rankMemoryPressure(pods []*v1.Pod, stats statsFunc) {
 
 `PrioritySort` 的规则非常保守，只有两个维度。常见的扩展需求和对应的做法：
 
-- 按 QoS 排序：scheduler-plugins 的 `QOSSort` 在优先级相同时先比 QoS 等级，再比 `Timestamp`，见[第 25 篇](/posts/sched-plugin-25-qos-sort/)。注意 scheduler-plugins 依赖的是 v1.36，那里的 `Less` 签名还是 `Less(fwk.QueuedPodInfo, fwk.QueuedPodInfo)`，master 上已经改成了 `QueuedEntityInfo`。
-- 按依赖关系排序：`TopologicalSort` 让同一个应用内被依赖的 Pod 先出队（[第 26 篇](/posts/sched-plugin-26-topological-sort/)）。
-- 成组出队：`Coscheduling` 在优先级相同时比较的是 PodGroup 的创建时间而不是 Pod 的入队时间，于是同一组的 Pod 在队列里挨在一起（[第 27 篇](/posts/sched-plugin-27-coscheduling/)）。in-tree 的 `GenericWorkload` 走了另一条路，直接把 PodGroup 作为一个 entity 放进堆里，仍然由 `PrioritySort` 排序。
-- 租户间公平：`PrioritySort` 没有租户概念，一个租户提交大量同优先级作业会排在其他租户前面。这类需求通常在队列之外解决，比如 Kueue 用 `schedulingGates` 控制每个租户放进调度器的 Pod 数量，调度器内部仍然只看优先级。
+1. 按 QoS 排序：scheduler-plugins 的 `QOSSort` 在优先级相同时先比 QoS 等级，再比 `Timestamp`，见[第 25 篇](/posts/sched-plugin-25-qos-sort/)。注意 scheduler-plugins 依赖的是 v1.36，那里的 `Less` 签名还是 `Less(fwk.QueuedPodInfo, fwk.QueuedPodInfo)`，master 上已经改成了 `QueuedEntityInfo`。
+2. 按依赖关系排序：`TopologicalSort` 让同一个应用内被依赖的 Pod 先出队（[第 26 篇](/posts/sched-plugin-26-topological-sort/)）。
+3. 成组出队：`Coscheduling` 在优先级相同时比较的是 PodGroup 的创建时间而不是 Pod 的入队时间，于是同一组的 Pod 在队列里挨在一起（[第 27 篇](/posts/sched-plugin-27-coscheduling/)）。in-tree 的 `GenericWorkload` 走了另一条路，直接把 PodGroup 作为一个 entity 放进堆里，仍然由 `PrioritySort` 排序。
+4. 租户间公平：`PrioritySort` 没有租户概念，一个租户提交大量同优先级作业会排在其他租户前面。这类需求通常在队列之外解决，比如 Kueue 用 `schedulingGates` 控制每个租户放进调度器的 Pod 数量，调度器内部仍然只看优先级。
 
 从数据结构的角度看，QueueSort 插件能控制的只是一个全序关系，而且必须是便宜的、只依赖 entity 自身字段的比较。凡是需要全局视角的排序（比如「这个租户已经占用了多少资源」），都不适合放在 Less 里，因为堆不会在外部状态变化时重新排序。这也是为什么配额、公平共享这类功能更多地在 PreEnqueue 或者调度器外部实现。
 
 ## 九、小结
 
-- `PrioritySort.Less`：priority 大的在前，相等时 `Timestamp` 早的在前；它是 `activeQ` 堆的比较函数，开启 `SchedulerPopFromBackoffQ` 后也是 `backoffQ` 在同一 1 秒窗口内的第二排序键。
-- priority 由 `Priority` 准入插件在创建时根据 PriorityClass 写进 `spec.priority`，之后不可变；自定义类最大 10 亿，`system-cluster-critical`/`system-node-critical` 是 20 亿和 20 亿 + 1000。
-- `Timestamp` 是入队时间，调度失败回队时刷新，所以同优先级内失败过的 Pod 会排到后面；gated 的 Pod 保留最初的入队时间。
-- 整个调度器只有一个 `PriorityQueue`，所以所有 profile 必须使用同一个 QueueSort 插件和参数。
-- `preemptionPolicy: Never` 不影响排队，只取消抢占资格。
+1. `PrioritySort.Less`：priority 大的在前，相等时 `Timestamp` 早的在前；它是 `activeQ` 堆的比较函数，开启 `SchedulerPopFromBackoffQ` 后也是 `backoffQ` 在同一 1 秒窗口内的第二排序键。
+2. priority 由 `Priority` 准入插件在创建时根据 PriorityClass 写进 `spec.priority`，之后不可变；自定义类最大 10 亿，`system-cluster-critical`/`system-node-critical` 是 20 亿和 20 亿 + 1000。
+3. `Timestamp` 是入队时间，调度失败回队时刷新，所以同优先级内失败过的 Pod 会排到后面；gated 的 Pod 保留最初的入队时间。
+4. 整个调度器只有一个 `PriorityQueue`，所以所有 profile 必须使用同一个 QueueSort 插件和参数。
+5. `preemptionPolicy: Never` 不影响排队，只取消抢占资格。
 
 出队之后，Pod 进入调度周期的第一站 PreFilter。[下一篇](/posts/sched-plugin-03-node-name/)读 Filter 链上排第一的 `NodeName`，看它如何用 `PreFilterResult` 把候选节点直接缩到一个。

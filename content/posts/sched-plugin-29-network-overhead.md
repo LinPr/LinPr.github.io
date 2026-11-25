@@ -25,8 +25,8 @@ description: "NetworkOverhead 读取 AppGroup 里的服务依赖和 NetworkTopol
 
 NetworkOverhead 把这两件事拆成两份数据：
 
-- **应用的依赖图**写在 AppGroup 里：frontend 调用 cart，最多容忍代价 8；frontend 调用 catalog，最多容忍代价 15。
-- **基础设施的网络代价**写在 NetworkTopology 里：region 之间多少、同一 region 内 zone 之间多少。
+1. **应用的依赖图**写在 AppGroup 里：frontend 调用 cart，最多容忍代价 8；frontend 调用 catalog，最多容忍代价 15。
+2. **基础设施的网络代价**写在 NetworkTopology 里：region 之间多少、同一 region 内 zone 之间多少。
 
 调度一个 Pod 时，插件找出它所依赖的 workload 已经有哪些 Pod 绑定到了节点上，对每个候选节点估算「如果放在这里，到这些依赖 Pod 的网络代价」，据此过滤和打分。
 
@@ -194,8 +194,8 @@ const (
 
 `weights` 可以并存多套，插件参数 `weightsName` 选用其中一套。按名字分两类：
 
-- 名字为 `NetperfCosts` 的那套，约定由 networktopology controller 根据 netperf 测量结果（存放在 `configmapName` 指向的 ConfigMap 里）自动维护；
-- 其它名字（默认 `UserDefined`）视为手工填写。
+1. 名字为 `NetperfCosts` 的那套，约定由 networktopology controller 根据 netperf 测量结果（存放在 `configmapName` 指向的 ConfigMap 里）自动维护；
+2. 其它名字（默认 `UserDefined`）视为手工填写。
 
 这个区别会影响插件是否对代价表排序，见 3.3 节。
 
@@ -330,11 +330,18 @@ func (no *PreFilterState) Clone() fwk.StateData {
 
 Filter 和 Score 只是查表：`satisfiedMap`、`violatedMap`、`finalCostMap` 三张以节点名为 key 的 map（第 25–32 行）在 PreFilter 里一次算好。
 
+这些字段按作用分成四组：
+
+1. 开关 `scoreEqually`（第 4–5 行）：Pod 不属于 AppGroup，或者后面任何一条提前返回的条件成立时，它保持初始值 true，Filter 直接放行、Score 给最低分；
+2. 输入：Pod 的 AppGroup 名（第 7–8 行）、读到的两个 CRD 对象（第 10–14 行）、当前 Pod 的依赖列表（第 16–17 行）、已经绑定节点的依赖 Pod（第 19–20 行）；
+3. 中间结果 `nodeCostMap`（第 22–23 行）：每个候选节点自己的一张代价表，逐对判定时按 `CostKey` 查它；
+4. 输出：满足数（第 25–26 行）、违反数（第 28–29 行）、累计代价（第 31–32 行）。
+
 `Clone` 直接返回自身指针（第 35–38 行），没有深拷贝。这在 Filter/Score 只读的前提下是安全的，但也意味着抢占模拟里复制出来的 CycleState 与原状态共享同一份数据；配合下面 AddPod/RemovePod 什么也不做，抢占模拟对这个插件的结果没有任何影响。
 
 ### 3.3 PreFilter
 
-PreFilter 的代码很长，但结构是「一串提前返回 + 一段节点循环」。
+PreFilter 的结构是「一串提前返回 + 一段节点循环」。
 
 ```go {linenos=inline}
 // pkg/networkaware/networkoverhead/networkoverhead.go
@@ -435,9 +442,9 @@ func GetScheduledList(pods []*v1.Pod) ScheduledList {
 
 有三处细节：
 
-- lister 不按 namespace 过滤，任何 namespace 里带同名 AppGroup label 的 Pod 都会被算进来；
-- 它不看 Pod phase，已经 `Succeeded`/`Failed` 但对象还在的 Pod 照样参与计算；
-- 它读的是 informer，即 API Server 已经确认绑定的 Pod，调度器缓存里已 assume、尚未完成绑定的 Pod 不在其中。
+1. lister 不按 namespace 过滤，任何 namespace 里带同名 AppGroup label 的 Pod 都会被算进来；
+2. 它不看 Pod phase，已经 `Succeeded`/`Failed` 但对象还在的 Pod 照样参与计算；
+3. 它读的是 informer，即 API Server 已经确认绑定的 Pod，调度器缓存里已 assume、尚未完成绑定的 Pod 不在其中。
 
 后半段对快照里的**每一个节点**（而不是 PreFilter 参数 `nodes`）构造代价表、计算满足/违反数和累计代价：
 
@@ -521,13 +528,13 @@ func (no *NetworkOverhead) populateCostMap(
 
 查找全部是二分：
 
-- `FindTopologyKey` 在 `topologyList` 上按 key 二分（第 14 行）；
-- `FindOriginCosts` 在 `originList` 上按 origin 二分（第 22 行）。
+1. `FindTopologyKey` 在 `topologyList` 上按 key 二分（第 14 行）；
+2. `FindOriginCosts` 在 `originList` 上按 origin 二分（第 22 行）。
 
 二分要求有序，手工填写的代价表不一定有序，所以按 `weightsName` 分两种情况：
 
-- 不是 `NetperfCosts` 时，PreFilter 开头的 `sortNetworkTopologyCosts` 先按 `topologyKey` 排一次，`populateCostMap` 再对 `originList` 按 origin 排序；
-- `NetperfCosts` 则信任 controller 已经排好。
+1. 不是 `NetperfCosts` 时，PreFilter 开头的 `sortNetworkTopologyCosts` 先按 `topologyKey` 排一次，`populateCostMap` 再对 `originList` 按 origin 排序；
+2. `NetperfCosts` 则信任 controller 已经排好。
 
 由于 `Get` 返回的是深拷贝，这些排序不会改动缓存里的对象，但会在每次 PreFilter、对每个节点重复一遍：`originList` 的排序发生在节点循环内部，N 个节点就排 N 次。
 
@@ -606,11 +613,11 @@ func (no *NetworkOverhead) populateCostMap(
 
 几个由代码结构决定、文档里没有写的性质：
 
-- 按副本计数，不按依赖计数。cart 有两个副本已调度，frontend 对 cart 的这一条依赖就会被计两次。依赖副本越多，它在多数票里的权重越大。
-- 同 zone 不看 maxNetworkCost。同一 zone 的不同节点一律算满足，即使 `maxNetworkCost` 写的是 0。
-- 两种「没有拓扑信息」的处理不对称。依赖 Pod 所在节点没有 region 和 zone 时，Filter 记违反、Score 加 100；而候选节点自己没有 region、zone 时，`populateCostMap` 跳过两个分支，`costMap` 为空，后续查找全部落空，Filter 什么都不计、Score 加 100。**前者会被过滤，后者在 Filter 阶段总能通过。**
-- **查不到代价时 Filter 放行、Score 惩罚。** 代价表漏写某个方向（比如只写了 z1→z2，没写 z2→z1），从 z2 看过去的这对依赖既不算满足也不算违反。
-- zone 名需要全局唯一。同 region 不同 zone 时，查表的 key 是 `(本节点 zone, 对方 zone)`，没有带上 region。两个 region 下都有叫 `a` 的 zone，代价表就无法区分。
+1. 按副本计数，不按依赖计数。cart 有两个副本已调度，frontend 对 cart 的这一条依赖就会被计两次。依赖副本越多，它在多数票里的权重越大。
+2. 同 zone 不看 maxNetworkCost。同一 zone 的不同节点一律算满足，即使 `maxNetworkCost` 写的是 0。
+3. 两种「没有拓扑信息」的处理不对称。依赖 Pod 所在节点没有 region 和 zone 时，Filter 记违反、Score 加 100；而候选节点自己没有 region、zone 时，`populateCostMap` 跳过两个分支，`costMap` 为空，后续查找全部落空，Filter 什么都不计、Score 加 100。**前者会被过滤，后者在 Filter 阶段总能通过。**
+4. **查不到代价时 Filter 放行、Score 惩罚。** 代价表漏写某个方向（比如只写了 z1→z2，没写 z2→z1），从 z2 看过去的这对依赖既不算满足也不算违反。
+5. zone 名需要全局唯一。同 region 不同 zone 时，查表的 key 是 `(本节点 zone, 对方 zone)`，没有带上 region。两个 region 下都有叫 `a` 的 zone，代价表就无法区分。
 
 ### 3.5 Filter：多数票
 
@@ -785,39 +792,39 @@ AppGroup `shop` 里 frontend 依赖 cart（`maxNetworkCost: 8`）和 catalog（`
 
 **n-1（us-west-1/z1）**：
 
-- cart-a：就在本节点，满足，+0；
-- cart-b：同 region 的 z2，查 `(z1, z2)` 得 5 ≤ 8，满足，+5；
-- catalog-a：在 us-east-1，查 `(us-west-1, us-east-1)` 得 20 > 15，违反，+20。
+1. cart-a：就在本节点，满足，+0；
+2. cart-b：同 region 的 z2，查 `(z1, z2)` 得 5 ≤ 8，满足，+5；
+3. catalog-a：在 us-east-1，查 `(us-west-1, us-east-1)` 得 20 > 15，违反，+20。
 
 满足 2、违反 1，通过；代价 25。
 
 **n-2（us-west-1/z2）**：与 n-1 对称。
 
-- cart-a：查 `(z2, z1)` 得 5 ≤ 8，满足，+5；
-- cart-b：就在本节点，满足，+0；
-- catalog-a：违反，+20。
+1. cart-a：查 `(z2, z1)` 得 5 ≤ 8，满足，+5；
+2. cart-b：就在本节点，满足，+0；
+3. catalog-a：违反，+20。
 
 满足 2、违反 1，通过；代价 25。
 
 **n-3（us-east-1/z3）**：
 
-- cart-a、cart-b：都跨 region，20 > 8，各违反一次、各 +20；
-- catalog-a：就在本节点，满足，+0。
+1. cart-a、cart-b：都跨 region，20 > 8，各违反一次、各 +20；
+2. catalog-a：就在本节点，满足，+0。
 
 满足 1、违反 2，`Unschedulable`；代价 40。
 
 **n-4（us-east-1/z4）**：
 
-- cart-a、cart-b：各违反 +20；
-- catalog-a：在同 region 的 z3，查 `(z4, z3)` 得 10 ≤ 15，满足，+10。
+1. cart-a、cart-b：各违反 +20；
+2. catalog-a：在同 region 的 z3，查 `(z4, z3)` 得 10 ≤ 15，满足，+10。
 
 满足 1、违反 2，`Unschedulable`；代价 50。
 
 **n-5（us-west-1/z1）**：
 
-- cart-a：在同 zone 的 n-1，满足 +1（`SameZone`）；
-- cart-b：查 `(z1, z2)` 得 5 ≤ 8，满足 +5；
-- catalog-a：违反 +20。
+1. cart-a：在同 zone 的 n-1，满足 +1（`SameZone`）；
+2. cart-b：查 `(z1, z2)` 得 5 ≤ 8，满足 +5；
+3. catalog-a：违反 +20。
 
 满足 2、违反 1，通过；代价 26。
 
@@ -827,8 +834,8 @@ AppGroup `shop` 里 frontend 依赖 cart（`maxNetworkCost: 8`）和 catalog（`
 
 n-3、n-4 被 Filter 拒绝，参与打分的是 n-1、n-2、n-5、n-6：
 
-- 含 n-6：min 25，max 300。n-1、n-2 得 100；n-5 得 `100 − int64(100 × 1 / 275)` = `100 − int64(0.36)` = 100；n-6 得 0。
-- 若 n-6 补上了 label 或被其它插件过滤掉：min 25，max 26。n-1、n-2 得 100；n-5 得 `100 − int64(100 × 1 / 1)` = 0。
+1. 含 n-6：min 25，max 300。n-1、n-2 得 100；n-5 得 `100 − int64(100 × 1 / 275)` = `100 − int64(0.36)` = 100；n-6 得 0。
+2. 若 n-6 补上了 label 或被其它插件过滤掉：min 25，max 26。n-1、n-2 得 100；n-5 得 `100 − int64(100 × 1 / 1)` = 0。
 
 {{< figure src="/images/posts/sched-plugins/29-result-table.svg" caption="算例结果：多数票让 n-1、n-2、n-5 在各有一次违反的情况下通过；没有 label 的 n-6 逃过 Filter 但代价最高；min-max 归一化让 n-5 的得分随 n-6 是否在场在 100 与 0 之间跳变（点击查看大图）" link="/images/posts/sched-plugins/29-result-table.svg" >}}
 
@@ -920,10 +927,10 @@ NetworkOverhead 关心节点之间的距离，[下一篇](/posts/sched-plugin-30
 
 ## 八、小结
 
-- NetworkOverhead 依赖两个 CRD：AppGroup 提供依赖与 `maxNetworkCost`，NetworkTopology 提供按 `weightsName` 区分的 region/zone 有向代价表；默认 `weightsName` 为 `UserDefined`、`networkTopologyName` 为 `nt-default`、`namespaces` 为 `["default"]`。
-- 所有计算都在 PreFilter 中完成，结果存进 CycleState 的三张节点 map；Filter、Score 只是查表，`Clone` 共享指针，AddPod/RemovePod 为空，抢占模拟无法改变它的结论。
-- 逐对判定：同节点 0、同 zone 1（不看上限）、跨 zone/region 查表比较上限；依赖节点无 label 记违反加 100；查不到代价时 Filter 不计数、Score 加 100。
-- Filter 是按副本计数的多数票，`violated > satisfied` 才返回 `Unschedulable`；Score 返回累计代价，NormalizeScore 做 min-max 反转，分数对候选集合敏感。
-- 没有 EnqueueExtensions，按所有 Pod/Node 等事件重新入队；CRD 变化不会触发重试；CR 缺失时 PreFilter 解引用 nil 导致调度器退出。
+1. NetworkOverhead 依赖两个 CRD：AppGroup 提供依赖与 `maxNetworkCost`，NetworkTopology 提供按 `weightsName` 区分的 region/zone 有向代价表；默认 `weightsName` 为 `UserDefined`、`networkTopologyName` 为 `nt-default`、`namespaces` 为 `["default"]`。
+2. 所有计算都在 PreFilter 中完成，结果存进 CycleState 的三张节点 map；Filter、Score 只是查表，`Clone` 共享指针，AddPod/RemovePod 为空，抢占模拟无法改变它的结论。
+3. 逐对判定：同节点 0、同 zone 1（不看上限）、跨 zone/region 查表比较上限；依赖节点无 label 记违反加 100；查不到代价时 Filter 不计数、Score 加 100。
+4. Filter 是按副本计数的多数票，`violated > satisfied` 才返回 `Unschedulable`；Score 返回累计代价，NormalizeScore 做 min-max 反转，分数对候选集合敏感。
+5. 没有 EnqueueExtensions，按所有 Pod/Node 等事件重新入队；CRD 变化不会触发重试；CR 缺失时 PreFilter 解引用 nil 导致调度器退出。
 
 下一篇进入 [NodeResourceTopologyMatch](/posts/sched-plugin-30-node-resource-topology/)，从节点之间的网络拓扑转到节点内部的 NUMA 拓扑。

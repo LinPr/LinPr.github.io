@@ -15,7 +15,7 @@ description: "DynamicResources 是 DRA 在调度器里的实现：它在 Filter 
 
 [上一篇](/posts/sched-plugin-14-inter-pod-affinity/)的 `InterPodAffinity` 处理的是「Pod 和 Pod 之间」的约束。默认 Profile 里紧接着它的是 `DynamicResources`，它处理的是 Pod 和**设备**之间的约束：GPU、网卡 VF、FPGA 这类无法用一个整数 `nvidia.com/gpu: 1` 描述清楚的资源。本文基于 Kubernetes master 提交 `aabdf5a2`（1.38 开发周期）。
 
-在 `pkg/scheduler/apis/config/v1/default_plugins.go` 里，它的权重是 2，位置被刻意放在 `DefaultPreemption` 之前（第 8–9 行，理由写在上面第 3–7 行的注释里）：
+在 `pkg/scheduler/apis/config/v1/default_plugins.go` 里，它的权重是 2，位置被刻意放在 `DefaultPreemption` 之前（第 8–9 行）：PostFilter 要解决问题时，先释放一个闲置的 `ResourceClaim`，比驱逐一个可能还在干活的 Pod 更划算（第 3–7 行的注释）。
 
 ```go {linenos=inline}
 // pkg/scheduler/apis/config/v1/default_plugins.go
@@ -53,10 +53,10 @@ PreEnqueue、PreFilter、Filter、PostFilter、Score、Reserve/Unreserve、PreBi
 
 {{< figure src="/images/posts/sched-plugins/15-dra-objects.svg" caption="DRA 的对象关系：Pod 引用 ResourceClaim，claim 的请求按名字指向 DeviceClass，驱动通过 ResourceSlice 发布设备；调度器只写 claim 的 status（点击查看大图）" link="/images/posts/sched-plugins/15-dra-objects.svg" >}}
 
-- ResourceSlice：驱动发布的设备清单。一个 slice 属于某个 driver 的某个 pool，带 `nodeName`、`nodeSelector` 或 `allNodes` 之一，说明这些设备从哪些节点可达。每个设备有 `attributes`（如型号、PCIe root）和 `capacity`（如显存）。
-- DeviceClass：管理员定义的设备类别，用 CEL `selectors` 圈出一类设备，附带下发给驱动的 `config`。
-- ResourceClaim：工作负载的申请单。`spec.devices.requests[]` 里每个请求要么是 `exactly`（指定 class、selectors、数量），要么是 `firstAvailable`（一组有序的备选子请求）。`constraints` 可以要求多个设备在某个属性上取值相同。
-- ResourceClaimTemplate：每个 Pod 一份 claim 时用的模板，由 kube-controller-manager 里的 resourceclaim controller 实例化，并把生成的 claim 名字回填到 `pod.status.resourceClaimStatuses`。
+1. ResourceSlice：驱动发布的设备清单。一个 slice 属于某个 driver 的某个 pool，带 `nodeName`、`nodeSelector` 或 `allNodes` 之一，说明这些设备从哪些节点可达。每个设备有 `attributes`（如型号、PCIe root）和 `capacity`（如显存）。
+2. DeviceClass：管理员定义的设备类别，用 CEL `selectors` 圈出一类设备，附带下发给驱动的 `config`。
+3. ResourceClaim：工作负载的申请单。`spec.devices.requests[]` 里每个请求要么是 `exactly`（指定 class、selectors、数量），要么是 `firstAvailable`（一组有序的备选子请求）。`constraints` 可以要求多个设备在某个属性上取值相同。
+4. ResourceClaimTemplate：每个 Pod 一份 claim 时用的模板，由 kube-controller-manager 里的 resourceclaim controller 实例化，并把生成的 claim 名字回填到 `pod.status.resourceClaimStatuses`。
 
 一个典型的申请如下，Pod 想要一块 80Gi 以上显存的 GPU，拿不到就退而求其次要两块普通 GPU：
 
@@ -100,14 +100,14 @@ spec:
 
 调度器对 claim 只做三件事：
 
-- 加 finalizer `resource.kubernetes.io/delete-protection`；
-- 写 `status.allocation`（选中的设备列表和 `nodeSelector`）；
-- 往 `status.reservedFor` 里追加当前 Pod。
+1. 加 finalizer `resource.kubernetes.io/delete-protection`；
+2. 写 `status.allocation`（选中的设备列表和 `nodeSelector`）；
+3. 往 `status.reservedFor` 里追加当前 Pod。
 
 反向操作分散在两个地方：
 
-- Unreserve 和 PostFilter 由调度器自己做；
-- Pod 结束后从 `reservedFor` 移除 Pod、在最后一个使用者离开时清空 `allocation`，由 resourceclaim controller 做（第 9 行的 `claim.Status.Allocation = nil`）：
+1. Unreserve 和 PostFilter 由调度器自己做；
+2. Pod 结束后从 `reservedFor` 移除 Pod、在最后一个使用者离开时清空 `allocation`，由 resourceclaim controller 做（第 9 行的 `claim.Status.Allocation = nil`）：
 
 ```go {linenos=inline}
 // pkg/controller/resourceclaim/controller.go
@@ -148,11 +148,11 @@ type DynamicResources struct {
 }
 ```
 
-几个字段值得单独说：
+三个字段分别管缓存、共享状态和索引：
 
-- `celCache`（第 8 行）是一个容量为 10 的 LRU，缓存编译好的 CEL 表达式。DeviceClass 和 claim 里的 selector 在不同调度周期里高度重复，编译一次复用多次。
-- `draManager`（第 9 行）来自 `fh.SharedDRAManager()`，是所有 Profile 共享的 `DefaultDRAManager`，里面装着 claim 的 assume cache、in-flight 表、ResourceSlice tracker 和 DeviceClass lister。插件自己不持有任何跨周期状态，跨周期的东西都在这里。
-- `podIndexer`（第 10 行）是 `New` 里给 Pod informer 加的一个索引：按「Pod 引用了哪些 claim」建索引，索引名带 Profile 名后缀，避免多个 Profile 重复注册冲突。它服务于后面要讲的 PreQueueingHint。
+1. `celCache`（第 8 行）是一个容量为 10 的 LRU，缓存编译好的 CEL 表达式。DeviceClass 和 claim 里的 selector 在不同调度周期里高度重复，编译一次复用多次。
+2. `draManager`（第 9 行）来自 `fh.SharedDRAManager()`，是所有 Profile 共享的 `DefaultDRAManager`，里面装着 claim 的 assume cache、in-flight 表、ResourceSlice tracker 和 DeviceClass lister。插件自己不持有任何跨周期状态，跨周期的东西都在这里。
+3. `podIndexer`（第 10 行）是 `New` 里给 Pod informer 加的一个索引：按「Pod 引用了哪些 claim」建索引，索引名带 Profile 名后缀，避免多个 Profile 重复注册冲突。它服务于后面要讲的 PreQueueingHint。
 
 ### 2.2 DynamicResourcesArgs
 
@@ -217,11 +217,11 @@ func (d *stateData) Clone() fwk.StateData {
 
 几个字段的分工：
 
-- `claims`（第 3 行）是一个 `claimStore`，按 `pod.Spec.ResourceClaims` 的顺序存放 claim 指针，如果 Pod 有「由 DRA 支撑的扩展资源」，末尾再追加一个特殊 claim（第七节讲）。它提供 `all()`、`allUserClaims()`、`toAllocate()` 三个迭代器，`toAllocate()` 跳过已经有 `Status.Allocation` 的 claim，但**返回原始下标**，这样 `informationsForClaim[index]` 始终能对上号。
-- `informationsForClaim[i]`（第 16 行）有两个字段：`availableOnNodes` 是已分配 claim 的 `nodeSelector` 编译结果；`allocation` 是 Reserve 选定的分配结果。
-- `nodeAllocations`（第 19 行）是 Filter 的产物：每个通过 Filter 的节点一份分配结果。Score 和 Reserve 都从这里取，不重新计算。
-- `unavailableClaims`（第 13 行）记录「已分配、但在某些节点上不可用」的 claim 下标，供 PostFilter 挑选释放对象。
-- `mutex`（第 11 行）保护后三个字段，因为 Filter 是按节点并行执行的。
+1. `claims`（第 3 行）是一个 `claimStore`，按 `pod.Spec.ResourceClaims` 的顺序存放 claim 指针，如果 Pod 有「由 DRA 支撑的扩展资源」，末尾再追加一个特殊 claim（第七节讲）。它提供 `all()`、`allUserClaims()`、`toAllocate()` 三个迭代器，`toAllocate()` 跳过已经有 `Status.Allocation` 的 claim，但**返回原始下标**，这样 `informationsForClaim[index]` 始终能对上号。
+2. `informationsForClaim[i]`（第 16 行）有两个字段：`availableOnNodes` 是已分配 claim 的 `nodeSelector` 编译结果；`allocation` 是 Reserve 选定的分配结果。
+3. `nodeAllocations`（第 19 行）是 Filter 的产物：每个通过 Filter 的节点一份分配结果。Score 和 Reserve 都从这里取，不重新计算。
+4. `unavailableClaims`（第 13 行）记录「已分配、但在某些节点上不可用」的 claim 下标，供 PostFilter 挑选释放对象。
+5. `mutex`（第 11 行）保护后三个字段，因为 Filter 是按节点并行执行的。
 
 这些字段都是空的，什么时候往里填？第一站是 Pod 进不进队列。
 
@@ -397,8 +397,8 @@ PreFilter 是这个插件最重的一步，可以分成五段。
 
 收集方式按 gate 分两路：
 
-- `DRAConsumableCapacity`（1.36 起 Beta，默认开）开启时走 `GatherAllocatedState`（第 4–14 行），额外收集「共享设备」和「已消耗容量」，这是为了支持一块设备按容量切给多个 claim 的场景；
-- 否则走第 15–18 行的 `ListAllAllocatedDevices`。
+1. `DRAConsumableCapacity`（1.36 起 Beta，默认开）开启时走 `GatherAllocatedState`（第 4–14 行），额外收集「共享设备」和「已消耗容量」，这是为了支持一块设备按容量切给多个 claim 的场景；
+2. 否则走第 15–18 行的 `ListAllAllocatedDevices`。
 
 ### 5.5 构建分配器
 
@@ -420,8 +420,8 @@ PreFilter 是这个插件最重的一步，可以分成五段。
 
 分配器是否构建有两种情况：
 
-- 只有 `numClaimsToAllocate > 0` 时才构建分配器，并在第 11 行赋给 `s.allocator`；
-- 所有 claim 都已分配时它为 nil，Filter 只做 nodeSelector 匹配。
+1. 只有 `numClaimsToAllocate > 0` 时才构建分配器，并在第 11 行赋给 `s.allocator`；
+2. 所有 claim 都已分配时它为 nil，Filter 只做 nodeSelector 匹配。
 
 `ListWithDeviceTaintRules` 返回的是已经叠加了 `DeviceTaintRule` 的 slice 视图。
 
@@ -559,6 +559,13 @@ Filter 先遍历所有 claim，对已分配的 claim 做三项检查，任何一
 	// practice).
 ```
 
+这段注释讲的是搜索的四条性质：
+
+1. 顺序：一个 claim 接一个 claim 地分，每个 claim 里的每个 request 都要分到设备（第 2–3 行）；
+2. 递归：每块设备依次挑候选，边检查约束边标记为「已占用」，再进入下一个槽位，于是所有 request 会和所有候选在一切可能的顺序上组合过一遍（第 4–7 行）；
+3. 返回：只取第一个完整解，找到就停（第 9 行）；
+4. 代价：这是穷举搜索，可接受的前提是「找到即中止」；一旦加入打分，还要用额外的手段避免尝试等价的解，比如两个相同的 request、两块相同的设备（第 11–15 行）。
+
 `allocateOne` 每次处理一个「设备槽位」。对于普通请求，它按 pool → slice → device 的顺序遍历，每块设备走三步：
 
 1. 试这块设备（第 2 行）；
@@ -608,8 +615,8 @@ Filter 先遍历所有 claim，对已分配的 claim 做三项检查，任何一
 
 这里有一个专门的错误 `errAllocationResultMaxSizeExceeded`：一个 claim 最多 `AllocationResultsMaxSize = 32` 个设备。遇到它分两种情况：
 
-- 某个子请求因为设备数超限失败时，下一个子请求可能要的设备更少，所以继续试；
-- 只有所有子请求都因为超限失败时，才把这个错误往上传，让上层做更激进的回溯。
+1. 某个子请求因为设备数超限失败时，下一个子请求可能要的设备更少，所以继续试；
+2. 只有所有子请求都因为超限失败时，才把这个错误往上传，让上层做更激进的回溯。
 
 整个搜索不比较多个解。拿到第一个完整解就返回，设备选择完全由 ResourceSlice 的发布顺序决定。这也是 Score 阶段只能看「选中了第几个备选」、而不能看「设备有多好」的原因。
 
@@ -634,8 +641,8 @@ PreFilter 构造一个名为 `<extended-resources>`（第 4 行）、带临时 U
 
 Filter 里 `filterExtendedResources` 对每个节点分两种情况：
 
-- 节点 `allocatable` 里有这个资源（device plugin 提供），就不走 DRA；
-- 没有、但能映射到 DeviceClass，就给这个节点生成一个带具体 `requests` 的 claim 副本交给分配器。
+1. 节点 `allocatable` 里有这个资源（device plugin 提供），就不走 DRA；
+2. 没有、但能映射到 DeviceClass，就给这个节点生成一个带具体 `requests` 的 claim 副本交给分配器。
 
 PreBind 时才真正在 API Server 里 `Create` 这个 claim（名字由 `GenerateName` 生成），再更新 Pod 的 `status.extendedResourceClaimStatus`，记录容器到请求的映射。
 
@@ -688,15 +695,15 @@ Reserve 不写 API、不写 assume cache，只做两件事：
 
 后者的处理有三种情况：
 
-- 插入前先再查一次 assume cache，如果 claim 其实已经被分配了（CycleState 可能已经过时），就不插；
-- 没有已有条目时，往 `inFlightAllocations` 里插一条，`sharers` 计数为 1；
-- 已有条目（PodGroup 内共享）时，`sharers` 加 1。
+1. 插入前先再查一次 assume cache，如果 claim 其实已经被分配了（CycleState 可能已经过时），就不插；
+2. 没有已有条目时，往 `inFlightAllocations` 里插一条，`sharers` 计数为 1；
+3. 已有条目（PodGroup 内共享）时，`sharers` 加 1。
 
 对于已经分配、只是还没 reserve 给本 Pod 的 claim，Reserve 什么都不做，源码注释说得很直接：先假定预留会成功，到 PreBind 再真正写 `reservedFor`，失败了说明别的 Pod 更快，重新调度即可。
 
 ### 8.2 in-flight 表为什么必须由「分配者」本人写回
 
-`claimTracker.inFlightAllocations` 的注释里描述了两个反例，值得完整理解：
+`claimTracker.inFlightAllocations` 的注释里描述了两个反例：
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/dynamicresources/dra_manager.go
@@ -718,6 +725,11 @@ Reserve 不写 API、不写 assume cache，只做两件事：
 	// - The assume cache is now not reflecting that the claim is allocated,
 	//   which could lead to reusing the same resource for some other claim.
 ```
+
+两个反例都出在「谁能写 allocation」上：
+
+1. 如果允许共享者写：Pod A 触发 claim X 的分配，claim 被 assume 成已分配，Pod B 因此也被调度进来；B 的 PreBind 先执行，去更新 `reservedFor` 时 claim 其实还没分配，只能失败（第 3–7 行）。
+2. 如果允许任意一方写：A、B 都调度成功，A 的 PreBind 先执行、遇到临时 API 错误，于是把 claim 从 in-flight 表里删掉；B 的 PreBind 随后成功，写入 allocation 和 `reservedFor`；此时 assume cache 里没有「已分配」的记录，这块设备可能被再分给别的 claim（第 9–18 行）。
 
 所以规则是：**claim 在 in-flight 里时，其他 Pod 一律等待**（PreFilter 里的 `is in the process of being allocated`）。唯一的例外是同一 PodGroup 调度周期内的 Pod，它们通过 `sharers` 引用计数共享，in-flight 条目要等所有共享者都 Unreserve 或者有一个 PreBind 成功后才移除。
 
@@ -770,8 +782,8 @@ finalizer 和 status 分两次请求：
 
 `binding` 写谁有两种情况：
 
-- 通常是本 Pod 的引用；
-- `DRAWorkloadResourceClaims`（1.37 Beta，默认关）开启时，属于 PodGroup 级 claim 的会写 PodGroup 的引用，这样同组 Pod 共享同一份 `reservedFor` 条目。
+1. 通常是本 Pod 的引用；
+2. `DRAWorkloadResourceClaims`（1.37 Beta，默认关）开启时，属于 PodGroup 级 claim 的会写 PodGroup 的引用，这样同组 Pod 共享同一份 `reservedFor` 条目。
 
 写成功后，`bindClaim` 的 defer 调用 `AssumeClaimAfterAPICall(claim)`，把 API Server 返回的新对象放进 assume cache。assume cache 的规则是只接受版本不低于当前的对象，后续 informer 事件到达时自然覆盖。这样下一个 Pod 的 PreFilter 立刻就能看到这个 claim 已分配，不用等 informer。
 
@@ -798,8 +810,8 @@ in-flight 条目的移除被推迟到整个 PreBind 成功之后：
 
 这段收尾做两件事：
 
-- `successCleanup` 在 PreBind 成功后才由 `defer`（第 8–12 行）调用，以 `forceRemove=true` 调用 `MaybeRemoveClaimPendingAllocation`，不管还有几个 sharer 都删掉，因为 API 里已经有了真实的 allocation；
-- `state.claims.set`（第 14 行）把 claim 换成 API 返回的新对象，这样如果后续 Bind 失败，Unreserve 能看到「这个 claim 已经 reserve 给我了」，知道要去撤销。
+1. `successCleanup` 在 PreBind 成功后才由 `defer`（第 8–12 行）调用，以 `forceRemove=true` 调用 `MaybeRemoveClaimPendingAllocation`，不管还有几个 sharer 都删掉，因为 API 里已经有了真实的 allocation；
+2. `state.claims.set`（第 14 行）把 claim 换成 API 返回的新对象，这样如果后续 Bind 失败，Unreserve 能看到「这个 claim 已经 reserve 给我了」，知道要去撤销。
 
 ### 8.4 binding conditions：PreBind 里的等待
 
@@ -807,9 +819,9 @@ in-flight 条目的移除被推迟到整个 PreBind 成功之后：
 
 PreBind 写完 claim 后，如果有设备带 binding conditions，就每 5 秒检查一次（第 2–5 行），直到出现以下三种情况之一：
 
-- 全部为真；
-- 任一失败条件为真；
-- 超过 `bindingTimeout`（默认 600 秒）。
+1. 全部为真；
+2. 任一失败条件为真；
+3. 超过 `bindingTimeout`（默认 600 秒）。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/dynamicresources/dynamicresources.go
@@ -858,8 +870,8 @@ PreBind 写完 claim 后，如果有设备带 binding conditions，就每 5 秒�
 
 两段撤销对应两种进度：
 
-- **还在 in-flight**（Reserve 之后、PreBind 之前失败，比如 Permit 被拒，第 4–8 行）：`sharers` 减 1，归零则删除条目，并 `Restore` assume cache 到 informer 版本。
-- **已经写进 API**（PreBind 成功、Bind 失败，第 13–23 行）：用 strategic merge patch 从 `reservedFor` 删掉自己。patch 里带上 `metadata.uid`，防止误改同名的新 claim。`allocation` 本身不清，留给 resourceclaim controller 或下一轮 PostFilter 处理。
+1. **还在 in-flight**（Reserve 之后、PreBind 之前失败，比如 Permit 被拒，第 4–8 行）：`sharers` 减 1，归零则删除条目，并 `Restore` assume cache 到 informer 版本。
+2. **已经写进 API**（PreBind 成功、Bind 失败，第 13–23 行）：用 strategic merge patch 从 `reservedFor` 删掉自己。patch 里带上 `metadata.uid`，防止误改同名的新 claim。`allocation` 本身不清，留给 resourceclaim controller 或下一轮 PostFilter 处理。
 
 分配能走完的节点已经产生了结果，下一节看这些结果怎么变成节点分数。
 
@@ -884,9 +896,9 @@ PreBind 写完 claim 后，如果有设备带 binding conditions，就每 5 秒�
 
 打分规则有三条：
 
-- `DRAPrioritizedList` 未开启时 Score 直接返回 0（该 gate 1.37 已 GA 且锁定为开）；
-- 打分只看 `firstAvailable` 请求：选中第 `i` 个子请求得 `8 - i` 分（第 9 行的 `FirstAvailableDeviceRequestMaxSize - i`，`FirstAvailableDeviceRequestMaxSize = 8`，子请求最多 8 个）；
-- `exactly` 请求不参与打分。
+1. `DRAPrioritizedList` 未开启时 Score 直接返回 0（该 gate 1.37 已 GA 且锁定为开）；
+2. 打分只看 `firstAvailable` 请求：选中第 `i` 个子请求得 `8 - i` 分（第 9 行的 `FirstAvailableDeviceRequestMaxSize - i`，`FirstAvailableDeviceRequestMaxSize = 8`，子请求最多 8 个）；
+3. `exactly` 请求不参与打分。
 
 算例：Pod 有一个 claim，请求 `gpu` 的备选是 `[big, small]`。
 
@@ -900,8 +912,8 @@ PreBind 写完 claim 后，如果有设备带 binding conditions，就每 5 秒�
 
 `computeScore` 里有一个细节，两类 claim 的结果来源不同：
 
-- 已分配的 claim 从 `claim.Status.Allocation` 取结果；
-- 未分配的从 `nodeAllocations[node].allocationResults` 按顺序取。
+1. 已分配的 claim 从 `claim.Status.Allocation` 取结果；
+2. 未分配的从 `nodeAllocations[node].allocationResults` 按顺序取。
 
 两者用独立的下标 `unallocatedIndex` 对齐。
 
@@ -995,8 +1007,8 @@ ResourceClaim 事件是最频繁的，所以有两层过滤。
 
 **PreQueueingHint**：每个事件只调用一次，在遍历不可调度 Pod 之前先缩小范围：
 
-- claim 的 allocation 从有到无，或者一个已分配的 claim 被删除：设备被释放了，可能任何 Pod 都会受益，返回 `AllPods: true`；
-- 其他变化：通过 `New` 里注册的 Pod 索引，只返回引用了这个 claim 的 Pod。
+1. claim 的 allocation 从有到无，或者一个已分配的 claim 被删除：设备被释放了，可能任何 Pod 都会受益，返回 `AllPods: true`；
+2. 其他变化：通过 `New` 里注册的 Pod 索引，只返回引用了这个 claim 的 Pod。
 
 在大集群里，不可调度池可能有成千上万个 Pod，大部分 claim 事件只和一两个 Pod 相关。这一层把 O(Pod 数) 的 hint 调用降到 O(相关 Pod 数)。
 
@@ -1068,25 +1080,25 @@ DRA 把选择提前到调度器，代价是调度器要做一次真正的组合�
 
 `DynamicResources` 的结构和 [VolumeBinding](/posts/sched-plugin-11-volume-binding/) 很像，有四处对应：
 
-- 都在 Filter 里为每个节点算出一个「绑定方案」并缓存在 CycleState；
-- 都在 Reserve 里把方案登记到一个跨 Pod 共享的内存结构，让后续 Pod 的调度周期看得见；
-- 都在 PreBind 里才真正写 API；
-- 失败时都靠 Unreserve 回滚内存登记。
+1. 都在 Filter 里为每个节点算出一个「绑定方案」并缓存在 CycleState；
+2. 都在 Reserve 里把方案登记到一个跨 Pod 共享的内存结构，让后续 Pod 的调度周期看得见；
+3. 都在 PreBind 里才真正写 API；
+4. 失败时都靠 Unreserve 回滚内存登记。
 
 不同的是 PV 与 PVC 是一对一绑定，冲突检测相对简单；DRA 的一块设备可能被分区、按容量共享、带污点、带 binding conditions，状态空间大得多，于是有了独立的 `allocatedDevices` 增量集合、revision 重试，以及 in-flight 表的引用计数。
 
 ### 14.4 生产配置建议
 
-- 如果集群有大量 ResourceSlice，先观察 Filter 耗时，再决定是否调小 `filterTimeout`。调小超时并不会让 Pod「换个节点试」，而是让整个周期 backoff。
-- 不需要 binding conditions 的驱动不必关心 `bindingTimeout`；需要的驱动要确保在超时前更新 `status.devices[].conditions`，否则 claim 会被 PostFilter 释放，设备白准备一遍。
-- 预先手工创建的 claim（不是模板生成的）在 Pod 删除后会被 controller 清空 allocation，但这依赖 controller 正常运行。如果看到 Pod 一直报 `resourceclaim not available on the node` 并伴随 `deallocation of ResourceClaim completed`，说明它在依靠调度器自己的 PostFilter 兜底。
+1. 如果集群有大量 ResourceSlice，先观察 Filter 耗时，再决定是否调小 `filterTimeout`。调小超时并不会让 Pod「换个节点试」，而是让整个周期 backoff。
+2. 不需要 binding conditions 的驱动不必关心 `bindingTimeout`；需要的驱动要确保在超时前更新 `status.devices[].conditions`，否则 claim 会被 PostFilter 释放，设备白准备一遍。
+3. 预先手工创建的 claim（不是模板生成的）在 Pod 删除后会被 controller 清空 allocation，但这依赖 controller 正常运行。如果看到 Pod 一直报 `resourceclaim not available on the node` 并伴随 `deallocation of ResourceClaim completed`，说明它在依靠调度器自己的 PostFilter 兜底。
 
 ## 小结
 
-- `DynamicResources` 的 PreFilter 汇总「已分配设备集合」（informer 增量集合 + in-flight 表，revision 不一致就重试），构建一个每周期新建的分配器；Filter 对每个节点跑一次回溯搜索，第一个完整解即返回，结果缓存在 `nodeAllocations`。
-- 默认 gate 下实际使用的是 `incubating` 分配器，它用 `startLocation` 把同一请求内的搜索从排列降到组合。
-- Reserve 只写 in-flight 表，PreBind 先加 finalizer、再写 allocation 与 reservedFor，成功后放进 assume cache 并撤掉 in-flight；Unreserve 按进度分别回滚。
-- Score 只对 `firstAvailable` 打分，选中第 `i` 个备选得 `8 - i` 分。
-- 内部的 `statusUnschedulable` 返回的是 `UnschedulableAndUnresolvable`，加上没有 PreFilterExtensions、设备计数在 claim 上，DRA 的失败几乎不会触发抢占；它用 PostFilter 释放闲置 claim 来代替。
+1. `DynamicResources` 的 PreFilter 汇总「已分配设备集合」（informer 增量集合 + in-flight 表，revision 不一致就重试），构建一个每周期新建的分配器；Filter 对每个节点跑一次回溯搜索，第一个完整解即返回，结果缓存在 `nodeAllocations`。
+2. 默认 gate 下实际使用的是 `incubating` 分配器，它用 `startLocation` 把同一请求内的搜索从排列降到组合。
+3. Reserve 只写 in-flight 表，PreBind 先加 finalizer、再写 allocation 与 reservedFor，成功后放进 assume cache 并撤掉 in-flight；Unreserve 按进度分别回滚。
+4. Score 只对 `firstAvailable` 打分，选中第 `i` 个备选得 `8 - i` 分。
+5. 内部的 `statusUnschedulable` 返回的是 `UnschedulableAndUnresolvable`，加上没有 PreFilterExtensions、设备计数在 claim 上，DRA 的失败几乎不会触发抢占；它用 PostFilter 释放闲置 claim 来代替。
 
 下一篇看一个小得多的插件：[NodeDeclaredFeatures](/posts/sched-plugin-16-node-declared-features/)，它检查的是节点声明的特性集合，DRA 的 `DRAOptionalNodeOperations` 就依赖它。
