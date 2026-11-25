@@ -156,7 +156,9 @@ metadata:
 value: 8000
 ```
 
-注意策略挂在 `PriorityClass` 上，读的是受害者的 `PriorityClass`，而且是在抢占时通过 Lister 实时读取。**修改 annotation 会立即影响所有已经在运行的、使用该 `PriorityClass` 的 Pod，不需要重建 Pod。** `PriorityClass` 的 `value` 字段不可修改，但 annotation 可以随时改。
+注意策略挂在 `PriorityClass` 上，读的是受害者的 `PriorityClass`，而且是在抢占时通过 Lister 实时读取。这个 Lister 在 `New` 里由 `fh.SharedInformerFactory().Scheduling().V1().PriorityClasses().Lister()` 创建，背后的 informer 通过 watch 把 `PriorityClass` 的变更同步到调度器的本地缓存。
+
+`ExemptedFromPreemption` 每次判定都从这份缓存里 `Get` 一次、现场解析 annotation，插件不缓存解析结果。**修改 annotation 会立即影响所有已经在运行的、使用该 `PriorityClass` 的 Pod，不需要重建 Pod。** `PriorityClass` 的 `value` 字段不可修改，但 annotation 可以随时改。
 
 ## 三、ExemptedFromPreemption：逐条判定
 
@@ -228,7 +230,13 @@ func ExemptedFromPreemption(
 3. 抢占者 `preemptionPolicy: Never`：豁免所有人（第 17–23 行）。这个分支在插件内部实际走不到，因为 Evaluator 的第一步 `PodEligibleToPreemptOthers` 已经把这类抢占者拦下了；它的存在是因为函数是导出的，其他插件调用时不一定先做了资格检查。
 4. 解析失败：不豁免，只打一条错误日志。annotation 写成 `"10k"` 之类的值，策略就等于没写，调度器之外看不到任何提示。
 5. 门槛比较用 `>=`（第 34–37 行）：抢占者优先级恰好等于 `minimum-preemptable-priority` 时，不豁免，可以直接抢。测试 `when preemptor's priority is equal to MinimumPreemptablePriorityClass, it should return false` 明确了这一点。
-6. 没有 `PodScheduled=True`：豁免（第 44–47 行）。节点上的 Pod 一般都已经有这个 condition（绑定时由 API server 写入），没有的主要是调度器缓存里被 assume、尚未完成绑定的 Pod。插件选择保护它们：一个刚刚做出的调度决定不应该马上被推翻。
+6. 没有 `PodScheduled=True`：豁免（第 44–47 行）。节点上的 Pod 一般都已经有这个 condition，写入方有两个：
+   - 经调度器绑定的 Pod：API server 处理 binding 子资源时，在 `BindingREST.setPodNodeAndMetadata`（`pkg/registry/core/pod/storage/storage.go`）里填 `spec.nodeName` 的同时写入 `PodScheduled=True`；
+   - 直接写了 `spec.nodeName`、不经过调度器的 Pod：kubelet 生成 Pod 状态时（`pkg/kubelet/kubelet_pods.go` 的 `generateAPIPodStatus`）总会带上 `PodScheduled=True`。
+
+   没有这个 condition 的，主要是调度器缓存里被 assume、尚未完成绑定的 Pod。[开篇](/posts/sched-plugin-00-journey/) 3.1 节讲过，调度周期在发起异步绑定之前，就用 `Cache.AssumePod` 把填好 `spec.nodeName` 的 Pod 副本放进缓存。
+
+   这个副本会出现在后续调度周期快照的 `NodeInfo` 里，status 却还是绑定前的旧状态。插件选择保护它们：一个刚刚做出的调度决定不应该马上被推翻。
 7. 时间比较（第 51 行）：`scheduledAt` 用的是 `PodScheduled` condition 的 `LastTransitionTime`，不是容器启动时间，也不是 `status.startTime`。Pod 绑定后拉镜像花了 5 分钟，那 10 分钟的容忍期里真正在跑的只有 5 分钟。如果「保证运行时间」是硬需求，`toleration-seconds` 要把镜像拉取和启动时间算进去。
 
 `now` 不是在判定时取的，而是在 PostFilter 开头取一次：
@@ -255,6 +263,8 @@ func (pl *PreemptionToleration) PostFilter(ctx context.Context, state fwk.CycleS
 `DryRunPreemption` 会并行模拟多个节点，**所有节点共用同一个 `curTime`，判定结果不会因为模拟的先后而不同。** `clock` 是 `k8s.io/utils/clock` 的接口，测试里可以注入假时钟。
 
 `curTime` 存在插件结构体上而不是 CycleState 里，能这么做是因为调度周期（包括 PostFilter）是串行执行的，同一时刻只有一个 Pod 在跑 PostFilter。
+
+串行来自调度器的主循环（[开篇](/posts/sched-plugin-00-journey/)第三节）：`pkg/scheduler/scheduler.go` 用 `wait.UntilWithContext(ctx, sched.ScheduleOne, 0)` 在单个 goroutine 里反复调用 `ScheduleOne`，只有绑定周期用 `go` 另起 goroutine。前一个 Pod 的 PostFilter 返回之前，下一个 Pod 的调度周期不会开始。
 
 ### 3.1 一个反直觉的组合：只写门槛
 

@@ -182,7 +182,9 @@ func (pl *VolumeZone) PreFilter(ctx context.Context, cs fwk.CycleState, pod *v1.
 
 延迟绑定的 PVC 被跳过（第 16–19 行），是因为它还没有 PV，没有标签可看；等 VolumeBinding 在 PreBind 里完成绑定后，供给出来的 PV 用 `nodeAffinity` 表达拓扑，由 VolumeBinding 自己在下次调度时检查。
 
-表里后几种拒绝和 VolumeBinding 的 PreFilter 是重叠的。VolumeBinding 在 PreFilter 链上更靠前，遇到未绑定的 Immediate PVC 会先返回 `UnschedulableAndUnresolvable`，框架立即终止 PreFilter，所以实际很少看到 VolumeZone 报出这几条信息。它们在 VolumeBinding 被禁用的自定义 Profile 里才有意义。
+表里后几种拒绝和 VolumeBinding 的 PreFilter 是重叠的。VolumeBinding 在 PreFilter 链上更靠前，遇到未绑定的 Immediate PVC 会先返回 `UnschedulableAndUnresolvable`。
+
+框架的 `RunPreFilterPlugins`（`pkg/scheduler/framework/runtime/framework.go`）遇到这个 code 立即返回，排在后面的 VolumeZone 的 PreFilter 不会执行，所以实际很少看到 VolumeZone 报出这几条信息。它们在 VolumeBinding 被禁用的自定义 Profile 里才有意义。
 
 注意 PVC 和 PV 取自普通 lister，不是 VolumeBinding 的 assume cache，看不到其它 Pod 在 Reserve 里做的假设。对 VolumeZone 没有影响，它只关心已经写进 API 的 `volumeName`。
 
@@ -302,7 +304,7 @@ func (pl *VolumeZone) Filter(ctx context.Context, cs fwk.CycleState, pod *v1.Pod
 
 而 PV 是持久对象，几年前创建的 PV 带着 beta 标签很常见，必须兼容。
 
-Filter 里还保留了一个兜底：CycleState 里读不到状态时，现场调用 `getPVbyPod` 再算一遍（第 9–18 行）。正常调度路径上 PreFilter 返回 `Skip` 时 Filter 根本不会被调用，读不到状态只可能出现在直接调用 Filter 的外部代码里，例如把调度器插件嵌进去做模拟的组件。
+Filter 里还保留了一个兜底：CycleState 里读不到状态时，现场调用 `getPVbyPod` 再算一遍（第 9–18 行）。正常调度路径上 PreFilter 返回 `Skip` 时 Filter 根本不会被调用：`RunPreFilterPlugins` 把返回 `Skip` 的插件记进 CycleState 的 SkipFilterPlugins 集合，`RunFilterPlugins` 遇到集合里的插件直接跳过（开篇 3.2 节）。读不到状态只可能出现在直接调用 Filter 的外部代码里，例如把调度器插件嵌进去做模拟的组件。
 
 ### 2.5 为什么是 UnschedulableAndUnresolvable
 
@@ -340,7 +342,7 @@ func (pl *VolumeZone) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWit
 ```
 
 1. StorageClass 新增：只有 `volumeBindingMode` 为 `WaitForFirstConsumer` 的新 class 才 `Queue`。对应 PreFilter 中「StorageClass 不存在」的拒绝：新建一个 Immediate 的 class 也无济于事，因为未绑定的 Immediate PVC 照样会被拒。`volumeBindingMode` 不可变，所以不监听更新。
-2. Node 新增/标签更新：无 hint。`UpdateNodeLabel` 本身已经是细分过的事件类型，节点其它字段的变化不会触发。
+2. Node 新增/标签更新：无 hint。`UpdateNodeLabel` 本身已经是细分过的事件类型：调度器的 Node 更新回调（`pkg/scheduler/eventhandlers.go`）调用 `NodeSchedulingPropertiesChange`（`pkg/scheduler/framework/events.go`）逐项比较新旧 Node，只有 labels 不同才产生 `UpdateNodeLabel`，节点其它字段的变化不会触发。
 3. PVC 新增/更新：同命名空间、名字被 Pod 引用就 `Queue`。最典型的是 PVC 的 `volumeName` 被填上。
 4. PV 新增/更新：新增一律 `Queue`；更新时用 `getPVTopologies` 分别算出新旧 PV 的拓扑列表，`reflect.DeepEqual` 不同才 `Queue`。PV 的 status、注解频繁变化，这个 hint 能过滤掉绝大多数无关更新。
 
@@ -388,7 +390,7 @@ CSI 驱动供给出来的 PV 用驱动自己的拓扑键（如 `topology.gke.io/
 
 对于新建集群，它几乎总是在 PreFilter 返回 `Skip`，开销只是遍历一次 Pod 的 PVC、从 lister 取 PV 看标签。
 
-它仍然留在默认 Profile 里，原因和 VolumeRestrictions 的内联卷检查一样：老集群里那些 PV 还在，删掉插件意味着 Pod 可能被调度到磁盘所在可用区之外，attach 失败后卡在 `ContainerCreating`，而这种失败不会触发重新调度。
+它仍然留在默认 Profile 里，原因和 VolumeRestrictions 的内联卷检查一样：老集群里那些 PV 还在，删掉插件意味着 Pod 可能被调度到磁盘所在可用区之外，attach 失败后卡在 `ContainerCreating`，而这种失败不会触发重新调度：Pod 已经写入 `spec.nodeName`，调度器把它当作已调度的 Pod，不再放进调度队列（第 3 篇 2.1 节），attach 和挂载只会在这个节点上反复重试。
 
 保留的成本几乎为零，删除的风险却真实存在。如果确定集群里没有带拓扑标签的 PV，在自定义 Profile 中禁用它不会有任何影响。
 

@@ -229,6 +229,8 @@ func (pl *TopologyPlacement) getScheduledPodsTopologyDomain(topologyKey string, 
 }
 ```
 
+传进来的 `scheduledPods` 由 `getScheduledPods` 取得：它从 `SnapshotSharedLister().PodGroupStates()` 拿到本组状态，调用 `ScheduledPods()`，返回 `assignedPods` 和 `assumedPods` 两个集合里的 Pod。这两个集合由调度器 cache 维护，在 `UpdateSnapshot` 时拷进 snapshot（见[第 21 篇](/posts/sched-plugin-21-gang-scheduling/) 3.3 节），所以上一轮已经提交的 5 个 Pod 无论是否已绑定都在其中。
+
 三种错误（第 10–19 行）都会让 `GeneratePlacements` 返回 `Error` 状态，整个组调度周期以 Error 结束（不是 Unschedulable），PodGroup 的 condition reason 会是 `SchedulerError`。什么时候会走到这里？
 
 1. 节点标签被改了：组里的 Pod 已经在 r2 的节点上跑，有人把其中一个节点的标签改成了 r3；
@@ -422,7 +424,7 @@ func (sched *Scheduler) evaluatePlacement(ctx context.Context, schedFwk framewor
 }
 ```
 
-每个 placement 都从同一个干净的 snapshot 出发，结果互不干扰；被选中的那份结果里保存着每个 Pod 的 `scheduleResult`，提交阶段再真正 assume 进 cache。
+每个 placement 都从同一个干净的 snapshot 出发，结果互不干扰；被选中的那份结果里保存着每个 Pod 的 `scheduleResult`，提交阶段再真正 assume 进 cache（第 21 篇 7.1 节：`submitPodGroupResult` 为每个成功的 Pod 调 `prepareForBindingCycle`，其中执行 `AssumeAndReserveInCache`）。
 
 ## 五、边界情况
 

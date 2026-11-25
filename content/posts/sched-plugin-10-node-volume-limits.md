@@ -443,7 +443,9 @@ func isCSIMigrationOn(csiNode *storagev1.CSINode, pluginName string) bool {
 
 各插件的迁移 feature gate 早已 GA 并移除，这里写死了五个块存储插件（第 10–19 行的五个 `case`），只要节点有 CSINode 就认为迁移已开启。而下一篇 `VolumeBinding` 的同名逻辑 `isPluginMigratedToCSIOnNode` 还会检查 CSINode 上的 `storage.alpha.kubernetes.io/migrated-plugins` 注解是否包含该插件。
 
-两边判断标准不一致，在 CSINode 存在但注解未包含某插件的节点上，NodeVolumeLimits 会把 in-tree 卷按 CSI 计数，而 VolumeBinding 不会翻译它的拓扑。实际集群里 kubelet 会在启动时写好这个注解，两者结果通常一致。
+两边判断标准不一致，在 CSINode 存在但注解未包含某插件的节点上，NodeVolumeLimits 会把 in-tree 卷按 CSI 计数，而 VolumeBinding 不会翻译它的拓扑。
+
+实际集群里 kubelet 会在启动时写好这个注解：CSI 卷插件初始化时（`pkg/volume/csi/csi_plugin.go` 的 `initializeCSINode`）调用 `InitializeCSINodeWithAnnotation`，CSINode 不存在就创建，存在就用 `setMigrationAnnotation` 把本节点已迁移的插件补进注解。所以两者结果通常一致。
 
 还有一个隐含前提：CSINode 不存在时（节点刚加入、kubelet 还没创建），所有 in-tree 卷都不计数，`getVolumeLimits` 也拿不到任何上限，Filter 直接通过。注释里的 TODO 说等 CSINode 默认创建之后要改成报错，这个 TODO 已经存在了很多个版本。
 
@@ -547,7 +549,9 @@ func (pl *CSILimits) EventsToRegister(_ context.Context) ([]fwk.ClusterEventWith
 4. PVC 新增：对应新 Pod 的 PVC 找不到的情况，名字和命名空间都匹配才 `Queue`。
 5. VA 删除：Pod 只要有任何一个 PVC 卷就 `Queue`；对可迁移内联卷，翻译后比较驱动名与 VA 的 `attacher`。
 
-CSINode 更新的 hint 有一个缝隙。在 `VolumeLimitScaling` 下被「驱动未安装」拒绝的 Pod，等的是驱动注册到 CSINode。kubelet 启动时就会创建 CSINode（此时可能没有任何驱动），驱动注册是一次 Update。
+CSINode 更新的 hint 有一个缝隙。在 `VolumeLimitScaling` 下被「驱动未安装」拒绝的 Pod，等的是驱动注册到 CSINode。
+
+kubelet 启动时就会创建 CSINode（上面 4.5 节提到的 `initializeCSINode`，此时可能没有任何驱动）。驱动之后经 node-driver-registrar 注册，第二节讲过的 `InstallCSIDriver` 把它追加进已有 CSINode 的 `spec.drivers`，对调度器来说是一次 Update 事件。
 
 结果取决于驱动是否上报 `max_volumes_per_node`：
 

@@ -75,7 +75,12 @@ profiles:
       permitWaitingTimeSeconds: 10
 ```
 
-`multiPoint` 打开它实现的所有扩展点，`queueSort` 把默认的 PrioritySort 换掉。因为是追加在默认插件之后，它在 PostFilter 链上排在 DefaultPreemption 后面，这正是 KEP 要求的「this plugin should be configured as the last one among PostFilter plugins」。
+`multiPoint` 打开它实现的所有扩展点，`queueSort` 把默认的 PrioritySort 换掉。它在 PostFilter 链上排在 DefaultPreemption 后面，这是配置合并的顺序决定的：
+
+1. 默认 Profile 的 `multiPoint` 里已经有 DefaultPreemption，`mergePluginSet`（`pkg/scheduler/apis/config/v1/default_plugins.go`）先按原顺序保留默认插件，再把不在默认列表里的自定义插件追加到末尾；
+2. 框架的 `expandMultiPointPlugins` 按这个顺序把 multiPoint 展开到各扩展点，Coscheduling 因此落在 PostFilter 链的最后。
+
+这正是 KEP 要求的「this plugin should be configured as the last one among PostFilter plugins」。
 
 {{< figure src="/images/posts/sched-plugins/27-flow.svg" link="/images/posts/sched-plugins/27-flow.svg" caption="Coscheduling 在单个 Pod 调度旅程中的六处介入：排序、前置检查、整组拒绝、空 Reserve、Permit 等齐、超时连坐（点击查看大图）" >}}
 
@@ -761,7 +766,7 @@ func (cs *Coscheduling) EventsToRegister(_ context.Context) ([]fwk.ClusterEventW
 }
 ```
 
-两类事件（第 8–9 行）：任何 Pod 的 Add，以及 PodGroup CRD 的 Add/Update。CRD 事件用 `<resource>.<version>.<group>` 形式的字符串注册，调度器看到不认识的资源名会为它建一个动态 informer。
+两类事件（第 8–9 行）：任何 Pod 的 Add，以及 PodGroup CRD 的 Add/Update。CRD 事件用 `<resource>.<version>.<group>` 形式的字符串注册。调度器在 `addAllEventHandlers`（`pkg/scheduler/eventhandlers.go`）里遇到不认识的资源名时，用 `schema.ParseResourceArg` 把这个字符串解析成 GVR，再从 `dynInformerFactory` 取这个 GVR 的 dynamic informer 注册事件处理函数，所以调度器不需要认识 PodGroup 的 Go 类型，也能收到它的增改事件。
 
 两类事件都**没有** QueueingHintFn，框架会给它们配上 `defaultQueueingHintFn`，一律返回 `Queue`。也就是说，集群里任何一个 Pod 被创建，所有因 Coscheduling 被拒的 Pod 都会被移出 unschedulable 队列，进入 backoffQ 或 activeQ 再试一次，不管新 Pod 是不是同一个组的。
 

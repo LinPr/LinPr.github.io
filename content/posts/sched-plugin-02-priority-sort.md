@@ -148,7 +148,7 @@ PriorityClass 本身也是一样：`value` 和 `preemptionPolicy` 不可修改�
 	SystemCriticalPriority = 2 * HighestUserDefinablePriority
 ```
 
-自定义的 PriorityClass 最大是 10 亿。名字以 `system-` 开头的被保留，只能是两个内置类：
+自定义的 PriorityClass 最大是 10 亿。名字以 `system-` 开头的被保留：PriorityClass 的校验（`pkg/apis/scheduling/validation/validation.go`）用 `IsKnownSystemPriorityClass` 拒绝名字、`value` 或 `globalDefault` 对不上内置定义的对象；两个内置类由 kube-apiserver 的启动钩子 `scheduling/bootstrap-system-priority-classes`（`AddSystemPriorityClasses`）自动创建：
 
 1. `system-cluster-critical`：20 亿；
 2. `system-node-critical`：20 亿 + 1000。
@@ -397,7 +397,7 @@ func rankMemoryPressure(pods []*v1.Pod, stats statsFunc) {
 **同优先级不是严格的 FIFO。** 原因有两个：
 
 1. 刷新 `Timestamp` 的规则让失败过的 Pod 排到后面；
-2. 调度器重启（或 leader 切换）后，队列由 informer 的全量 List 重建，所有 Pending Pod 的 `Timestamp` 都变成重建时刻，原来的先后关系就丢了。
+2. 调度器重启（或 leader 切换）后，队列由 informer 的全量 List 重建，所有 Pending Pod 的 `Timestamp` 都变成重建时刻（List 到的每个 Pod 都经 `addPod` 重新入队，由第三节的 `newQueuedPodInfo` 取当时的 `now`），原来的先后关系就丢了。
 
 依赖「先创建先调度」的业务逻辑不可靠，需要严格顺序应当用 gate 或 `TopologicalSort` 之类的插件显式控制。
 

@@ -27,7 +27,7 @@ description: "SchedulingGates 是默认 Profile 里第一个插件，只实现 P
 2. 外部控制器要先根据集群状态补上 `nodeSelector` 或节点亲和，再允许调度；
 3. 一组 Pod 要等全部创建完、或者某个外部资源（网络、存储）就绪后再一起出发。
 
-在 `schedulingGates` 出现之前，这类需求只能靠「让 Pod 调度失败」来实现，比如先写一个不存在的 `schedulerName`，或者加一个所有节点都不满足的亲和条件。前者让 Pod 完全不被任何调度器看到，后者让 Pod 每次被唤醒都完整地跑一遍调度周期再失败，白白消耗调度吞吐。
+在 `schedulingGates` 出现之前，这类需求只能靠「让 Pod 调度失败」来实现，比如先写一个不存在的 `schedulerName`，或者加一个所有节点都不满足的亲和条件。前者让 Pod 完全不被任何调度器看到（调度器入队前用 `responsibleForPod` 检查 `spec.schedulerName` 是不是自己某个 profile 的名字，第六节还会提到），后者让 Pod 每次被唤醒都完整地跑一遍调度周期再失败，白白消耗调度吞吐。
 
 `schedulingGates` 给了一个显式的开关：
 
@@ -45,7 +45,7 @@ spec:
     image: busybox
 ```
 
-**只要列表非空，调度器就不会尝试调度它。** `kubectl get pod` 看到的状态是 `SchedulingGated`。两个外部控制器各自完成工作后，各自删掉自己那一项；列表删空，Pod 才开始排队。
+**只要列表非空，调度器就不会尝试调度它。** `kubectl get pod` 看到的状态是 `SchedulingGated`，这个状态由 API Server 在创建 Pod 时写入（5.3 节）。两个外部控制器各自完成工作后，各自删掉自己那一项；列表删空，Pod 才开始排队。
 
 调度器里承载这个语义的只有一个二十行的 PreEnqueue 插件，先看它本身。
 
@@ -329,7 +329,7 @@ func extractPodSchedulingGateEliminatedChange(newPod *v1.Pod, oldPod *v1.Pod) fw
 
 后者也匹配不上。`MatchClusterEvents` 要求 `incomingEvent.ActionType <= ce.ActionType`，`Update` 是所有更新位的并集，大于 `UpdatePodSchedulingGatesEliminated`，所以 Pod 继续留在原地。**这正是「hint 无条件返回 `Queue`」敢这么写的原因：能走到 hint 的事件，一定是 gate 已经删光了。**
 
-完整的唤醒路径在 `PriorityQueue.Update` 里，分两步：
+外部控制器删掉最后一个 gate，是对 Pod 的一次普通更新。调度器的 Pod informer 收到它后，`updatePod` 发现 Pod 仍未绑定、且属于本调度器，经 `updatePodInSchedulingQueue` 调用 `SchedulingQueue.Update`（`pkg/scheduler/eventhandlers.go`）。完整的唤醒路径就在 `PriorityQueue.Update` 里，分两步：
 
 1. Pod 在 `unschedulableEntities` 中，就对每个提取出来的事件调用 `isEntityWorthRequeuing`：`SchedulingGates` 在 `UnschedulablePlugins` 里、事件匹配、hint 返回 `Queue`，策略是 `queueAfterBackoff`；
 2. `requeueEntityWithQueueingStrategy` 检查退避：
@@ -349,7 +349,7 @@ func extractPodSchedulingGateEliminatedChange(newPod *v1.Pod, oldPod *v1.Pod) fw
 	}
 ```
 
-被 gate 住的 Pod 从未进过调度周期，`UnschedulableCount` 为 0，之后分三步：
+被 gate 住的 Pod 从未进过调度周期。`UnschedulableCount` 只在调度失败、`AddUnschedulablePodIfNotPresent` 把 Pod 放回队列时加一，所以它仍是 0，之后分三步：
 
 1. `count` 在第 2 行取出，第 8–12 行判断为零时直接返回零值时间，没有退避；
 2. 直接走 `moveToActiveQ`，PreEnqueue 再跑一遍；

@@ -261,7 +261,9 @@ API 字段的定义是一个 `listType=atomic` 的字符串列表：
 
 ### 4.1 `NodeInfo` 里预先转好位图
 
-调度器缓存在节点对象写入 `NodeInfo` 时就完成转换，不需要每个调度周期重复：
+调度器缓存在节点对象写入 `NodeInfo` 时就完成转换，不需要每个调度周期重复。
+
+写入的时机由节点 informer 驱动：kubelet 把 `declaredFeatures` 写进节点 status 后，调度器收到 Node 的 Add 或 Update 事件，回调 `addNodeToCache`/`updateNodeInCache` 调用 `cache.AddNode`/`cache.UpdateNode`（`pkg/scheduler/backend/cache/cache.go`），两者的最后一步都是 `SetNode`：
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/types.go
@@ -575,9 +577,11 @@ func (p *Plugin) validatePod(a admission.Attributes) error {
 处理流程分四步：
 
 1. 只处理已绑定 Pod 的 spec 更新和 `resize` 子资源（第 9–17 行）；
-2. 用 `generation` 是否变化快速跳过 status 更新（第 19–22 行）；
+2. 用 `generation` 是否变化，快速跳过 spec 没有变化的更新，比如只改了标签或注解（第 19–22 行）；
 3. `validatePodUpdate` 调用 `InferForPodUpdate(oldPodInfo, newPodInfo, p.version)`，从 node lister 取出 Pod 所在节点做 `MatchNode`；
 4. 不满足就返回 `Forbidden`：`pod update requires features ... which are not available on node ...`。
+
+第 2 步能成立，是因为 `metadata.generation` 由 apiserver 自己维护：Pod 的 update strategy 在 `PrepareForUpdate` 里调用 `updatePodGeneration`（`pkg/registry/core/pod/strategy.go`），只有 spec 变化时才加 1，`resize` 子资源的 strategy 同样如此。这一步在校验型准入之前执行，所以准入插件拿到的 `pod.Generation` 已经是新值，spec 没变的更新两边相等。
 
 这样一个跑在旧节点上的 Pod 发起 Pod 级资源的原地扩容，请求在 API 层就被拒绝，而不是写进去之后 kubelet 处理不了。
 
@@ -596,6 +600,13 @@ kubelet 收到 Pod 更新时也会做一次同样的推断（`HandlePodUpdates` 
 **节点没有声明任何特性。** gate 关闭的旧 kubelet 不会写 `declaredFeatures`，`TryMap` 得到全 0 的位图。Pod 只要需要任何一个特性，这类节点就全部不可行。这是期望的行为，但在「控制面已开 gate、所有节点都还是旧版本」的过渡期，带新字段的 Pod 会全部 Pending，`kubectl describe` 里看到的是 `node(s) didn't match Pod's required features`。
 
 **特性需求不等于字段可用。** apiserver 接受带新字段的 Pod，前提是 apiserver 侧对应的 gate 开启；`NodeDeclaredFeatures` 只负责「放到能处理它的节点上」。如果 apiserver 侧对应的 gate 关闭，这类新字段通常在写入时就被丢弃，推断结果为空，插件也就无从起作用。
+
+这一步由 apiserver 的 Pod strategy 完成，有两种处理方式：
+
+1. 丢弃：`PrepareForCreate`/`PrepareForUpdate` 调用 `podutil.DropDisabledPodFields`（`pkg/api/pod/util.go`），gate 关闭且旧对象没有用过该字段时把它清掉，比如 `ContainerRestartRules` 关闭时 `restartPolicyRules` 被整体清空；
+2. 拒绝：有的字段走校验，比如 `RestartAllContainersOnContainerExits` 关闭时，`action: RestartAllContainers` 在校验阶段以 `NotSupported` 被拒绝，Pod 根本创建不出来。
+
+两种情况下，到达调度器的 Pod 都不会带这个字段。
 
 ## 八、发散
 

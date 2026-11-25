@@ -217,7 +217,9 @@ func (pl *VolumeRestrictions) calPreFilterState(ctx context.Context, pod *v1.Pod
 
 这个 Skip 有一个副作用。框架在 Filter 前会把「已提名到该节点、优先级不低于当前 Pod」的 Pod 通过 `AddPod` 临时加进状态（`addGENominatedPods`），但被 Skip 的插件连 `AddPod` 也不会被调用（`RunPreFilterExtensionAddPod` 里检查了 `GetSkipFilterPlugins()`）。
 
-被提名的 Pod 还没进调度缓存，不在 `usedPVCRefCounts` 里。所以「Pod A 刚抢占了 RWOP 占用者、正等着受害者退出，Pod B 引用同一个 PVC 进来」时，B 的计数是 0，直接 Skip。
+被提名的 Pod 还没进调度缓存，不在 `usedPVCRefCounts` 里：调度缓存只收 assumed Pod 和已绑定（`spec.nodeName` 非空）的 Pod，提名只是调度队列的 nominator 记下的「这个 Pod 打算去哪个节点」，Pod 本身还在队列里等下一轮调度。
+
+所以「Pod A 刚抢占了 RWOP 占用者、正等着受害者退出，Pod B 引用同一个 PVC 进来」时，B 的计数是 0，直接 Skip。
 
 即使不 Skip，`AddPod` 也只在 A 被提名的那个节点上执行，B 在其它节点仍然能过。RWOP 的唯一性对「已提名未绑定」的 Pod 是不设防的，最终靠 assume 之后的快照计数和驱动侧的 `SINGLE_NODE_SINGLE_WRITER` 兜底。
 
@@ -352,7 +354,9 @@ func (pl *VolumeRestrictions) RemovePod(ctx context.Context, cycleState fwk.Cycl
 
 结果是：抢占只会落在占用者所在的节点，并且一定驱逐占用者。RWOP 卷正被那个 Pod 用着，要让新 Pod 用上，只能请它离开。
 
-不过新 Pod 并不一定最终落在那个节点：抢占只决定 `nominatedNodeName`，受害者删除后 Pod 重新调度，此时计数归零，任何节点都能通过 VolumeRestrictions，最终落点还要看其它插件（通常调度器会优先尝试提名节点）。
+不过新 Pod 并不一定最终落在那个节点：抢占只决定 `nominatedNodeName`，受害者删除后 Pod 重新调度，此时计数归零，任何节点都能通过 VolumeRestrictions，最终落点还要看其它插件。
+
+通常会落回提名节点：`findNodesThatFitPod`（`pkg/scheduler/algorithm.go`）发现 Pod 带有 `NominatedNodeName` 时，先用 `evaluateNominatedNode` 单独在这个节点上跑一遍 Filter，通过就直接选它，不再遍历其它节点。
 
 前提当然是占用者的优先级更低。两个优先级相同的 Pod 争同一个 RWOP PVC，后来者只能等。
 

@@ -112,7 +112,7 @@ func responsibleForPod(pod *v1.Pod, profiles profile.Map) bool {
 }
 ```
 
-出队之后，`frameworkForPod` 再按同一个字段挑出对应 Profile 的 framework 实例，后面的 PreFilter、Filter、Score、Bind 都在这个实例里跑。作为第二调度器部署时，Pod 必须显式写 `schedulerName: scheduler-plugins-scheduler`（helm chart 的默认名字），否则会被默认调度器接走。
+出队之后，`frameworkForPod` 再按同一个字段挑出对应 Profile 的 framework 实例，后面的 PreFilter、Filter、Score、Bind 都在这个实例里跑。作为第二调度器部署时，Pod 必须显式写 `schedulerName: scheduler-plugins-scheduler`（helm chart 的默认名字），否则会被默认调度器接走。原因在 API Server：Pod 不写这个字段时，默认值函数（`pkg/apis/core/v1/defaults.go` 的 `SetDefaults_PodSpec`）把它填成 `default-scheduler`，只有默认调度器的 `responsibleForPod` 会认领它。
 
 ### 1.3 一个进程只有一个排序函数
 
@@ -348,6 +348,8 @@ func (bq *backoffQueue) lessBackoffCompletedWithPriority(pInfo1, pInfo2 *framewo
 	return bq.activeQLessFn(pInfo1, pInfo2)
 }
 ```
+
+「直接从 backoffQ 取 Pod」同样是 `SchedulerPopFromBackoffQ` 带来的行为：v1.36.4 的 `activeQueue.unlockedPop` 发现 activeQ 为空而 backoffQ 非空时不再阻塞等待，而是调用 `popBackoff` 弹出 backoffQ 的堆顶，不等它退避到期。
 
 所以换成 QOSSort 后，activeQ 为空、调度器直接从 backoffQ 取 Pod 时，同一窗口内的 Pod 也会按 QoS 分层。
 

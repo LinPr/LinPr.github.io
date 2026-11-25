@@ -63,7 +63,7 @@ profiles:
       networkTopologyName: "net-topology-test"
 ```
 
-这份示例在 multiPoint 里禁用了 NodeResourcesFit。要注意这不仅关掉了 NodeResourcesFit 的打分，也关掉了它的 PreFilter/Filter，调度器从此不再检查节点的 CPU、内存是否够用，Pod 可能被放到资源不足的节点上、被 kubelet 以 `OutOfcpu`/`OutOfmemory` 拒绝。
+这份示例在 multiPoint 里禁用了 NodeResourcesFit。要注意这不仅关掉了 NodeResourcesFit 的打分，也关掉了它的 PreFilter/Filter，调度器从此不再检查节点的 CPU、内存是否够用，Pod 可能被放到资源不足的节点上、被 kubelet 以 `OutOfcpu`/`OutOfmemory` 拒绝。[NodeResourcesFit 篇](/posts/sched-plugin-08-node-resources-fit/)讲过，kubelet 在准入时会用同一个 `Fits` 再查一遍节点余量，不够就把 Pod 直接置为 `Failed`，这两个字符串就是失败的 reason。
 
 示例的注释只说「尽量避免与 NodeResourcesFit 组合」，没有给出原因；如果担心的是两者的打分互相抵消，更稳妥的做法是只调整 NodeResourcesFit 的 Score 权重，而不是整体禁用。
 
@@ -885,7 +885,7 @@ KEP「Known limitations」一节写的是「没有这两个 CRD 时，NetworkOve
 
 **依赖 Pod 所在节点被删除，会让整组 Pod 的 PreFilter 报错。** 依赖 Pod 的 `spec.nodeName` 指向的节点如果不在调度快照里（节点对象已删除、Pod 对象还没被清理），`NodeInfos().Get` 返回错误，PreFilter 返回 `Error`。
 
-这个 Pod 会进入错误退避，依赖同一个 workload 的所有 Pod 在这段时间里都无法调度，直到那个孤儿 Pod 被垃圾回收。
+这个 Pod 会进入错误退避，依赖同一个 workload 的所有 Pod 在这段时间里都无法调度，直到那个孤儿 Pod 被清理。清理由 kube-controller-manager 的 PodGC 控制器负责，[第 3 篇](/posts/sched-plugin-03-node-name/)讲过：`nodeName` 指向的节点不存在且持续 40 秒（`quarantineTime`）后，它会删除这个 Pod。
 
 **连续调度的 Pod 互相看不见。** `scheduledList` 来自 Pod informer，只包含 API Server 已经写入 `nodeName` 的 Pod。同一批 frontend 副本连续出队时，前一个副本只是在调度器缓存里 assume 了，绑定还在异步进行，后一个副本的 PreFilter 看不到它。
 

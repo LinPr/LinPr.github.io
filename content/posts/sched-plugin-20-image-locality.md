@@ -193,7 +193,12 @@ score = 100 × (clamp(sum, 23MiB, max) − 23MiB) / (max − 23MiB)
 
 ### 4.1 kubelet 上报：只报最大的 50 个
 
-调度器知道节点上有哪些镜像，靠的是 `node.status.images`，由 kubelet 定期更新：
+调度器知道节点上有哪些镜像，靠的是 `node.status.images`，由 kubelet 定期更新。「定期」分两层：
+
+1. kubelet 的镜像 GC 管理器每 30 秒通过 CRI 列一次本地镜像，按大小降序排好缓存在内存里，`GetImageList` 直接返回这份缓存（`pkg/kubelet/images/image_gc_manager.go`）；
+2. kubelet 每隔 `nodeStatusUpdateFrequency`（默认 10 秒）用一组 setter 重新计算节点状态，下面的 `Images` 就是其中之一；只有状态有变化，或者距上次上报超过 `nodeStatusReportFrequency`（默认 5 分钟），才真正 PATCH 到 apiserver。
+
+所以一个刚拉完的镜像通常几十秒内就会出现在 `status.images` 里，调度器经节点 informer 的 Update 事件拿到它。`Images` setter 的实现：
 
 ```go {linenos=inline}
 // pkg/kubelet/nodestatus/setters.go
@@ -266,7 +271,7 @@ func normalizedImageName(name string) string {
 
 ### 4.3 调度器缓存：镜像到节点的反向索引
 
-节点加入或更新时，缓存维护一张全局表：
+节点加入或更新时，节点 informer 的回调进入 `cache.AddNode`/`cache.UpdateNode`，先用 `removeNodeImageStates` 撤掉这个节点旧的镜像记录，再调用下面的 `addNodeImageStates`，维护一张全局表：
 
 ```go {linenos=inline}
 // pkg/scheduler/backend/cache/cache.go

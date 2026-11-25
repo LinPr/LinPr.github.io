@@ -511,7 +511,14 @@ PDB 的余量是这样一个个扣下去的：
 
 最终结果倾向于驱逐更重要的那个——这是贪心顺序带来的一个副作用。
 
-已经在 `status.disruptedPods` 里的 Pod 不扣减（第 14–16 行），因为它已经被 Eviction API 处理过、计入过余量了。PodGroup 受害者只要有一个成员违反，整个组都算违反，`ViolateCount` 是违反成员的个数。
+已经在 `status.disruptedPods` 里的 Pod 不扣减（第 14–16 行），因为它已经被 Eviction API 处理过、计入过余量了。这个 map 的写入和清理分属两个组件：
+
+1. 写入：apiserver 处理 Eviction 请求时（`pkg/registry/core/pod/storage/eviction.go`），先把 `status.disruptionsAllowed` 减 1，再把 Pod 名和当前时间写进 `disruptedPods`，一起 `UpdateStatus` 到 PDB；
+2. 清理：disruption 控制器重算 PDB 时（`pkg/controller/disruption/disruption.go` 的 `buildDisruptedPodMap`），Pod 已开始删除或已不存在就移出 map，超过 `DeletionTimeout`（2 分钟）仍未删除的也移出，并记一条 `NotDeleted` 事件。
+
+所以 Pod 出现在 `disruptedPods` 里，说明它那一份余量已经从 `disruptionsAllowed` 里扣过，调度器再扣就重复了。
+
+PodGroup 受害者只要有一个成员违反，整个组都算违反，`ViolateCount` 是违反成员的个数。
 
 到这一步，每个候选节点都有了一份「要驱逐谁、违反几个 PDB」的答案。如果候选不止一个，就要在这些答案之间做选择。
 
@@ -624,7 +631,13 @@ extender 处理完，剩下的就是执行。
 
 如果目标节点上已经有更低优先级的 Pod 被提名（它们之前也抢占过），现在这块地方要给更高优先级的抢占者了，它们的提名就失效了。
 
-清空它们的 `nominatedNodeName` 会触发 Pod 更新事件，让它们尽快重新调度，而不是等到下次发现节点放不下。注释说明这里没有逐个检查它们是否真的放不下，因为那需要大量 NodeInfo 和 PreFilter 状态操作，而每个节点上的提名 Pod 通常很少。
+清空靠 `clearNominatedNodeName` 用 `PatchPodStatus` 把 `status.nominatedNodeName` 改成空串。源码注释说这次更新会把它们移进 activeQ，让它们尽快去找别的节点。但在按 QueueingHint 重新入队的队列里，这次更新的效果要分三种情况看：
+
+1. 调度器收到这次 Pod 更新，`PriorityQueue.Update` 先调用 `UpdateNominatedPod`，nominator 删掉这个 Pod 的提名：它不再在该节点上占位，下一轮调度也不会先评估这个节点；
+2. Pod 在 activeQ 或 backoffQ 里时，只更新对象，按原来的节奏出队；
+3. Pod 在 unschedulable 池里时，只改 status 的更新被 `PodSchedulingPropertiesChange` 归为通用的 `Pod/Update` 事件。以最常见的、被 `NodeResourcesFit` 拒绝的抢占者为例，它只注册了 `UpdatePodScaleDown` 这类细分的 Pod 更新事件，匹配不上，Pod 不会被移出，仍然等受害者的删除事件或 5 分钟的周期刷新。
+
+所以**清空提名一定会撤掉它的占位，但不保证立刻触发重新调度**。注释还说明这里没有逐个检查它们是否真的放不下，因为那需要大量 NodeInfo 和 PreFilter 状态操作，而每个节点上的提名 Pod 通常很少。
 
 ### 9.3 同步与异步
 

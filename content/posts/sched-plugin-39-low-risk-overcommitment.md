@@ -260,7 +260,9 @@ func (pl *LowRiskOverCommitment) computeRank(logger klog.Logger, metrics []watch
 
 R 和 R⁻ 被截到不超过 C（第 25–29 行），L 和 L⁻ 不截断。
 
-`NodeInfo` 来自调度器的快照，**包含已经 assume 但还没绑定完成的 Pod**。所以这一半数据没有 TLP 那种滞后问题，上一个刚被放到这个节点的 Pod，下一个周期就能看到。这也是 LROC 不需要 `PodAssignEventHandler` 的原因。
+`NodeInfo` 来自调度器的快照，**包含已经 assume 但还没绑定完成的 Pod**。
+
+[开篇](/posts/sched-plugin-00-journey/) 3.6 节讲过，调度周期在发起异步绑定之前，就由 `AssumeAndReserveInCache` 把 Pod 记到调度器缓存的目标节点上，下一个调度周期开始时快照从这份缓存更新。所以这一半数据没有 TLP 那种滞后问题，上一个刚被放到这个节点的 Pod，下一个周期就能看到。这也是 LROC 不需要 `PodAssignEventHandler` 的原因。
 
 {{< figure src="/images/posts/sched-plugins/39-lroc-risk-flow.svg" caption="LROC 的风险合成：PreScore 准备 Pod 的 request/limit，Score 中每种资源分别计算 riskLimit 和 riskLoad，按权重合成后取 CPU 与内存的较大值（点击查看大图）" link="/images/posts/sched-plugins/39-lroc-risk-flow.svg" >}}
 
@@ -512,7 +514,12 @@ LROC 选 A。B 的负载更低、request 更少，但已有 Pod 的 limit 之和
 
 **metrics-server 下 σ = 0，riskLoad 只能是 0 或 1。** 只有 `Latest` 没有 `STD`，`ComputeProbability` 走 σ = 0 的分支：当前瞬时用量不超过 R⁻/C 时 riskLoad = 0，否则为 1。没有中间值，打分会在两档之间跳变。`smoothingWindowSize` 乘的是 0，也不起作用。
 
-**request 被截断，limit 不截断。** 静态 Pod、或绕过调度器直接指定 `nodeName` 的 Pod，可能让 request 之和超过 Allocatable。代码把 R 截到 C，所以 riskLimit 的分母 L − R 不会因为 request 超额而变小或变成负数，风险最多是 1。
+**request 被截断，limit 不截断。** 静态 Pod、或绕过调度器直接指定 `nodeName` 的 Pod，可能让 request 之和超过 Allocatable。这两类 Pod 不经过调度器的 `NodeResourcesFit`，资源检查只在 kubelet 准入时做（[第 03 篇](/posts/sched-plugin-03-node-name/) 5.1 节）：
+
+1. 直接指定 `nodeName` 的 Pod 一创建就带着节点名，调度器的 informer 立即把它计入该节点；kubelet 准入发现资源不足后才把它置为 `Failed`，在这之前它一直占着 request；
+2. 静态 Pod（及其 mirror Pod）被 `IsCriticalPod`（`pkg/kubelet/types/pod_update.go`）视为关键 Pod，资源不足时 kubelet 的 `CriticalPodAdmissionHandler` 会驱逐其它 Pod 腾位置，驱逐完成前节点上的 request 之和同样会超额。
+
+R 超过 C 时，代码把 R 截到 C，所以 riskLimit 的分母 L − R 不会因为 request 超额而变小或变成负数，风险最多是 1。
 
 **R⁻ > L⁻ 的情况不存在。** 每个 Pod 都经过 `SetMaxLimits`，limit 不小于 request，所以累加后 L⁻ ≥ 未截断的 R⁻ ≥ R⁻。代码里的 `requestMinusPod <= limitMinusPod` 只是防御性判断。
 

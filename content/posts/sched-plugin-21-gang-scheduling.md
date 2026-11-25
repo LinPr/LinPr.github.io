@@ -60,6 +60,8 @@ func applyGangScheduling(config *v1.Plugins) {
 
 **也就是说，在这份代码里，所有 gang 相关的能力默认都是关的。** 要试用，至少要在 kube-apiserver、kube-scheduler（以及要用 Job 集成时的 kube-controller-manager）上同时打开 `GenericWorkload`，并让 `scheduling.k8s.io/v1beta1` 这组 API 可用。
 
+apiserver 这一侧不能漏：Pod 写入时会经过 `pkg/api/pod/util.go` 的 `dropDisabledSchedulingGroup`，gate 关闭且旧对象没用过这个字段时，它直接把 `podSpec.SchedulingGroup` 置为 nil。只开调度器、不开 apiserver，Pod 存进 etcd 时已经没有 `schedulingGroup`，调度器看到的只是普通 Pod。
+
 ### 1.2 它挂在哪些扩展点
 
 插件结构体只有两个字段，实现了三个接口：
@@ -458,6 +460,8 @@ func (sched *Scheduler) podGroupSchedulingDefaultAlgorithm(ctx context.Context, 
 
 第一处是 `Scheduled` 的初值（第 14–17 行）：它来自 snapshot 里的 `ScheduledPodsCount()`，数的是这个组里已经 assume 或已经绑定的 Pod。一个 `minCount: 4` 的组如果已经有 3 个 Pod 在跑，第 4 个新来的 Pod 单独就能满足条件，不必等其他人。
 
+这份计数由调度器 cache 维护（`pkg/scheduler/backend/cache/podgroupstate.go`）：Pod 在 cache 里 assume 时记入 `assumedPods`，informer 送来 `spec.nodeName` 非空的 Pod 时记入 `assignedPods`；3.2 节第一步的 `UpdateSnapshot` 再把各组状态拷进 snapshot。
+
 第二处更关键：每个 Pod 成功后只在 snapshot 里 assume，不进 cache。`podGroupPodSchedulingAlgorithm` 里调用的是 `AssumeAndReserveInSnapshot`——整组的放置要等到整组提交才算数，snapshot 里的 assume 会被下一次 `UpdateSnapshot` 覆盖掉：
 
 ```go {linenos=inline}
@@ -790,7 +794,7 @@ func (pl *GangScheduling) PreEnqueue(ctx context.Context, pod *v1.Pod) *fwk.Stat
 
 1. **判断的是根组是否就绪，而不是 Pod 自己所在的叶子组。** 一个 CompositePodGroup 下有 3 个子组、`minGroupCount: 2`，只要两个子组凑齐，第三个子组的 Pod 也一起放行，它们会在 PlacementFeasible 那一关再被检验；
 2. `findRootGroup` 沿父链往上找，链上任何一个组对象缺失（`genericGroup == nil`）都返回 nil，于是得到「has not been created yet」（第 12–15 行）；
-3. 所有失败都是 `UnschedulableAndUnresolvable`（第 14、23、25 行）。对 PreEnqueue 来说这只意味着「不进 activeQ、等事件」，不会触发抢占，和 Filter 阶段的语义略有不同；
+3. 所有失败都是 `UnschedulableAndUnresolvable`（第 14、23、25 行）。对 PreEnqueue 来说这只意味着「不进 activeQ、等事件」：`moveToActiveQ` 发现 entity 被 gate 住，就把它放进 `unschedulableEntities` 后返回。抢占只在调度周期里由 PostFilter（组调度时是 `PodGroupPostFilter`）发起，被拦在 activeQ 外的组进不了调度周期，也就不会触发抢占，这和 Filter 阶段的语义不同；
 4. `rootGroup.GetKey()` 是 `EntityKey`，它的 `String()` 格式是 `类型/命名空间/名字`，所以事件里看到的是 `podgroup/default/train-0` 这样的字符串。
 
 队列侧还有一条规则让 PreEnqueue 的效果放大到整组：
@@ -917,7 +921,7 @@ func (p *PriorityQueue) isEntityWorthRequeuing(logger klog.Logger, entity framew
 
 结果分两种情况：
 
-1. **组成功时，每个成功的 Pod 才真正 `AssumeAndReserveInCache`**，跑 Permit，然后启动各自的绑定 goroutine（第 10–12 行）；
+1. **组成功时，每个成功的 Pod 才真正 `AssumeAndReserveInCache`**，跑 Permit，然后启动各自的绑定 goroutine（第 10–12 行）。这两步都在第 9 行的 `prepareForBindingCycle` 里（`pkg/scheduler/schedule_one.go`）：它先调 `AssumeAndReserveInCache`，再调 `RunPermitPlugins`，和单 Pod 调度走的是同一个函数；
 2. 组失败时，即使某个 Pod 自己试放成功，也带着组的状态回队。
 
 最后，调度器把结果写到 PodGroup 的 `status.conditions` 上，类型是 `PodGroupInitiallyScheduled`，reason 有 `Scheduled`、`Unschedulable`、`SchedulerError`、`PodGroupError` 四种。`updatePodGroupCondition` 有一条保护：condition 一旦是 True，后续轮次不会把它改回 False，避免扩容时新 Pod 的失败「污染」一个已经成功启动的组。
@@ -926,7 +930,7 @@ func (p *PriorityQueue) isEntityWorthRequeuing(logger klog.Logger, entity framew
 
 回队分两步：
 
-1. `FailureHandler` 把每个失败的 Pod 交给队列，此时根组仍是「最近一次 Pop 出来的 entity」，于是这些 Pod 被放进 `pendingPodGroupPods`；
+1. `FailureHandler` 把每个失败的 Pod 交给队列的 `AddUnschedulablePodIfNotPresent`，组成员在这里转给 `addUnschedulablePodGroupMember`，最终回到 3.1 节的 `addPodGroupMember`。此时根组仍是「最近一次 Pop 出来的 entity」，命中 `isLastPoppedEntity` 分支（3.1 节代码块第 15–20 行），于是这些 Pod 被放进 `pendingPodGroupPods`；
 2. 周期末尾 `AddAttemptedPodGroupIfNeeded` 把它们重新组装成一个 `QueuedPodGroupInfo`：
 
 ```go {linenos=inline}

@@ -139,9 +139,9 @@ func BindPod(ctx context.Context, cs kubernetes.Interface, binding *v1.Binding) 
 1. UID 前置条件（第 2–9 行）：如果 Pod 在调度期间被删除并以同名重建，UID 不同，绑定失败。调度器不会把为旧 Pod 做的决定套到新 Pod 上。
 2. 拒绝条件（第 14–23 行）：Pod 正在删除（第 14–16 行）、已经有 `nodeName`（第 17–19 行）、还有 `schedulingGates`（第 21–23 行，[第 1 篇](/posts/sched-plugin-01-scheduling-gates/)的 gate 在这里有最后一道防线）。失败都被 `assignPod` 转成 `Conflict`。
 3. **`spec.nodeName` 只能写一次，这就是多个调度器同时调度同一个 Pod 时的仲裁点**：谁的 binding 先到，谁赢，后到的拿到 `already assigned` 冲突。
-4. 顺带写入的字段（第 24–36 行）：`PodScheduled=True` condition；`ClearingNominatedNodeNameAfterBinding`（1.35 起 Beta，默认开）开启时清空 `nominatedNodeName`；`PodTopologyLabelsAdmission`（1.35 起 Beta，默认开）开启时把 Binding 上的 labels 拷到 Pod 上（由准入插件把节点的拓扑标签写进 Binding）。
+4. 顺带写入的字段（第 24–36 行）：`PodScheduled=True` condition；`ClearingNominatedNodeNameAfterBinding`（1.35 起 Beta，默认开）开启时清空 `nominatedNodeName`；`PodTopologyLabelsAdmission`（1.35 起 Beta，默认开）开启时把 Binding 上的 labels 拷到 Pod 上。Binding 上的这些 labels 来自 `PodTopologyLabels` 准入插件（`plugin/pkg/admission/podtopologylabels`）：binding 请求经过准入时，它按 `binding.Target.Name` 查到节点，把节点的拓扑标签合并进 `binding.Labels`。
 
-`spec.nodeName` 一旦写入，后续就是 kubelet 的事了：kubelet 的 informer 只 watch `spec.nodeName` 等于自己的 Pod，从这一刻起它才看到这个 Pod。
+`spec.nodeName` 一旦写入，后续就是 kubelet 的事了。kubelet 在 `pkg/kubelet/config/apiserver.go` 的 `NewSourceApiserver` 里建 ListWatch 时带了字段选择器 `spec.nodeName=<本节点名>`，过滤在 apiserver 端完成（[第 3 篇](/posts/sched-plugin-03-node-name/) 5.1 节）。`spec.nodeName` 为空时这个 Pod 不匹配任何节点的选择器；binding 写入之后，它才第一次出现在目标节点 kubelet 的 watch 里。
 
 ## 三、绑定周期：DefaultBinder 被调用之前
 
@@ -309,7 +309,9 @@ Bind 扩展点的语义是「**第一个不返回 Skip 的插件说了算**」�
 
 ### 4.1 informer 确认：Assumed → Added
 
-绑定成功后，Pod 的更新事件经 informer 到达调度器。`updatePod` 事件处理器发现 `oldPod` 未分配、`newPod` 已分配，就当作一次添加：
+绑定成功后，Pod 的更新事件经 informer 到达调度器。调度器的 Pod informer（`pkg/scheduler/scheduler.go` 的 `newPodInformer`）只用字段选择器 `status.phase!=Succeeded,status.phase!=Failed` 排除已终止的 Pod，不按节点过滤，所以 binding 改写 `spec.nodeName` 产生的 Update 事件一定会推送过来。
+
+`updatePod` 事件处理器发现 `oldPod` 未分配、`newPod` 已分配，就当作一次添加：
 
 ```go {linenos=inline}
 // pkg/scheduler/eventhandlers.go
@@ -351,7 +353,7 @@ cache 的 `AddPod` 识别出这是一个 assumed Pod：
 
 **当前代码里，cache 没有任何过期机制。** `cacheImpl` 里与 assumed 状态相关的字段只有 `assumedPods sets.Set[string]` 和 `podStates map[string]*podState`，`podState` 里只剩一个 `pod` 字段。早期版本的 cache 有 `FinishBinding` 和一个后台清理循环：绑定结束后开始计时，超过 `durationToExpireAssumedPod` 仍未被 informer 确认，就把 assumed Pod 清掉，防止「绑定其实失败了、但调度器没收到事件」时资源被永久占用。现在整套机制已经从代码中移除，assumed 状态只会被 informer 的 AddPod 确认，或被 ForgetPod 撤销。
 
-**不需要超时的原因是绑定周期本身已经闭环**：`util.BindPod` 要么成功（informer 一定会带来确认事件），要么返回错误（`handleBindingCycleError` 一定会 `ForgetPod`）。唯一的灰色地带是「API Server 已经写入，但响应在路上丢了」，调度器拿到超时错误而 Pod 实际已绑定。这种情况的处理在下一节。
+**不需要超时的原因是绑定周期本身已经闭环**：`util.BindPod` 要么成功（informer 一定会带来确认事件，见 4.1 节），要么返回错误（`handleBindingCycleError` 一定会 `ForgetPod`）。唯一的灰色地带是「API Server 已经写入，但响应在路上丢了」，调度器拿到超时错误而 Pod 实际已绑定。这种情况的处理在下一节。
 
 ## 五、失败回滚
 
@@ -578,8 +580,8 @@ profiles:
 ## 八、边界情况与坑
 
 1. **Bind 失败不会让 Pod 显示为 Unschedulable。** 事件里是 `FailedScheduling`，但 `PodScheduled` condition 的 reason 是 `SchedulerError` 而不是 `Unschedulable`，Pod 走 backoffQ 而不是不可调度池。排障时这是区分「放不下」和「写不进去」的标志。
-2. 多个调度器竞争同一个 Pod。两个调度器各自 assume、各自发 binding，API Server 只接受第一个。输掉的那个拿到 `Conflict`，回滚后 Pod 进 backoffQ；随后 informer 带来已绑定的 Pod，`handleSchedulingFailure` 发现 `nodeName` 非空，不再放回队列。正常情况下 `schedulerName` 不同，不会出现这种竞争。
-3. **PodGroup 的绑定也是逐个进行的。** `scheduleOnePodGroup` 在所有成员都通过 Permit 后，为每个成员各起一个 `runBindingCycle` goroutine。组内的绑定没有事务性：可能部分成功、部分失败。Gang 语义由 Permit 阶段保证，绑定阶段只能尽力而为。
+2. 多个调度器竞争同一个 Pod。两个调度器各自 assume、各自发 binding，API Server 只接受第一个。输掉的那个拿到 `Conflict`，回滚后 Pod 进 backoffQ；随后 informer 带来已绑定的 Pod，`handleSchedulingFailure` 发现 `nodeName` 非空，不再放回队列。正常情况下 `schedulerName` 不同，不会出现这种竞争：每个调度器的事件处理函数都先用 `responsibleForPod` 检查 `pod.Spec.SchedulerName` 是否属于自己的某个 Profile，不属于的 Pod 不进它的调度队列。
+3. **PodGroup 的绑定也是逐个进行的。** 组调度成功后，`submitPodGroupResult` 逐个处理成功的成员：先调 `prepareForBindingCycle`（assume 进 cache 并跑 Permit），紧接着为它起一个 `runBindingCycle` goroutine，再处理下一个成员，并不等全组通过 Permit。组内的绑定没有事务性：可能部分成功、部分失败。Gang 语义由 PodGroup 调度周期里的 `PlacementFeasible` 保证（[第 21 篇](/posts/sched-plugin-21-gang-scheduling/)），绑定阶段只能尽力而为。
 4. Pod 在绑定期间被删除。UID 前置条件或「正在删除」检查让 binding 失败，回滚后 `handleSchedulingFailure` 发现 informer 里找不到这个 Pod，直接调用 `Done` 结束，不再重试。
 5. DefaultBinder 不读 CycleState。它不依赖任何插件的状态，所以即使 PreFilter 都被 Skip 了，它也照常工作。
 

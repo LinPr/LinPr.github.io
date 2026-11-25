@@ -132,7 +132,7 @@ func (pl *PodGroupPodsCount) ScorePlacement(ctx context.Context, state fwk.Place
 
 **原始分数就是「这个组一共会有多少个 Pod 在跑」**：snapshot 里已经调度的（assigned + assumed），加上这个 placement 里新放下的。
 
-已调度数从哪来？分两种情况：
+已调度数从哪来？它读的是 snapshot 里的 `PodGroupState`，计数由调度器 cache 维护、在 `UpdateSnapshot` 时拷进 snapshot（见[第 21 篇](/posts/sched-plugin-21-gang-scheduling/) 3.3 节）。读取方式分两种情况：
 
 1. 不开 CompositePodGroup 时，读本组的 `PodGroupState`（第 13–17 行）；
 2. 开了以后，用 `helper.GetPodGroupStates` 遍历以当前组为根的整棵子树，把每个叶子 PodGroup 的 `ScheduledPodsCount()` 加起来（第 3–12 行）。
@@ -158,7 +158,9 @@ func (pl *PodGroupPodsCount) getScheduledPodsCount(podGroup fwk.PodGroupInfo) (i
 }
 ```
 
-这里不会重复计数：每个 placement 试放结束后，`evaluatePlacement` 立刻调用 `placementRevertFns.revert()` 撤销 snapshot 里的 assume，所以打分时 snapshot 里的「已调度」只包含本轮之前就存在的 Pod，本轮新放的 Pod 只在 `ProposedAssignments` 里出现一次。CompositePodGroup 的情况类似，`makeCompositePodGroupAssignments` 用 `successfulLeafResults` 把子树里所有成功叶子的提议合在一起。
+这里不会重复计数。重复计数的风险来自 snapshot 的 assume：`Snapshot.AssumePod`（`pkg/scheduler/backend/cache/snapshot.go`）在把 Pod 加进 `NodeInfo` 的同时，也会调用组状态的 `assumePod`，把它记进 snapshot 里该组的 `assumedPods`，`ScheduledPodsCount()` 随之加一；`Snapshot.ForgetPod` 再用 `forgetPod` 移回。
+
+每个 placement 试放结束后，`evaluatePlacement` 立刻调用 `placementRevertFns.revert()` 撤销 snapshot 里的 assume，所以打分时 snapshot 里的「已调度」只包含本轮之前就存在的 Pod，本轮新放的 Pod 只在 `ProposedAssignments` 里出现一次。CompositePodGroup 的情况类似，`makeCompositePodGroupAssignments` 用 `successfulLeafResults` 把子树里所有成功叶子的提议合在一起。
 
 注释里那句「reduce the relative difference」说的是：同样是 2 个和 1 个新 Pod 的差距，两种算法给出的结果不同：
 

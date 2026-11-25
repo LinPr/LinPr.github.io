@@ -288,7 +288,12 @@ func (sc *SySched) podDeleted(obj interface{}) {
 }
 ```
 
-注释说之所以不用 SharedLister，是因为它不包含其他调度器调度的 Pod。实际上调度器的 snapshot 包含节点上所有已绑定的 Pod，与调度器无关；自建映射真正的好处是能缓存每个节点的系统调用并集，不必每次重新计算。
+注释说之所以不用 SharedLister，是因为它不包含其他调度器调度的 Pod。实际上调度器的 snapshot 包含节点上所有已绑定的 Pod，与调度器无关，原因在调度器自己的 Pod 事件回调（`kubernetes@v1.36.4/pkg/scheduler/eventhandlers.go` 的 `addPod`）：
+
+1. 先用 `assignedPod` 判断 `len(pod.Spec.NodeName) != 0`，成立就 `addAssignedPodToCache`，进入调度器缓存，snapshot 由缓存生成；
+2. 只有未绑定的 Pod 才用 `responsibleForPod` 比对 `spec.schedulerName`，决定是否入本调度器的队列。
+
+也就是说，`schedulerName` 只决定「谁来调度」，不影响「已绑定的 Pod 是否计入节点」。自建映射真正的好处是能缓存每个节点的系统调用并集，不必每次重新计算。
 
 `podUpdated` 判断的是旧对象（第 16 行的 `pod := old.(*v1.Pod)`），条件有两个（第 19 行）：
 
@@ -298,7 +303,7 @@ func (sc *SySched) podDeleted(obj interface{}) {
 一个新调度的 Pod 要依次经历：
 
 1. 绑定：`nodeName` 被设置，`HostIP` 仍为空；
-2. kubelet 上报 `HostIP`：仍是 `Pending`；
+2. kubelet 上报 `HostIP`：仍是 `Pending`。`nodeName` 由绑定写入，`HostIP` 则要等节点上的 kubelet 收到这个 Pod 后，在 `generateAPIPodStatus`（`pkg/kubelet/kubelet_pods.go`）里取本节点地址填入 `status.hostIP`，再由 status manager 写回 apiserver；
 3. 后续的状态更新：容器状态变化、变为 `Running` 等。
 
 只有在第 2 步之后的那次更新里，旧对象才同时满足两个条件，Pod 这时才进入 `HostToPods`。**在那之前，调度器在这个节点上看不到它的系统调用。**

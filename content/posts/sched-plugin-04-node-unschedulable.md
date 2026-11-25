@@ -104,7 +104,7 @@ func New(_ context.Context, _ runtime.Object, _ fwk.Handle, fts feature.Features
 2. 节点被 cordon 了，看 Pod 是否容忍一个构造出来的污点 `node.kubernetes.io/unschedulable:NoSchedule`（第 37–40 行），容忍就放行；
 3. 否则返回 `UnschedulableAndUnresolvable`，原因 `node(s) were unschedulable`（第 41–43 行）。
 
-**驱逐节点上的 Pod 不会让节点取消 cordon，所以这个节点不会成为抢占候选。**
+**驱逐节点上的 Pod 不会让节点取消 cordon，所以这个节点不会成为抢占候选。** 抢占在 `pkg/scheduler/framework/preemption/preemption.go` 里用 `NodesForStatusCode` 只挑出状态为 `Unschedulable` 的节点作为潜在候选，返回 `UnschedulableAndUnresolvable` 的节点一开始就被排除（开篇 3.3 节）。
 
 `ErrReasonUnknownCondition` 在整个代码库里已经没有任何引用，它是早年 `CheckNodeUnknownCondition` 谓词留下的常量，这个谓词在节点条件全部改用污点表达之后被删掉了。
 
@@ -167,7 +167,11 @@ func (nc *Controller) doNoScheduleTaintingPass(ctx context.Context, nodeName str
 
 ### 3.2 为什么调度器还要单独看 spec
 
-既然污点会被补上，`TaintToleration` 插件自然会处理它，`NodeUnschedulable` 似乎是多余的。它存在是因为两份表示之间有时间差：`spec.unschedulable` 是 kubectl 同步写入的，污点是控制器异步补上的。
+既然污点会被补上，`TaintToleration` 插件自然会处理它，`NodeUnschedulable` 似乎是多余的。它存在是因为两份表示之间有时间差：`spec.unschedulable` 是 kubectl 同步写入的，污点是控制器异步补上的，中间要经过三步：
+
+1. node-lifecycle-controller 的 Node informer 收到更新，把节点名放进 `nodeUpdateQueue`；
+2. worker 取出节点名，调用 3.1 节的 `doNoScheduleTaintingPass` 算出要增删的污点；
+3. 再用 `SwapNodeControllerTaint` 发一次 API 请求，把污点写回 Node。
 
 {{< figure src="/images/posts/sched-plugins/04-cordon-timeline.svg" link="/images/posts/sched-plugins/04-cordon-timeline.svg" caption="cordon 与 uncordon 的时间线：spec 字段立即生效，污点由 node-lifecycle-controller 稍后补上或删除，调度器两边都检查（点击查看大图）" >}}
 
@@ -299,7 +303,7 @@ func (pl *NodeUnschedulable) isSchedulableAfterTargetPodTolerationChange(logger 
 
 ⑤ 控制器删掉污点：又一个 `UpdateNodeTaint` 事件。`NodeUnschedulable` 的 hint 会返回 `QueueSkip`（spec 没变），但 Pod 现在的拒绝者是 `TaintToleration`，它的 hint 发现「之前有不容忍的污点，现在没有了」，返回 `Queue`。Pod 第二次被唤醒，这次通过。
 
-两个插件各自只对自己负责的那份状态作出反应，**组合起来正好覆盖了异步的时间差**。这也是 QueueingHint 设计的一个隐含前提：Pod 的 `UnschedulablePlugins` 在每次失败后都会被刷新，只要每个插件都正确地声明「什么变化能让我改判」，Pod 就不会卡在一个已经过时的拒绝者上。
+两个插件各自只对自己负责的那份状态作出反应，**组合起来正好覆盖了异步的时间差**。这也是 QueueingHint 设计的一个隐含前提：Pod 的 `UnschedulablePlugins` 在每次失败后都会被刷新（开篇第五节：`handleSchedulingFailure` 用本轮 `Diagnosis` 里的拒绝者覆盖这个字段），只要每个插件都正确地声明「什么变化能让我改判」，Pod 就不会卡在一个已经过时的拒绝者上。
 
 两次唤醒解释了 uncordon 之后会发生什么。剩下几个情况不在正常流程里。
 

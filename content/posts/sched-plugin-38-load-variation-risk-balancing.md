@@ -293,7 +293,7 @@ func GetMuSigma(rs *ResourceStats) (float64, float64) {
 
 再除以容量，回到 [0, 1] 区间的比例（第 7–10 行）。**Pod 的 request 加在均值上，不加在标准差上**。README 的解释是：待调度 Pod 的未来负载未知，假设它的均值等于 request、方差为 0。
 
-这里绕了一圈：百分比 × Allocatable 得到绝对量，再除以 Allocatable 变回比例，`ResourceStats` 只在加 request 的时候需要绝对量。但百分比本身的分母是什么，取决于指标源：metrics-server provider 用的是 `Capacity`。所以，在 Capacity 明显大于 Allocatable 的节点上（预留了较多 system/kube reserved），μ 中「已用」的部分和「request」的部分口径不完全一致。
+这里绕了一圈：百分比 × Allocatable 得到绝对量，再除以 Allocatable 变回比例，`ResourceStats` 只在加 request 的时候需要绝对量。但百分比本身的分母是什么，取决于指标源：metrics-server provider 用的是 `Capacity`（上一篇 2.2 节，`k8s.go` 里用 `host.Usage` 除以 `cpuNodeCapacityMap` 换算百分比）。所以，在 Capacity 明显大于 Allocatable 的节点上（预留了较多 system/kube reserved），μ 中「已用」的部分和「request」的部分口径不完全一致。
 
 ## 四、computeScore：风险公式
 
@@ -407,7 +407,7 @@ sensitivity = 2：
 
 ## 五、边界情况与坑
 
-**只用 metrics-server 时，模型退化成「按实际用量最少优先」。** metrics-server provider 只给 `Latest`，没有 `STD`，σ 恒为 0，公式变成 `score = 100 − 50 × (u + r)`，其中 u 是当前瞬时利用率。margin 和 sensitivity 都不起作用，μ 也是一个瞬时值，没有经过时间平均。要让 LVRB 发挥设计意图，应该接 Prometheus。
+**只用 metrics-server 时，模型退化成「按实际用量最少优先」。** 上一篇 2.2 节讲过，metrics-server provider 读的是 `NodeMetrics` 的瞬时用量，只填 `Operator = Latest`，不产生 `STD` 记录；按 3.2 节的挑选规则，`stDev` 保持零值，σ 恒为 0，公式变成 `score = 100 − 50 × (u + r)`，其中 u 是当前瞬时利用率。margin 和 sensitivity 都不起作用，μ 也是一个瞬时值，没有经过时间平均。要让 LVRB 发挥设计意图，应该接 Prometheus。
 
 **满载但稳定的节点仍有 50 分。** 因为除以 2，μ = 1、σ = 0 的节点 risk 只有 0.5。测试 `hot node`（CPU 均值 100%，Pod 为空）断言的就是 50 分。
 

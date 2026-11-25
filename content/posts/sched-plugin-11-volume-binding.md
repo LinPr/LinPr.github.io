@@ -249,7 +249,12 @@ func (pl *VolumeBinding) PreFilter(ctx context.Context, state fwk.CycleState, po
 3. PVC 带 `deletionTimestamp`，正在删除；
 4. ephemeral 卷的 PVC 不归这个 Pod 所有（`ephemeral.VolumeIsForPod`）。
 
-普通 PVC 不存在时，上一篇说过 `VolumeRestrictions` 在 PreFilter 链上更早，会先报错并终止 PreFilter，所以实际看到这段 VolumeBinding 报错的，主要是 ephemeral 卷。
+普通 PVC 不存在时，实际很少看到这段 VolumeBinding 报错，原因有两层：
+
+1. 第 9 篇讲过，`VolumeRestrictions` 在 MultiPoint 列表里排在 VolumeBinding 之前，它的 PreFilter 先执行，取不到 PVC 时返回 `UnschedulableAndUnresolvable`；
+2. 框架的 `RunPreFilterPlugins`（`pkg/scheduler/framework/runtime/framework.go`）按顺序执行 PreFilter，遇到 `UnschedulableAndUnresolvable` 立即返回，后面的插件不再执行（遇到 `Unschedulable` 则继续跑完，留给抢占）。
+
+所以实际看到这段报错的，主要是 ephemeral 卷。
 
 Pod 没有任何 PVC 时，PreFilter 写入一个**空的** `stateData` 再返回 `Skip`（第 7–10 行）。为什么 Skip 了还要写状态？因为 `Skip` 只让框架跳过本插件的 Filter（以及 PreFilterExtensions），Reserve、PreBind、Unreserve 仍然会被调用，它们第一步都是 `getStateData`，读不到就会返回错误，让 Pod 绑定失败。
 
@@ -306,7 +311,7 @@ Pod 没有任何 PVC 时，PreFilter 写入一个**空的** `stateData` 再返�
 
 `IsDelayBindingMode` 有个容易踩的细节：PVC 的 StorageClass **不存在**时它返回 false，没有报错。于是「StorageClass 名字写错了」的 WaitForFirstConsumer PVC 会被当成 Immediate 处理，报的也是 unbound immediate。
 
-而 StorageClass 存在但 `volumeBindingMode` 为 nil 时才会返回错误（正常情况下 API 默认值会填上 `Immediate`）。
+而 StorageClass 存在但 `volumeBindingMode` 为 nil 时才会返回错误。正常情况下走不到这条分支：StorageClass 写入时，apiserver 的默认值函数 `SetDefaults_StorageClass`（`pkg/apis/storage/v1/defaults.go`）会把 nil 填成 `Immediate`。
 
 最后，对每个延迟绑定 PVC 的 StorageClass，从 `pvCache` 按索引取出同 class 的所有 PV，存进 `unboundVolumesDelayBinding`（第 24–31 行）。这一步放在 PreFilter 而不是 Filter，是因为 Filter 要对每个节点执行，候选 PV 列表与节点无关，取一次就够了。
 
@@ -426,7 +431,9 @@ func (pl *VolumeBinding) Filter(ctx context.Context, cs fwk.CycleState, pod *v1.
 2. 插件属于写死的五个块存储插件之一（`isCSIMigrationOnForPlugin`）；
 3. 节点 CSINode 的 `storage.alpha.kubernetes.io/migrated-plugins` 注解里包含这个插件。
 
-翻译会改写拓扑，比如 GCE PD 的 `topology.kubernetes.io/zone` 被替换成驱动自己的 `topology.gke.io/zone`（`csi-translation-lib/plugins/in_tree_volume.go` 的 `translateTopologyFromInTreeToCSI`）。节点上的 CSI 驱动注册时会给节点打上驱动的拓扑标签，所以翻译后的 nodeAffinity 匹配的是驱动视角的拓扑。
+翻译会改写拓扑，比如 GCE PD 的 `topology.kubernetes.io/zone` 被替换成驱动自己的 `topology.gke.io/zone`（`csi-translation-lib/plugins/in_tree_volume.go` 的 `translateTopologyFromInTreeToCSI`）。
+
+节点上之所以有 `topology.gke.io/zone` 这类标签，是 kubelet 在 CSI 驱动注册时打上的：kubelet 调用驱动的 `NodeGetInfo` 拿到 `accessible_topology`，再由 `nodeInfoManager.InstallCSIDriver`（`pkg/volume/csi/nodeinfomanager/nodeinfomanager.go`）把这些键值写成 Node 标签，键名同时记进 CSINode 的 `topologyKeys`。所以翻译后的 nodeAffinity 匹配的是驱动视角的拓扑。
 
 ### 5.2 未绑定的 PVC：先看 selected-node，再找静态 PV，最后看能否供给
 
@@ -881,6 +888,8 @@ func (pl *VolumeBinding) Reserve(ctx context.Context, cs fwk.CycleState, pod *v1
 
 Reserve 是串行的，这是 assume 的前提：下一个 Pod 的调度周期开始之前，这个 Pod 的 assume 已经完成。
 
+串行来自调度器的执行模型（开篇 3.1 节）：`ScheduleOne` 由 `wait.UntilWithContext` 在单个 goroutine 里循环调用（`pkg/scheduler/scheduler.go`）；Reserve 在 `schedulingCycle` → `prepareForBindingCycle` → `AssumeAndReserveInCache` 里同步执行；只有绑定周期由 `go sched.runBindingCycle(...)` 另起 goroutine（`pkg/scheduler/schedule_one.go`）。
+
 ### 7.2 assume cache：版本号决定谁说了算
 
 {{< figure src="/images/posts/sched-plugins/11-assume-cache.svg" caption="assume cache 的读写规则：informer store 是真相，assumed 只在 ResourceVersion 相同时生效，informer 一旦送来新版本就自动作废（点击查看大图）" link="/images/posts/sched-plugins/11-assume-cache.svg" >}}
@@ -1101,9 +1110,9 @@ gRPC 返回 `ResourceExhausted`（CSI 规范里的「在指定拓扑无法供给
 | CSIDriver 更新 | Pod 有内联 CSI 卷用到这个驱动，且 `storageCapacity` 从 true 变成 false（不再做容量检查）才 `Queue` |
 | CSIStorageCapacity 新增/更新 | 新增 `Queue`；更新时 `volumeLimit`（`maximumVolumeSize` 优先，否则 `capacity`）变大才 `Queue` |
 
-CSIDriver 的 hint 有一处漏判：它只遍历 `vol.CSI`（CSI 内联临时卷），而容量检查针对的是 PVC 的 StorageClass provisioner。对一个因容量不足被拒、使用普通 PVC 的 Pod，驱动关闭 `storageCapacity` 的事件会被这个 hint 判成 `QueueSkip`。好在这种操作很少见，Pod 最终也会被周期性刷新捞回来。
+CSIDriver 的 hint 有一处漏判：它只遍历 `vol.CSI`（CSI 内联临时卷），而容量检查针对的是 PVC 的 StorageClass provisioner。对一个因容量不足被拒、使用普通 PVC 的 Pod，驱动关闭 `storageCapacity` 的事件会被这个 hint 判成 `QueueSkip`。好在这种操作很少见，Pod 最终也会被开篇第五节讲过的兜底机制捞回来：在不可调度池里待满 `DefaultPodMaxInUnschedulablePodsDuration`（5 分钟）的 Pod 会被强制放回队列。
 
-PV 事件没有 hint 是有代价的：PV 控制器、供给器、attach/detach 控制器都会频繁更新 PV 的 status 和注解，每次都会把所有被 VolumeBinding 拒绝的 Pod 放回队列。
+PV 事件没有 hint 是有代价的：PV 控制器（写 `status.phase`、`claimRef` 和绑定注解）、external-provisioner（创建 PV）、pv-protection 控制器（加减 finalizer）都会写 PV，每次都会把所有被 VolumeBinding 拒绝的 Pod 放回队列。
 
 事件讲完，剩下的是这套机制在真实集群里容易出问题的地方。
 

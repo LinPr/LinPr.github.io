@@ -308,7 +308,12 @@ func leastRequestedScore(requested, capacity int64) int64 {
 
 ### 5.2 组合使用时方向会打架
 
-scheduler-plugins 的调度器二进制默认 Profile 依然包含全部 in-tree 插件，`NodeResourcesFit` 以权重 1 参与打分，策略默认 `LeastAllocated`。图中最右一列是一个 1 CPU / 2Gi 的 Pod 在四个空节点上的 Fit 得分：small 81、medium 94、memheavy 92、large 98，Fit 偏好大节点；`Least` 模式的 Allocatable 偏好小节点，两者方向相反。
+scheduler-plugins 的调度器二进制里，Profile 依然包含 in-tree 的默认插件，原因有两层：
+
+1. `cmd/scheduler/main.go` 调用的是 in-tree 的 `app.NewSchedulerCommand`，`app.WithPlugin` 只往 registry 里注册插件工厂，不改动任何 Profile；
+2. 加载配置时，`setDefaults_KubeSchedulerProfile`（`pkg/scheduler/apis/config/v1/defaults.go`）用 `mergePlugins(logger, getDefaultPlugins(), prof.Plugins)` 把配置里写的插件合并进默认列表：`enabled` 里的插件追加进去（与默认插件同名时就地替换），只有写进 `disabled` 的默认插件才会被去掉。
+
+[开篇](/posts/sched-plugin-00-journey/) 1.1 节列过这份默认列表，`NodeResourcesFit` 在其中以权重 1 参与打分，策略默认 `LeastAllocated`。图中最右一列是一个 1 CPU / 2Gi 的 Pod 在四个空节点上的 Fit 得分：small 81、medium 94、memheavy 92、large 98，Fit 偏好大节点；`Least` 模式的 Allocatable 偏好小节点，两者方向相反。
 
 好在两者的区分度不一样。Fit 在空节点之间的差异只有十几分（81 到 98），Allocatable 经过 min-max 后总是拉满 0 到 100。权重都为 1 时 small 得 `81 + 100 = 181`，large 得 `98 + 0 = 98`，Allocatable 胜出。
 
@@ -321,6 +326,8 @@ scheduler-plugins 的调度器二进制默认 Profile 依然包含全部 in-tree
 min-max 依赖本轮的候选集合。同一个 medium 节点，候选集合里有 large 时得 80，large 被 Filter 过滤掉后，medium 变成最大，`Least` 模式下得 0。**分数不是节点的固有属性，跨 Pod 比较分数没有意义。**
 
 另外 `percentageOfNodesToScore` 小于 100% 时，候选节点只是全部可行节点的一个子集，极值随采样变化，对大集群的打分会有一些抖动。
+
+子集来自 Filter 阶段的提前停止（[开篇](/posts/sched-plugin-00-journey/) 3.2 节）：`numFeasibleNodesToFind` 算出要找几个可行节点，找够就停，下一个 Pod 从 `nextStartNodeIndex` 接着往后找。节点数不到 100 时会检查全部节点，这种抖动只出现在更大的集群里。
 
 ## 六、边界与坑
 

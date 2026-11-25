@@ -531,7 +531,7 @@ func nodePodsSatisfyAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) bool 
 1. 前者：新 Pod 规则全部是本机规则，`getIncomingAffinityAntiAffinityCounts` 直接返回，PreFilter 不再扫全集群 Pod；
 2. 后者：已有 Pod 反亲和扫描只覆盖「有非 hostname 反亲和 Pod」的节点，匹配新 Pod 的 hostname 规则也不再往 `existingClusterWideAntiAffinityCounts` 里写「每个节点一个」的键。
 
-代价是 Filter 阶段的工作量上升：每个候选节点都要遍历本机上的 Pod。由于每个节点上的 Pod 数有上限（默认 110），这个代价是有界的。gate 在 1.37 是 Alpha、默认关闭，`NodeInfo.PodsWithRequiredNonHostScopedAntiAffinity` 的注释也写明了 gate 关闭时这个切片必须为空。
+代价是 Filter 阶段的工作量上升：每个候选节点都要遍历本机上的 Pod。这个代价是有界的，因为每个节点上的 Pod 数有上限：kubelet 的 `maxPods` 默认 110，上报为节点 `status.allocatable.pods`，超出时 `NodeResourcesFit` 返回 `Too many pods`（第 8 篇 5.1 节）。gate 在 1.37 是 Alpha、默认关闭，`NodeInfo.PodsWithRequiredNonHostScopedAntiAffinity` 的注释也写明了 gate 关闭时这个切片必须为空。
 
 快速路径改变的是 PreFilter 和 Filter 各自干多少活，没有改变两者之间的约定：Filter 能用的一切，`AddPod`/`RemovePod` 都必须能增量维护。下一节看它怎么落在这套约定上。
 
@@ -566,7 +566,12 @@ func nodePodsSatisfyAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) bool 
 1. 它自己的反亲和规则可能排斥新 Pod，对应已有 Pod 的反亲和（第 2–4 行）；
 2. 它也可能被新 Pod 的亲和/反亲和规则选中，对应新 Pod 的亲和与反亲和（第 14–18 行）。
 
-快速路径下 hostname 项不在表里，只需维护自亲和计数；本机的 hostname 检查在 Filter 中直接读 `NodeInfo`，而抢占模拟时 `NodeInfo` 本身已经被 `RemovePod`/`AddPodInfo` 修改过，自然是最新的。
+快速路径下 hostname 项不在表里，只需维护自亲和计数；本机的 hostname 检查在 Filter 中直接读 `NodeInfo`。这份 `NodeInfo` 在两类调用方里都先于 `AddPod`/`RemovePod` 被改好：
+
+1. 抢占：`preemption.go` 把 `nodeInfo.Snapshot()` 副本交给 `SelectVictimsOnNode`，后者对候选节点上的受害者先调用 `nodeInfo.RemovePod`/`AddPodInfo`，再调用 `RunPreFilterExtensionRemovePod`/`AddPod`（`default_preemption.go`）；
+2. nominated Pod：`addGENominatedPods`（`framework/runtime/framework.go`）同样在 `nodeInfo.Snapshot()` 副本上先 `AddPodInfo`，再调用 `RunPreFilterExtensionAddPod`。
+
+所以 Filter 读到的本机 Pod 列表与计数表的增减是一致的。
 
 调用场景与上一篇相同：nominated Pod 的占位，以及抢占的「全部移除、逐个加回」。
 
@@ -746,7 +751,7 @@ min-max 之后分差被拉满到 0～100，再乘以权重 2。
 
 **带 Pod 亲和的 Pod 不能批量调度。** `SignPod` 对有 `podAffinity`/`podAntiAffinity` 的 Pod 返回 `Unschedulable`（拒签）。没有规则的 Pod 也不是无条件可签：默认配置下签名里要包含 Pod 的全部标签（`LabelsSignerName`），因为已有 Pod 的规则可能匹配这些标签；只有设置了 `ignorePreferredTermsOfExistingPods` 才省掉这一项。
 
-**namespace 不存在时按空标签处理。** `GetNamespaceLabelsSnapshot` 取不到 namespace 时返回 nil，已有 Pod 用 `namespaceSelector` 写的规则就匹配不到新 Pod。正常情况下 Pod 所在的 namespace 必然存在，这只在 informer 延迟时短暂出现。
+**namespace 不存在时按空标签处理。** `GetNamespaceLabelsSnapshot` 取不到 namespace 时返回 nil，已有 Pod 用 `namespaceSelector` 写的规则就匹配不到新 Pod。正常情况下 Pod 所在的 namespace 必然存在：默认开启的 `NamespaceLifecycle` 准入插件拒绝在不存在的 namespace 里创建对象（`staging/src/k8s.io/apiserver/pkg/admission/plugin/namespace/lifecycle/admission.go`），namespace 删除时也要等 namespace 控制器清掉其中的 Pod 才会真正消失。所以这只在调度器的 namespace informer 落后时短暂出现。
 
 ## 十、发散：开销从哪里来
 

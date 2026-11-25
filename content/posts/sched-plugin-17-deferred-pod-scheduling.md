@@ -42,7 +42,13 @@ description: "原地扩容放不下时会被 kubelet 标记为 Deferred，新 ga
 1. `Infeasible`（第 8 行）是节点总容量都放不下，再等也没用；
 2. `Deferred`（第 4 行）是「理论上放得下，但现在被其它 Pod 占着」。
 
-被推迟的 resize 会留在 kubelet 的 pending 列表里，等节点上有 Pod 退出、资源被释放时重试。
+被推迟的 resize 会留在 kubelet 的 pending 列表里（allocation manager 的 `podsWithPendingResizes`），由 `RetryPendingResizes`（`pkg/kubelet/allocation/allocation_manager.go`）统一重试。触发重试的时机有三类：
+
+1. 有 Pod 从节点上移除：`HandlePodRemoves` 末尾调用；
+2. 节点上某个 Pod 进入终态，或者它按已分配和实际值算出的请求量变小：`HandlePodReconcile` 里调用；
+3. 定时兜底：allocation manager 的 ticker 每次重试后重置为 3 分钟（`retryDelay`），没有事件时也会周期性再评估。
+
+前两类都是节点上可能腾出资源的时刻。
 
 问题在于：资源可能永远不会被释放。节点上的其它 Pod 都在正常运行，没有理由退出。一个高优先级的数据库 Pod 想把内存从 8Gi 扩到 16Gi，节点上挤满了低优先级的批处理任务，它就会一直卡在 `Deferred`。
 
@@ -78,7 +84,7 @@ Pod 卡在 `Deferred`，调度器要接手。第一步是让它重新回到队�
 
 ## 二、调度器主循环的配套改动
 
-在看插件之前，先看已绑定的 Pod 是怎么回到调度队列的。正常情况下调度器只把**未绑定**的 Pod 放进队列，已绑定的 Pod 只进缓存。gate 开启后，事件处理器多了几条分支：
+在看插件之前，先看已绑定的 Pod 是怎么回到调度队列的。正常情况下调度器只把**未绑定**的 Pod 放进队列，已绑定的 Pod 只进缓存（[第 03 篇](/posts/sched-plugin-03-node-name/) 2.1 节讲过：Pod 事件回调用 `assignedPod` 判断 `spec.nodeName` 是否非空，非空的只交给缓存）。gate 开启后，事件处理器多了几条分支：
 
 ```go {linenos=inline}
 // pkg/scheduler/eventhandlers.go
@@ -193,7 +199,13 @@ PostFilter 也做了同样的分工：`DynamicResources` 的 PostFilter（释放
 
 ## 四、`NodeResourcesFit` 的增量判断
 
-Deferred Pod 的资源判断有一个特殊之处：它已经在节点上了，节点的 `requested` 里已经算了它一份。算的是多少？调度器缓存计算 Pod 资源时取 `max(spec, 已分配, 实际)`（`resource.PodRequests` 在 `UseStatusResources` 时如此），resize 中的 Pod 按新的、更大的 spec 计入。如果 Filter 再按常规把 Pod 的请求量加上去，就重复计算了。
+Deferred Pod 的资源判断有一个特殊之处：它已经在节点上了，节点的 `requested` 里已经算了它一份。算的是多少？调度器缓存计算 Pod 资源时取 `max(spec, 已分配, 实际)`（`resource.PodRequests` 在 `UseStatusResources` 时如此），以容器级为例，三个量来自 Pod 对象的不同位置：
+
+1. spec：`spec.containers[].resources.requests`，用户发起 resize 时改的就是它；
+2. 已分配：`status.containerStatuses[].allocatedResources`，kubelet 准入通过这次 resize 后才更新；
+3. 实际：`status.containerStatuses[].resources`，kubelet 从容器运行时读回的当前配置。
+
+resize 被推迟时后两项还是旧值，所以 resize 中的 Pod 按新的、更大的 spec 计入。如果 Filter 再按常规把 Pod 的请求量加上去，就重复计算了。
 
 `helper/resource_fit.go` 为此加了一个调整函数：
 
@@ -474,7 +486,7 @@ func (pl *DeferredPodScheduling) EventsToRegister(_ context.Context) ([]fwk.Clus
 
 **会关掉整个 Profile 的 opportunistic batching。** `DeferredPodScheduling` 实现了 PreFilter/Filter，却没有实现 `SignPlugin`。框架初始化时发现这种插件，会对整个 Profile 关闭签名（日志 `Disabling signatures for profile because plugins do not support it. plugins=["DeferredPodScheduling"]`）。在默认配置下 `PodTopologySpread` 的系统默认约束已经让所有 Pod 拒签（见[第 13 篇](/posts/sched-plugin-13-pod-topology-spread/)），影响不明显；但对专门调过配置以启用批量调度的集群，开启这个 gate 会让批量调度整体失效。
 
-**驱逐是异步完成的。** 受害者先进入 Terminating，调度器缓存要等它的删除事件到达才把它的资源从节点上减掉；kubelet 重试 pending resize 有自己的触发时机，用的是自己的用量记录。两边存在时间差，调度器判断「放得下」时 kubelet 未必已经执行，这也是 Pod 被设计成留在队列里等待、而不是立即出队的原因之一。
+**驱逐是异步完成的。** 受害者先进入 Terminating，调度器缓存要等它的删除事件到达才把它的资源从节点上减掉；kubelet 重试 pending resize 有自己的触发时机（第一节列过：Pod 移除、进入终态、请求量变小和 3 分钟定时），用的是自己的用量记录。两边存在时间差，调度器判断「放得下」时 kubelet 未必已经执行，这也是 Pod 被设计成留在队列里等待、而不是立即出队的原因之一。
 
 **只覆盖 Deferred，不覆盖 Infeasible。** 节点总容量不够时 kubelet 标记 `Infeasible`，调度器不介入。原地扩容不会把 Pod 迁到更大的节点上，这需要上层（比如 VPA 的重建模式）处理。
 

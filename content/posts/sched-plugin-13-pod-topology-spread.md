@@ -888,7 +888,9 @@ func scoreForCount(cnt int64, maxSkew int32, tpWeight float64) float64 {
 
 **删除中的 Pod 不计数。** 滚动更新时，旧 Pod 一旦进入 `Terminating`（`DeletionTimestamp` 非空）就从计数中消失，即使它的容器还在运行。这是 [#87621](https://github.com/kubernetes/kubernetes/issues/87621) 的修复，避免新副本因为「将死的旧副本」而被挤到别的域。
 
-**约束只在调度时生效。** 和 nodeAffinity 的 `IgnoredDuringExecution` 一样，Pod 调度之后分布被打破（节点下线、缩容删掉了某个 zone 的副本），调度器不会主动纠正。缩容时 ReplicaSet 控制器挑选删除对象，也不会读取 `topologySpreadConstraints`。需要持续维持分布时，要配合 descheduler 的 `RemovePodsViolatingTopologySpreadConstraint` 策略。
+**约束只在调度时生效。** 和 nodeAffinity 的 `IgnoredDuringExecution` 一样，Pod 调度之后分布被打破（节点下线、缩容删掉了某个 zone 的副本），调度器不会主动纠正。缩容时 ReplicaSet 控制器挑选删除对象，也不会读取 `topologySpreadConstraints`。
+
+它的 `getPodsToDelete`（`pkg/controller/replicaset/replica_set.go`）按 `ActivePodsWithRanks` 排序挑选，依据依次是未调度、Pending、未就绪、`pod-deletion-cost`、同节点上同 ReplicaSet 的就绪副本数、就绪时长等。和位置有关的只有「同一节点上副本多的先删」，不看 zone。需要持续维持分布时，要配合 descheduler 的 `RemovePodsViolatingTopologySpreadConstraint` 策略。
 
 **Deferred resize 的 Pod 直接跳过。** `InPlacePodVerticalScalingSchedulerPreemption` 开启时，已绑定且原地扩容被 kubelet 推迟的 Pod 会重新进入调度队列（详见[第 17 篇](/posts/sched-plugin-17-deferred-pod-scheduling/)），`PreFilter` 对它返回 `Skip`，`Filter` 直接放行。这种 Pod 不换节点，拓扑分布与它无关。
 

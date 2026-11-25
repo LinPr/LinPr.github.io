@@ -39,7 +39,12 @@ kubelet 里的 Topology Manager 负责让一个 Pod 拿到的 CPU、内存、设
 1. `container`（默认）逐个容器对齐，不同容器可以落在不同 NUMA 节点；
 2. `pod` 把整个 Pod 当成一个整体，所有容器必须落在同一组 NUMA 节点上。
 
-被拒绝的 Pod 状态是 `TopologyAffinityError`，它已经绑定到节点上，不会再回到调度队列。如果由 ReplicaSet 管理，会出现：
+被拒绝的 Pod 不会再回到调度队列，原因有两层：
+
+1. kubelet 在 `HandlePodAdditions` 里做准入，失败时调用 `rejectPod`（`pkg/kubelet/kubelet.go`），把 Pod 的 phase 直接写成 `Failed`，reason 是 `TopologyAffinityError`；
+2. 这个 Pod 的 `spec.nodeName` 在 Bind 时已经写好，[第 3 篇](/posts/sched-plugin-03-node-name/)讲过，调度器只把 `nodeName` 为空的 Pod 放进调度队列，已有 `nodeName` 的 Pod 只记进缓存。
+
+如果由 ReplicaSet 管理，控制器用 `controller.FilterActivePods` 统计副本，`Failed` 的 Pod 不算活跃副本，副本数不足就会补建，于是出现：
 
 1. 控制器新建一个 Pod；
 2. 调度器又只看节点总量，很可能把它再次放到同一个节点，形成循环。
@@ -858,7 +863,7 @@ func IsForeignPod(pod *corev1.Pod, nrtResources sets.Set[corev1.ResourceName]) b
 
 区别在于 Pod 集合的口径。代理计算指纹时看到的是 kubelet 已经知道的 Pod，调度器侧需要尽量用同样的集合。
 
-调度器自带的 informer 会过滤掉某些终态 Pod，独立 informer 多一条到 API Server 的 watch 连接，但口径更可控（相关讨论见代码注释引用的 scheduler-plugins#599）。
+调度器自带的 informer 带字段选择器 `status.phase!=Succeeded,status.phase!=Failed`（见 [CapacityScheduling 篇](/posts/sched-plugin-28-capacity-scheduling/) 2.1 节），终态 Pod 根本不在其中；独立 informer 多一条到 API Server 的 watch 连接，但口径更可控（相关讨论见代码注释引用的 scheduler-plugins#599）。
 
 ### 7.7 NRT watcher 与一个空缺
 
@@ -989,7 +994,7 @@ func (tm *TopologyMatch) EventsToRegister(_ context.Context) ([]fwk.ClusterEvent
 
 如果 CPU、内存也最终通过 DRA 或类似机制表达 NUMA 拓扑，调度器就能成为分配的决定者，NRT 这类「上报 + 模拟」的模式会失去存在的必要。在那之前，NRT 插件仍是用 Topology Manager 跑延迟敏感负载时最直接的选择。
 
-**和 NodeResourcesFit 的分工**。NRT 插件不检查节点总量，它假设 `NodeResourcesFit` 已经过滤了总量不足的节点。两者都会运行，Filter 链上 NRT 插件通常排在 in-tree 插件之后。
+**和 NodeResourcesFit 的分工**。NRT 插件不检查节点总量，它假设 `NodeResourcesFit` 已经过滤了总量不足的节点。两者都会运行。用 `multiPoint` 启用时，Filter 链上 NRT 插件排在 in-tree 插件之后，因为配置合并时不在默认列表里的自定义插件会被追加到末尾（见 [Coscheduling 篇](/posts/sched-plugin-27-coscheduling/)第一节）。
 
 打分上两者也会叠加：in-tree 的 `NodeResourcesFit` 默认 `LeastAllocated` 会偏好总量空闲的节点，NRT 的 `LeastAllocated` 偏好最差 zone 也空闲的节点，方向基本一致。
 

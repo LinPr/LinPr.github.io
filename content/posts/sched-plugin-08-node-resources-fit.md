@@ -328,7 +328,7 @@ func (pi *PodInfo) CalculateResource() fwk.PodResource {
 
 1. 命中缓存时直接返回（第 3–5 行）；
 2. 算完后写入（第 27 行）；
-3. Pod 更新时清空。
+3. Pod 更新时清空：缓存收到 Pod 更新事件后调用 `PodInfo.Update` 换上新对象，并把 `cachedResource` 置为 `nil`，下次 `CalculateResource` 重新计算。
 
 请求量的口径到这里就定下来了：待调度 Pod 算一次，节点上的 Pod 各自记录用量并缓存。接下来看插件本身怎么组织这些计算。
 
@@ -590,7 +590,7 @@ CPU、内存、临时存储在代码里是同构的三段，判定式完全相�
 
 1. 用的是 `allocatable`，不是 `capacity`。`allocatable = capacity − kube-reserved − system-reserved − 驱逐阈值`，由 kubelet 计算并上报。
 2. 用的是 `Requested`，不是 `NonZeroRequested`。没写 requests 的容器在这里按 0 计算。
-3. 「已请求」包括 assumed Pod：调度器在 Bind 完成前就把 Pod 假定放进了缓存，后续 Pod 看到的是扣除之后的剩余量。
+3. 「已请求」包括 assumed Pod：调度器在 Bind 完成前就把 Pod 假定放进了缓存（[开篇](/posts/sched-plugin-00-journey/) 3.6 节的 Assume，调度周期末尾由 `AssumeAndReserveInCache` 完成），后续 Pod 看到的是扣除之后的剩余量。
 
 `Unresolvable` 的判定是 `podRequest > allocatable`（第 11 行）：请求量比整个节点还大，清空节点也放不下，抢占没有意义。注意这里比较的是 Pod 的完整请求量 `podRequest`，而不是 `delta`。
 
@@ -1217,7 +1217,7 @@ hint 检查新增或修改的 `DeviceClass` 的 `extendedResourceName`（或隐�
 
 场景是：一个运行中的 Pod 申请原地扩容，节点剩余资源不够，kubelet 把 resize 标记为 `Deferred`（`PodResizePending` condition 的 reason 为 `Deferred`）。
 
-打开这个 gate 后，调度器会把这样的 Pod 当作一个「需要调度」的对象重新入队，目的不是换节点，而是看能否在**原节点**上抢占低优先级 Pod 腾出空间。
+打开这个 gate 后，调度器会把这样的 Pod 当作一个「需要调度」的对象重新入队（调度器的 Pod 更新回调发现 resize 刚变成 `Deferred` 时把它放回调度队列，见 [NodeName](/posts/sched-plugin-03-node-name/) 一篇 2.2 节），目的不是换节点，而是看能否在**原节点**上抢占低优先级 Pod 腾出空间。
 
 这个 Pod 已有 `spec.nodeName`，各插件对它的处理分三类：
 
@@ -1311,7 +1311,12 @@ BestEffort Pod 只受 maxPods 约束。一个已经被 requests 占满的节点�
 
 `maxPods` 用满时提示的是 `Too many pods`。在 Pod 密度高的节点上（大量 sidecar、小 Pod），这经常比 CPU/内存先耗尽。它是可抢占的失败。
 
-节点缩容 allocatable 不会驱逐 Pod。管理员调大 `kube-reserved` 导致 allocatable 变小，已经运行的 Pod 不受影响，节点的 `Requested` 可能超过 `allocatable`，这时任何新 Pod 都放不进来，`allocatable − requested` 是负数。
+节点缩容 allocatable 不会驱逐 Pod。管理员调大 `kube-reserved` 导致 allocatable 变小，已经运行的 Pod 不受影响。原因有两点：
+
+1. kubelet 用 `Fits` 比较请求量发生在 Pod 准入时，allocatable 变小本身不会触发对运行中 Pod 的重新检查；
+2. kubelet 的驱逐看的是节点实际用量与驱逐阈值，不看 requests 之和。
+
+因此节点的 `Requested` 可能超过 `allocatable`，这时任何新 Pod 都放不进来，`allocatable − requested` 是负数。
 
 ## 十、发散
 

@@ -258,6 +258,13 @@ func dryRunOnePass(ctx context.Context, preemptor *v1.Pod, pods []*v1.Pod, nodeL
 
 核心机制和 in-tree 一样依赖 `PreFilterExtensions`：移除受害者时调用 `RunPreFilterExtensionRemovePod`（第 14 行），让 PodTopologySpread、InterPodAffinity 等插件更新它们存在 CycleState 里的计数。不同的是，这里会对不同节点上的受害者调用 RemovePod，于是 zone1 的 foo 计数可以一次减掉两个。
 
+这些计数为什么放在 CycleState 里、`RemovePod` 又怎么改它们，[PodTopologySpread](/posts/sched-plugin-13-pod-topology-spread/) 第三、五节讲过，分两步：
+
+1. PreFilter 遍历全部节点，把每个拓扑域的匹配 Pod 数写进 CycleState 的 `preFilterState.TpValueToMatchNum`，Filter 在某个节点上只查这张表，不再去数别的节点；
+2. `RemovePod` 落到 `updateWithPod`，用传入的 `NodeInfo` 上的节点 label 找到受害者所在的拓扑值，把对应计数减一（`delta` 为 −1）。[InterPodAffinity](/posts/sched-plugin-14-inter-pod-affinity/) 的 `RemovePod` 同样是在 CycleState 里的 `preFilterState` 上调用 `updateWithPod`，乘数为 −1。
+
+所以 `dryRunOnePass` 要把受害者所在节点的副本 `nodeCopy` 传给 `RunPreFilterExtensionRemovePod`（第 14 行）：拓扑值要从那个节点的 label 上取。
+
 **跨节点抢占之所以能解决拓扑约束，是因为拓扑类插件的跨节点状态都在 CycleState 里。** 只要对每个受害者都调用一次 RemovePod，计数就是对的。
 
 {{< figure src="/images/posts/sched-plugins/32-brute-force.svg" link="/images/posts/sched-plugins/32-brute-force.svg" caption="两个低优先级 Pod 产生 4 个子集，只有 {pod-a, pod-b} 能让 p 放下；子集数随低优先级 Pod 数指数增长（点击查看大图）" >}}
@@ -313,7 +320,7 @@ func (s *candidate) Victims() *extenderv1.Victims {
 
 n 的规模不是节点内的 Pod 数，而是整个集群（排除 `UnschedulableAndUnresolvable` 节点后）的低优先级 Pod 数。n = 20 时子集数是 1,048,576；n = 30 时是 1,073,741,824。一个几十个节点、跑着批处理作业的集群，n 轻易就是几百。
 
-PostFilter 运行在调度主循环里，调度周期是串行的，**一次跨节点抢占就足以让整个调度器停摆**。
+PostFilter 运行在调度主循环里，调度周期是串行的：[开篇](/posts/sched-plugin-00-journey/)第三节讲过，`ScheduleOne` 在单个 goroutine 里循环执行，前一个 Pod 的调度周期没有结束，下一个 Pod 就不会出队。**一次跨节点抢占就足以让整个调度器停摆**。
 
 更糟的是，DFS 没有任何剪枝。无论前缀子集是否已经可行，都会完整展开到叶子；而且每个可行的子集都会产出 candidate。
 
@@ -473,7 +480,7 @@ type DomainVictim struct {
 1. 内嵌 `Victim`，沿用原有的受害者表示（第 6 行）；
 2. 额外带一个 `affectedNodes`，键是节点名、值是那个节点的 `NodeInfo`，覆盖组内成员所在的每个节点（第 9 行），用来估算一次驱逐波及的范围。
 
-当一个 Pod 属于 disruption mode 为 `All` 的 PodGroup 时，驱逐它就意味着驱逐整个组，组内其他成员可能在别的节点上。`DefaultPreemption.SelectVictimsOnNode` 处理这种受害者的方式，正好就是第四节描述的那条「违背约定」的路，只不过现在写进了约定：
+[DefaultPreemption](/posts/sched-plugin-18-default-preemption/) 6.1 节讲过，`GenericWorkload` 开启时，`GetVictimsOnNode` 会把 disruption mode 为 `All` 的 PodGroup 在全集群已调度的成员聚成一个受害者。所以当一个 Pod 属于这样的 PodGroup 时，驱逐它就意味着驱逐整个组，组内其他成员可能在别的节点上。`DefaultPreemption.SelectVictimsOnNode` 处理这种受害者的方式，正好就是第四节描述的那条「违背约定」的路，只不过现在写进了约定：
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go（master）

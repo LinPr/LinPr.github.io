@@ -382,6 +382,8 @@ diagnosis.NodeToStatus.SetAbsentNodesStatus(fwk.NewStatus(fwk.UnschedulableAndUn
 
 被排除的节点是「不可解决」的，抢占不会在它们上面尝试。这也是 DaemonSet Pod 因资源不足而 Pending 时，抢占只会在目标节点上找受害者的原因。
 
+抢占挑节点的方式决定了这一点：DefaultPreemption 的 `findCandidates`（`pkg/scheduler/framework/preemption/preemption.go`）只通过 `NodesForStatusCode(..., fwk.Unschedulable)` 取状态为 `Unschedulable` 的节点做模拟，被标成 `UnschedulableAndUnresolvable` 的节点进不了这个列表（[NodeName](/posts/sched-plugin-03-node-name/) 一篇 3.2 节有完整代码）。
+
 候选集缩完之后，才轮到 Filter 逐个节点回答。
 
 ### 3.3 Filter：两种原因，同一个状态码
@@ -422,7 +424,7 @@ func (pl *NodeAffinity) Filter(ctx context.Context, state fwk.CycleState, pod *v
 | `addedAffinity` 不满足 | `UnschedulableAndUnresolvable` | `node(s) didn't match scheduler-enforced node affinity` |
 | `nodeSelector` / required 亲和不满足 | `UnschedulableAndUnresolvable` | `node(s) didn't match Pod's node affinity/selector` |
 
-**状态码都是 `UnschedulableAndUnresolvable`。** 道理很直接：节点标签是节点的属性，驱逐节点上的任何 Pod 都改变不了它，所以抢占（[DefaultPreemption](/posts/sched-plugin-18-default-preemption/)）在挑候选节点时会直接跳过这些节点。
+**状态码都是 `UnschedulableAndUnresolvable`。** 道理很直接：节点标签是节点的属性，驱逐节点上的任何 Pod 都改变不了它，所以抢占（[DefaultPreemption](/posts/sched-plugin-18-default-preemption/)）在挑候选节点时会直接跳过这些节点（3.2 节讲过，它只在 `Unschedulable` 的节点上找受害者）。
 
 Filter 里还有一个兜底：读不到 PreFilter 状态时现场解析。这是为「在配置里禁用了 NodeAffinity 的 PreFilter 但保留 Filter」这种组合准备的。正常情况下 PreFilter 返回 `Skip` 时 Filter 根本不会被调用，走不到这条分支。
 
@@ -600,7 +602,7 @@ func (pl *NodeAffinity) SignPod(ctx context.Context, pod *v1.Pod) ([]fwk.SignFra
 
 签名用于批量调度（KEP-5598）：若干 Pod 在所有参与过滤和打分的插件看来「长得一样」，调度器可以复用上一个 Pod 的节点排序结果。`NodeAffinity` 告诉框架，它的结论只取决于节点亲和与 `nodeSelector` 两个字段（第 7–10 行的两个 `SignFragment`）。框架的约定是，**只要有一个启用了 Filter/Score 的插件没实现 `SignPlugin`，所有 Pod 都关闭批量优化**，所以每个 in-tree 插件都要老老实实交出自己的签名片段。
 
-PreFilter 和 Filter 开头都有一段 `IsPodResizeDeferred` 判断。`InPlacePodVerticalScalingSchedulerPreemption`（1.37 Alpha，默认关闭）打开后，已经运行在节点上、原地扩容被 kubelet 以 `Deferred` 推迟的 Pod 会重新进入调度器，目的是在它自己所在的节点上通过抢占腾出资源。
+PreFilter 和 Filter 开头都有一段 `IsPodResizeDeferred` 判断。`InPlacePodVerticalScalingSchedulerPreemption`（1.37 Alpha，默认关闭）打开后，已经运行在节点上、原地扩容被 kubelet 以 `Deferred` 推迟的 Pod 会重新进入调度器（调度器的 Pod 更新回调发现 resize 刚变成 `Deferred` 时把它放回调度队列，见 [NodeName](/posts/sched-plugin-03-node-name/) 一篇 2.2 节），目的是在它自己所在的节点上通过抢占腾出资源。
 
 这种 Pod 已经在节点上了，节点亲和没有重新判断的意义，所以 PreFilter 返回 `Skip`，Filter 直接放行。相关的资源计算在 [NodeResourcesFit](/posts/sched-plugin-08-node-resources-fit/) 和 [DeferredPodScheduling](/posts/sched-plugin-17-deferred-pod-scheduling/) 里。
 
@@ -608,7 +610,9 @@ PreFilter 和 Filter 开头都有一段 `IsPodResizeDeferred` 判断。`InPlaceP
 
 ## 四、边界情况与坑
 
-**`spec.nodeName` 绕过的是调度器，不是节点亲和。** 直接写了 `nodeName` 的 Pod 不进调度队列，`NodeAffinity` 的 Filter 不会执行。但 kubelet 准入会再查一遍：
+**`spec.nodeName` 绕过的是调度器，不是节点亲和。** 直接写了 `nodeName` 的 Pod 不进调度队列，`NodeAffinity` 的 Filter 不会执行：调度器的 Pod 事件回调用 `assignedPod` 判断 `spec.nodeName` 是否非空，非空的只记进缓存（见 [NodeName](/posts/sched-plugin-03-node-name/) 一篇 2.1 节）。
+
+但 kubelet 准入会再查一遍：
 
 ```go {linenos=inline}
 // pkg/kubelet/lifecycle/predicate.go

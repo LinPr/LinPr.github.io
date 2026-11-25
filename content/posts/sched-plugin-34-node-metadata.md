@@ -45,7 +45,11 @@ profiles:
 1. 节点用 annotation 标注每小时成本（第 13–14 行），越便宜的节点得分越高；
 2. Pod 通过 `schedulerName: cost-aware-scheduler`（第 4 行）选择这个 Profile。
 
-数据来源就是调度器 snapshot 里的 Node 对象，不需要额外的 informer 或 CRD，外部系统更新 annotation 后，下一个调度周期就能看到。
+数据来源就是调度器 snapshot 里的 Node 对象，不需要额外的 informer 或 CRD，外部系统更新 annotation 后，下一个调度周期就能看到。这条链路分三步：
+
+1. 调度器自带的 Node informer 收到更新事件，`updateNodeInCache` 无条件调用 `Cache.UpdateNode`，把新的 Node 对象写进调度器缓存（`pkg/scheduler/eventhandlers.go`），只改 label 或 annotation 也一样；
+2. 每个调度周期开始时，`UpdateSnapshot` 把缓存拷贝成快照（[开篇](/posts/sched-plugin-00-journey/) 3.1 节）；
+3. `Score` 里的 `nodeInfo.Node()` 取到的就是快照里的这份 Node 对象。
 
 这套配置能写什么，取决于参数结构的定义和校验，下一节看这两个。
 
@@ -91,7 +95,12 @@ type NodeMetadataArgs struct {
 
 校验失败时 `New` 返回错误，调度器启动失败。所以只在 `plugins.score.enabled` 里写了 `NodeMetadata`、却忘了 `pluginConfig`，调度器起不来，错误信息是 `metadataKey cannot be empty`。
 
-一个 Profile 里同一个插件只能有一个实例，也就只能用一个 key。KEP 的 Non-Goals 明确不支持多 key 组合，想同时考虑成本和代际，只能先由外部系统把它们合成一个数字。
+一个 Profile 里同一个插件只能有一个实例，也就只能用一个 key。框架按插件名实例化插件，重复的配置会被两处校验拦下：
+
+1. 同一扩展点里同名插件启用两次，构建 framework 时报 `plugin %q already registered as %q`（`pkg/scheduler/framework/runtime/framework.go`）；
+2. `pluginConfig` 里同名的配置写两份，配置校验报 `field.Duplicate`（`pkg/scheduler/apis/config/validation/validation.go`）。
+
+KEP 的 Non-Goals 明确不支持多 key 组合，想同时考虑成本和代际，只能先由外部系统把它们合成一个数字。
 
 ## 三、源码
 
@@ -134,8 +143,12 @@ func (nm *NodeMetadata) Score(ctx context.Context, state framework.CycleState, p
 
 两个设计点：
 
-1. **key 不存在、值解析失败，都不报错，而是返回哨兵值 `math.MinInt64`（第 19–23 行）。** 如果这里返回 `Error` 状态，框架会让整个 Pod 的本轮调度失败，一个节点的 annotation 写错就会让所有 Pod 都调度不了。用哨兵值把错误降级为「这个节点在本插件里得最低分」，符合 KEP 中「缺失或格式错误的元数据不应导致调度失败」的要求。
+1. **key 不存在、值解析失败，都不报错，而是返回哨兵值 `math.MinInt64`（第 19–23 行）。** 如果这里返回 `Error` 状态，框架会让整个 Pod 的本轮调度失败：`RunScorePlugins` 并行对每个节点调用各插件的 `Score`，任何一次返回非 Success 就取消其余计算，整体返回 `running Score plugins: ...` 错误。
+
+   这样一来，一个节点的 annotation 写错就会让所有 Pod 都调度不了。用哨兵值把错误降级为「这个节点在本插件里得最低分」，符合 KEP 中「缺失或格式错误的元数据不应导致调度失败」的要求。
 2. `node == nil` 分支里调用了 `nodeInfo.Node().Name`（第 16 行），这本身就是对 nil 指针取字段，会 panic。好在框架传进来的 `NodeInfo` 都来自 snapshot，节点不为空，这个分支实际走不到。
+
+   原因在快照的构造：快照的节点列表按调度器缓存的 `nodeTree` 生成，Node 被删除时 `RemoveNode` 把它移出 `nodeTree`；节点上还残留 Pod 时，缓存会暂留一个 `Node()` 为空的 `NodeInfo`，但它不会进入快照（`pkg/scheduler/backend/cache/cache.go`）。
 
 ### 3.2 两条解析路径
 
@@ -302,7 +315,9 @@ func (nm *NodeMetadata) NormalizeScore(ctx context.Context, state framework.Cycl
 
 1. label 值的格式限制：label 值最长 63 个字符，只能包含字母数字、`-`、`_`、`.`，且必须以字母数字开头和结尾。这带来两个后果：RFC3339 时间戳含有 `:`，不能作为 label 值，`metadataSource: Label` 配 `Timestamp` 时必须换成 `2006-01-02` 这类格式（`manifests/nodemetadata/scheduler-config.yaml` 第四个示例正是这么做的）；负数以 `-` 开头，也不能写进 label。annotation 没有这些限制，需要时间精度或负数时用 annotation。
 2. ParseFloat 接受的写法比想象的多：`"1e3"`、`"0x1p-2"`、`"Inf"`、`"NaN"` 都能解析成功。超出 int64 范围的浮点数（包括 `Inf`、`NaN`）转成 int64 的结果在 Go 规范里是实现相关的，在 amd64 上通常得到 `MinInt64`，恰好与哨兵值相同而被当作无效，但不应依赖这个巧合。KEP 也把「值恰好等于 `math.MinInt64` 时会被当成无效」列为已知限制。
-3. 归一化乘法可能溢出：`(score − min) × 99` 是 int64 乘法，有效值的极差超过约 9.3e16 时会溢出，产生负数或超过 100 的分数。**框架在汇总分数前会检查每个插件的分数是否落在 `[0, 100]`，越界则返回错误，这个 Pod 本轮调度失败。** 秒级时间戳和常见的业务数字远到不了这个量级，但用纳秒时间戳当 `Number` 就有可能碰到。
+3. 归一化乘法可能溢出：`(score − min) × 99` 是 int64 乘法，有效值的极差超过约 9.3e16 时会溢出，产生负数或超过 100 的分数。**框架在汇总分数前会检查每个插件的分数是否落在 `[0, 100]`，越界则返回错误，这个 Pod 本轮调度失败。**
+
+   检查在 `RunScorePlugins`（`pkg/scheduler/framework/runtime/framework.go`）里，位于各插件 `NormalizeScore` 之后、乘权重之前，错误信息是 `plugin %q returns an invalid score ...`。秒级时间戳和常见的业务数字远到不了这个量级，但用纳秒时间戳当 `Number` 就有可能碰到。
 4. 它只是偏好：KEP 强调这个插件是 advisory 的，它和其他打分插件按权重相加，不能保证 Pod 一定落在分数最高的节点上，也不会在 annotation 变化后迁移已运行的 Pod。需要硬约束时应使用 NodeAffinity。
 
 ## 六、发散：和 NodeAffinity 加权偏好的对比

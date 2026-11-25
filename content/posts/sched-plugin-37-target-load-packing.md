@@ -359,7 +359,10 @@ func (r FilteringResourceEventHandler) OnUpdate(oldObj, newObj interface{}) {
 }
 ```
 
-Pod 被绑定就是 `NodeName` 从空变成非空，所以实际走的是 `OnAdd → updateCache`。`PodAssignEventHandler.OnUpdate` 里「`NodeName` 变化才更新」的分支几乎不会触发，因为 `NodeName` 一旦设置就不能再修改。
+Pod 被绑定就是 `NodeName` 从空变成非空，所以实际走的是 `OnAdd → updateCache`。`PodAssignEventHandler.OnUpdate` 里「`NodeName` 变化才更新」的分支几乎不会触发，因为 `NodeName` 一旦设置就不能再修改，apiserver 在两处挡住了它：
+
+1. 普通的 Pod 更新走 `ValidatePodUpdate`（`pkg/apis/core/validation/validation.go`），spec 里只放行镜像、`activeDeadlineSeconds`、tolerations 等少数字段，`nodeName` 不在其中；
+2. binding 子资源在 `pkg/registry/core/pod/storage/storage.go` 里发现 `pod.Spec.NodeName != ""` 就返回 `already assigned to node` 错误，不允许重新绑定。
 
 ```go {linenos=inline}
 // pkg/trimaran/handler.go
@@ -401,7 +404,12 @@ func (p *PodAssignEventHandler) cleanupCache() {
 
 `OnDelete` 里直接写了 `pod := obj.(*v1.Pod)`。而 `AddToHandle` 的 `FilterFunc` 会放行 `DeletedFinalStateUnknown`（informer 断线期间漏掉删除事件时产生的墓碑对象），所以墓碑会原样传进 `OnDelete`，类型断言失败会 panic。这条路径很少触发，但确实存在。
 
-这份缓存里**不只有 Trimaran 调度器自己调度的 Pod**，所有已绑定的 Pod 都会进来，包括默认调度器调度的 Pod 和 DaemonSet Pod。这是合理的：无论谁调度的，它们的负载同样还没体现在指标里。
+这份缓存里**不只有 Trimaran 调度器自己调度的 Pod**，所有已绑定的 Pod 都会进来，包括默认调度器调度的 Pod 和 DaemonSet Pod。原因有两层：
+
+1. 调度器共享的 Pod informer 对全集群做 list-watch，只用字段选择器排除 `Succeeded`/`Failed` 的 Pod（`kubernetes@v1.36.4/pkg/scheduler/scheduler.go` 的 `newPodInformer`），不按 `schedulerName` 过滤；
+2. `isAssigned` 也只看 `Spec.NodeName`。
+
+这是合理的：无论谁调度的，它们的负载同样还没体现在指标里。
 
 {{< figure src="/images/posts/sched-plugins/37-lag-window.svg" caption="以 Window.End 为基准：End 之后或 End 前 60 秒内绑定的 Pod 被视为指标里还没有它们，按预测用量补加" >}}
 
@@ -658,7 +666,9 @@ B 从 96 分跌到 35 分，A 以 74 分胜出。如果没有补偿，接下来�
 
 **assumed Pod 在补偿缓存里看不到。** 调度器在 Reserve 阶段把 Pod「假定」到节点上（assume），之后异步执行 PreBind/Bind。补偿缓存依赖 informer 收到「NodeName 已设置」的更新，也就是要等 Bind 写入 API Server、watch 事件回来之后，条目才会出现。
 
-在这段时间里（通常几十到几百毫秒，有卷绑定的 PreBind 时会更长），下一个 Pod 的打分看不到上一个 Pod。`NodeResourcesFit` 没有这个问题，因为它读的 `NodeInfo` 快照包含 assumed Pod。高并发提交一批 Pod 时，TLP 仍会出现小范围扎堆。
+在这段时间里（通常几十到几百毫秒，有卷绑定的 PreBind 时会更长），下一个 Pod 的打分看不到上一个 Pod。`NodeResourcesFit` 没有这个问题，因为它读的 `NodeInfo` 快照包含 assumed Pod。
+
+[开篇](/posts/sched-plugin-00-journey/) 3.6 节讲过，`AssumeAndReserveInCache` 在发起绑定前就调用 `cache.AssumePod` 把 Pod 记到目标节点上，下一个调度周期开始时快照从这份缓存更新。而 TLP 的补偿缓存不读调度器缓存，只认 informer 事件，高并发提交一批 Pod 时仍会出现小范围扎堆。
 
 **Prometheus 的 15 分钟均值和 60 秒补偿不匹配。** 补偿逻辑假设一个 Pod 在绑定 60 秒后就「完整地」体现在指标里。这个假设对 metrics-server 的 `Latest` 值大体成立。
 

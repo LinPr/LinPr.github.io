@@ -214,7 +214,9 @@ func fitsPorts(wantPorts []v1.ContainerPort, portsInUse fwk.HostPortInfo) bool {
 }
 ```
 
-和 `NodeAffinity` 不同，读不到 PreFilter 状态时这里不兜底，直接返回 `Error`（第 6–9 行）。原因是 PreFilter 已经对「没有端口」的 Pod 返回了 `Skip`，Filter 被调用就意味着 PreFilter 一定写过状态。
+和 `NodeAffinity` 不同，读不到 PreFilter 状态时这里不兜底，直接返回 `Error`（第 6–9 行）。
+
+原因是 PreFilter 已经对「没有端口」的 Pod 返回了 `Skip`，而[上一篇](/posts/sched-plugin-06-node-affinity/) 3.2 节讲过，返回 `Skip` 的插件会被框架记进 CycleState 的 `skipFilterPlugins`，这个周期里它的 Filter 不会被调用。所以 Filter 被调用就意味着 PreFilter 一定写过状态。
 
 **失败的状态码是 `Unschedulable`，而不是 `UnschedulableAndUnresolvable`**（第 11–14 行）；原因串是 `node(s) didn't have free ports for the requested pod ports`。
 
@@ -433,7 +435,7 @@ API 校验按字面拼字符串去重（第 2–4 行），`TCP//80`（hostIP �
 
 调度器的三元组模型是对这种 DNAT 语义的抽象：`0.0.0.0` 的规则匹配所有目的地址，所以和任何具体 IP 冲突。如果使用的 CNI 不支持 portmap，`hostPort` 会静默失效，而调度器依然认为端口被占用。
 
-端口表是集合，不是计数。`HostPortInfo.Remove` 直接从集合里删掉三元组。正常调度下同一个三元组不可能在一个节点上出现两次，所以没有问题。
+端口表是集合，不是计数。`HostPortInfo.Remove` 直接从集合里删掉三元组。正常调度下同一个三元组不可能在一个节点上出现两次：第二个想占同一三元组的 Pod 在 Filter 里就被 `CheckConflict` 挡下，进不了这个节点的 `NodeInfo`。所以没有问题。
 
 kubelet 会再查一遍。kubelet 准入的 `generalFilter` 复用了插件导出的 `Fits`（第 2–4 行）：
 
@@ -446,7 +448,9 @@ kubelet 会再查一遍。kubelet 准入的 `generalFilter` 复用了插件导�
 
 直接写 `nodeName` 绕过调度器的 Pod 如果端口冲突，会被 kubelet 以 reason `NodePorts` 拒绝。
 
-批量调度的签名只含端口号。`SignPod` 用的 `HostPortsSigner` 只收集 `hostPort` 的数值，不含 `hostIP` 和协议。两个 Pod 只在 `hostIP` 上不同，会得到相同的签名片段。这不影响正确性：批量调度复用的只是上一个 Pod 的节点排名作为提示，被提示的节点仍然要重新跑一遍 Filter。
+批量调度的签名只含端口号。`SignPod` 用的 `HostPortsSigner` 只收集 `hostPort` 的数值，不含 `hostIP` 和协议。两个 Pod 只在 `hostIP` 上不同，会得到相同的签名片段。
+
+这不影响正确性：批量调度复用的只是上一个 Pod 的节点排名作为提示，被提示的节点仍然要重新跑一遍 Filter。`findNodesThatFitPod`（`pkg/scheduler/algorithm.go`）把 `GetNodeHint` 返回的节点交给 `evaluateNominatedNode`，和提名节点走同一条路径，在这个节点上调用 `findNodesThatPassFilters`。
 
 这些情况大多不是插件的 bug，而是 `hostPort` 这个机制本身的代价。下一节换个角度：这个代价值不值得付。
 

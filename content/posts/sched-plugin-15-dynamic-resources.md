@@ -125,6 +125,14 @@ spec:
 
 这一点对理解后面的抢占至关重要：**设备的占用记录在 claim 上，而不是 Pod 上**。删除一个 Pod 并不会立即让它的设备变成空闲，要等 controller 把 claim 的 allocation 清掉。
 
+controller 监听 Pod 和 claim 的变化，在 `syncClaim` 里逐条检查 `reservedFor`，只有三种情况才移除条目：
+
+1. Pod 已经不存在（先查 informer，查不到再直接问 apiserver 确认）；
+2. 同名 Pod 的 UID 变了，说明被新实例替换；
+3. `isPodDone` 为真：phase 是 `Succeeded`/`Failed`，或者带删除时间戳且从未被调度。
+
+正在优雅退出、已经在节点上的 Pod 不满足这三条，它的条目和设备会一直保留到 Pod 对象真正消失。
+
 对象模型清楚了，接着看插件把这些对象读进来之后，状态放在哪里。
 
 ## 二、插件结构与参数
@@ -243,7 +251,9 @@ func (pl *DynamicResources) PreEnqueue(ctx context.Context, pod *v1.Pod) (status
 2. 从 assume cache 取 claim；
 3. 检查 claim 没在删除中，并且模板生成的 claim 的 owner 确实是这个 Pod。
 
-用模板创建 Pod 时，Pod 先出现，controller 才去建 claim 并回填 status。这中间 Pod 被 PreEnqueue 挡在 activeQ 之外，留在不可调度池里。等 controller 回填了 `resourceClaimStatuses`，`UpdatePodGeneratedResourceClaim` 事件触发 `isSchedulableAfterTargetPodUpdate`，后者再跑一遍 `foreachPodResourceClaim`，全部能找到才返回 `Queue`。
+用模板创建 Pod 时，Pod 先出现，controller 才去建 claim 并回填 status。这中间 Pod 被 PreEnqueue 挡在 activeQ 之外，留在不可调度池里。等 controller 回填了 `resourceClaimStatuses`，调度器的 Pod 更新回调用 `PodSchedulingPropertiesChange`（`pkg/scheduler/framework/events.go`）比较新旧 Pod，发现这个字段变了就产生 `UpdatePodGeneratedResourceClaim` 事件。
+
+这个事件触发 `isSchedulableAfterTargetPodUpdate`，后者再跑一遍 `foreachPodResourceClaim`，全部能找到才返回 `Queue`。
 
 还有一个容易漏掉的出口：`resourceclaim.Name` 遇到模板生成的 claim、而 status 里有条目但 `ResourceClaimName` 为 nil 时返回 `nil`，`foreachPodResourceClaim` 会直接跳过。这是 controller 判断「不需要生成 claim」时的约定，此时 Pod 不需要这个 claim 也能调度。
 
@@ -658,7 +668,7 @@ PreBind 时才真正在 API Server 里 `Create` 这个 claim（名字由 `Genera
 
 ## 八、Reserve、PreBind、Unreserve：一次分配的落点
 
-这三个扩展点合起来，解决的是一个经典并发问题：调度周期是串行的，绑定周期是并行的，两者之间有时间差。Pod A 在 Reserve 选定了设备，在它的 PreBind 把结果写回 API 之前，Pod B 的调度周期已经开始了。B 必须知道那几块设备「已经名花有主」。
+这三个扩展点合起来，解决的是一个经典并发问题：调度周期是串行的，绑定周期是并行的，两者之间有时间差。开篇 3.1 节讲过来源：`ScheduleOne` 在单个 goroutine 里逐个处理 Pod，Reserve 也在其中同步执行，只有绑定周期（PreBind 在其中）由 `go sched.runBindingCycle(...)` 另起 goroutine。Pod A 在 Reserve 选定了设备，在它的 PreBind 把结果写回 API 之前，Pod B 的调度周期已经开始了。B 必须知道那几块设备「已经名花有主」。
 
 {{< figure src="/images/posts/sched-plugins/15-dra-claim-lifecycle.svg" caption="一次分配在 CycleState、in-flight 表、assume cache、API Server 四处的读写时机（点击查看大图）" link="/images/posts/sched-plugins/15-dra-claim-lifecycle.svg" >}}
 
@@ -785,7 +795,14 @@ finalizer 和 status 分两次请求：
 1. 通常是本 Pod 的引用；
 2. `DRAWorkloadResourceClaims`（1.37 Beta，默认关）开启时，属于 PodGroup 级 claim 的会写 PodGroup 的引用，这样同组 Pod 共享同一份 `reservedFor` 条目。
 
-写成功后，`bindClaim` 的 defer 调用 `AssumeClaimAfterAPICall(claim)`，把 API Server 返回的新对象放进 assume cache。assume cache 的规则是只接受版本不低于当前的对象，后续 informer 事件到达时自然覆盖。这样下一个 Pod 的 PreFilter 立刻就能看到这个 claim 已分配，不用等 informer。
+写成功后，`bindClaim` 的 defer 调用 `AssumeClaimAfterAPICall(claim)`，把 API Server 返回的新对象放进 assume cache。这样下一个 Pod 的 PreFilter 立刻就能看到这个 claim 已分配，不用等 informer。
+
+这份 assume cache（`pkg/scheduler/util/assumecache/assume_cache.go`）按版本号决定新旧，分两侧：
+
+1. `Assume` 只拒绝版本号比缓存里更低的对象；
+2. informer 的 add/update 回调只在版本号严格更大时才替换缓存。
+
+API 返回的对象与随后 informer 送来的是同一版本，会被跳过；再往后的真实更新版本号更大，才会覆盖它。
 
 in-flight 条目的移除被推迟到整个 PreBind 成功之后：
 
@@ -1025,7 +1042,7 @@ ResourceClaim 事件是最频繁的，所以有两层过滤。
 | status 完全没变（比如只加了 finalizer） | `QueueSkip` |
 | status 有变化 | `Queue` |
 
-「删除的 claim 没有 allocation 就跳过」依赖一个前提：调度器不会漏掉「allocation 被清空」这个更新事件。普通 informer 可能把「加 allocation」和「清 allocation」合并成一次看起来无关的更新，但这里的事件来自 assume cache，而 allocation 只由调度器自己写入，它一定先看到「加」，也就一定能看到「清」。
+「删除的 claim 没有 allocation 就跳过」依赖一个前提：调度器不会漏掉「allocation 被清空」这个更新事件。普通 informer 可能把「加 allocation」和「清 allocation」合并成一次看起来无关的更新，但这里的事件来自 assume cache：`pkg/scheduler/eventhandlers.go` 把 ResourceClaim 的事件处理器注册在 `resourceClaimCache`（即 claim 的 assume cache）上，而不是 informer 上；assume cache 在 `Assume` 时也会派发一次更新事件。allocation 只由调度器自己写入，调度器在 PreBind 写回后立刻 assume，所以它一定先看到「加」，也就一定能看到「清」。
 
 主流程和事件都讲完了。剩下的是几处容易误判的地方。
 

@@ -31,7 +31,7 @@ description: "系列开篇。沿着 ScheduleOne 的源码走一遍：Pod 怎么�
 2. `spec.schedulingGates` 只能在创建时加（③ 的 webhook），创建后 ④ 的校验只允许删除；gate 没删干净时，㉑ 的 binding 子资源会直接拒绝绑定（第 01 篇）。
 3. 调度器把决定写回集群只有一个出口：⑲ 调用 binding 子资源，由 apiserver 写入 `spec.nodeName`。除此之外它只会写 `PodScheduled` 条件、`status.nominatedNodeName`，以及在抢占时删除 victims。
 4. `status.nominatedNodeName` 有两个来源：抢占成功后由失败处理写入；开启 `NominatedNodeNameForExpectation` 时，绑定周期在 PreBind 或 WaitOnPermit 之前也会写入，告诉 Cluster Autoscaler 这个 Pod 即将落在哪个节点。绑定成功时 ㉑ 把它清空（第 18 篇）。
-5. ㉒ kubelet 会用同一套判断（资源、nodeAffinity、hostPort、NoExecute 污点）再检查一次。这里失败的 Pod 直接变成 `Failed`，调度器不会再管它。
+5. ㉒ kubelet 会用同一套判断（资源、nodeAffinity、hostPort、NoExecute 污点）再检查一次。能做到「同一套」，是因为 kubelet 的准入函数 `generalFilter`（`pkg/kubelet/lifecycle/predicate.go`）直接 import 调度器的插件包，调用 `helper.Fits`、`nodename.Fits`、`nodeports.Fits`，污点和节点亲和也用的是调度器同样依赖的 `component-helpers` 函数（第 03 篇第五节）。这里失败的 Pod 直接变成 `Failed`，调度器不会再管它。
 6. 被判为 unschedulable 的 Pod，要等外部对象变化才会被唤醒：Ⓔ 扩出新节点、Ⓒ 供给好 PV、Ⓑ 删掉 gate，这些事件经 ⑦ 的 QueueingHint 判断后才把它移出 `unschedulableEntities`（第五节）。
 
 {{< figure src="/images/posts/sched-plugins/00-journey.svg" link="/images/posts/sched-plugins/00-journey.svg" caption="一个 Pod 的调度旅程：左侧是扩展点，右侧是本系列在该位置重点讲的插件（点击查看大图）" >}}
@@ -146,7 +146,12 @@ out-of-tree 插件不在这份列表里。scheduler-plugins 编译出的是另�
 
 ### 2.1 三个子队列
 
-Pod 被 informer 发现后，进入调度队列 `PriorityQueue`。它内部有三个地方可以待：
+调度器靠 Pod informer 发现新 Pod，但不是每个 Pod 都会入队。这个 informer 由 `newPodInformer`（`pkg/scheduler/scheduler.go`）创建，字段选择器 `status.phase!=Succeeded,status.phase!=Failed` 让 apiserver 只推送未结束的 Pod。收到新增事件后，`addPod`（`pkg/scheduler/eventhandlers.go`）按两个判断分流：
+
+1. `spec.nodeName` 为空（`assignedPod` 为假），且 `spec.schedulerName` 是本调度器某个 profile 的名字（`responsibleForPod` 为真），放进调度队列；
+2. `spec.nodeName` 已经有值的 Pod 不入队，只记进调度器缓存，用来计算节点上已有的占用。原地扩容被推迟的 Pod 是唯一的例外，第 03 篇会讲。
+
+入队的 Pod 进的是调度队列 `PriorityQueue`。它内部有三个地方可以待：
 
 1. `activeQ`：一个堆，等待被调度的 Pod 在这里排队；
 2. `backoffQ`：调度失败、正在退避的 Pod，退避时间从 1 秒起（`DefaultPodInitialBackoffDuration`），每失败一次翻倍，上限 10 秒；
@@ -450,7 +455,9 @@ Pod 要等下一个周期才能真正放上去，那时就会走上面的「提�
 	}
 ```
 
-然后 `AddUnschedulablePodIfNotPresent` 决定 Pod 去哪里。它先检查这个 Pod 在被调度的这段时间里，集群有没有发生过拒绝它的插件所关心的事件（`determineSchedulingHintForInFlightPod`），结果分两种：
+然后 `AddUnschedulablePodIfNotPresent` 决定 Pod 去哪里。它先检查这个 Pod 在被调度的这段时间里，集群有没有发生过拒绝它的插件所关心的事件（`determineSchedulingHintForInFlightPod`）。
+
+队列能回答「这段时间里发生过什么」，是因为它从 Pod 出队那一刻就开始记录：`activeQ` 出队时把 Pod 记进 `inFlightPods`，此后只要还有 Pod 在调度中，收到的集群事件都追加到 `inFlightEvents` 列表，直到这个 Pod 调用 `Done`（失败时由 `AddUnschedulablePodIfNotPresent` 自己调用，成功时在绑定周期里调用，即第四节代码第 11 行）。`clusterEventsForPod` 取出的就是这段时间内的事件，判断结果分两种：
 
 1. 发生过：说明它失败所依据的状态可能已经过时，直接进 `backoffQ`；
 2. 没发生过：进 `unschedulableEntities` 等待。
@@ -468,7 +475,7 @@ Pod 要等下一个周期才能真正放上去，那时就会走上面的「提�
 读最新代码时，有几处和旧资料不同，后续文章会碰到：
 
 1. **PodGroup 调度周期**：除了单个 Pod，队列里还可能出来一个 PodGroup，走 `scheduleOnePodGroup`。在这种周期里，单个 Pod 的 PostFilter 不运行，改为整组结束后运行 PodGroup 级别的 PostFilter（`schedulingAlgorithm` 中 `state.IsPodGroupSchedulingCycle()` 的分支）。
-2. **Opportunistic batching**：`OpportunisticBatching`（1.35 Beta，默认开启）让签名相同、连续出队的 Pod 复用上一个 Pod 的打分结果，`findNodesThatFitPod` 里的 `nodeHint` 就来自它，和提名节点走同一条快速路径。它要求 profile 里所有相关插件都能给 Pod 签名，任何一个插件拒签，这个 Pod 就不参与批量。默认配置下 `PodTopologySpread` 的系统默认约束总是非空，它会拒签所有 Pod，所以这个 gate 开着，默认 profile 里实际上却用不上，第 13 篇会讲到这一点。
+2. **Opportunistic batching**：`OpportunisticBatching`（1.35 Beta，默认开启）让签名相同、连续出队的 Pod 复用上一个 Pod 的打分结果，`findNodesThatFitPod` 里的 `nodeHint` 就来自它，和提名节点走同一条快速路径。它要求 profile 里所有相关插件都能给 Pod 签名，任何一个插件拒签，这个 Pod 就不参与批量。默认配置下 `PodTopologySpread` 的系统默认约束（`systemDefaultConstraints`，按 hostname 和 zone 打散的两条 `ScheduleAnyway` 约束）总是非空，而它的 `SignPod` 只要 Pod 自带约束或默认约束非空就拒签，因此所有 Pod 都会被它拒签。于是这个 gate 虽然开着，默认 profile 里实际上却用不上，第 13 篇会讲到这一点。
 3. **NominatedNodeName 的新用途**：`bindingCycle` 里，如果 PreBind 有实际工作要做或 Pod 要在 Permit 等待，调度器会提前把目标节点写进 `nominatedNodeName`，告诉 cluster autoscaler 之类的外部组件「这个 Pod 马上要绑到这个节点」。它不再只是抢占的副产品。
 
 ## 七、阅读路线

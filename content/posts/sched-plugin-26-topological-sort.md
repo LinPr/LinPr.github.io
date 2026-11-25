@@ -411,7 +411,9 @@ func (ts *TopologicalSort) findAppGroupTopologicalSort(ctx context.Context, agNa
 
 ### 3.3 没有其它扩展点
 
-TopologicalSort 只实现 `QueueSortPlugin`，没有 `EventsToRegister`，也没有 CycleState。和 QOSSort 一样，它只改变 Pod 在 activeQ 里的位置；通过 v1.36.4 backoffQ 的 `lessBackoffCompletedWithPriority`，它也决定退避到期时间相同的 Pod 之间的先后。
+TopologicalSort 只实现 `QueueSortPlugin`，没有 `EventsToRegister`，也没有 CycleState。和 QOSSort 一样，它只改变 Pod 在 activeQ 里的位置。
+
+它同样会影响 backoffQ。[上一篇](/posts/sched-plugin-25-qos-sort/)讲过，v1.36.4 在 `SchedulerPopFromBackoffQ`（1.33 起 Beta，默认开启）打开时，backoffQ 用 `lessBackoffCompletedWithPriority` 排序：先比退避到期时间，到期时间落在同一个对齐窗口时再调用 activeQ 的 Less。所以退避到期时间相同的 Pod 之间谁先谁后，也由 TopologicalSort 决定。
 
 ## 四、这个比较函数的性质
 

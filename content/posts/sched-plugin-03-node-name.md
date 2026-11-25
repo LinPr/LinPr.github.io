@@ -356,7 +356,22 @@ func generalFilter(logger klog.Logger, pod *v1.Pod, nodeInfo *schedulerframework
 }
 ```
 
-kubelet 只接收 `spec.nodeName` 等于自己的 Pod，所以 `nodename.Fits`（第 8–10 行）在这里几乎总是为真，它主要是一个防御性检查。清单里缺的几项更能说明 kubelet 的职责范围：没有 `NodeUnschedulable`，没有 `NoSchedule` 污点，没有 Pod 间亲和，没有拓扑分布。所以：
+先看第 8–10 行的 `nodename.Fits`。它在 kubelet 里几乎不会失败，原因是 kubelet 拿到的 Pod 在进来之前就已经按节点名筛过了。kubelet 的 Pod 有两个来源：
+
+1. 从 apiserver list-watch 来的 Pod。kubelet 建 ListWatch 时带了字段选择器 `spec.nodeName=<本节点名>`，过滤在 apiserver 端完成，别的节点的 Pod 根本不会发给它：
+
+   ```go {linenos=inline}
+   // pkg/kubelet/config/apiserver.go
+   func NewSourceApiserver(logger klog.Logger, c clientset.Interface, nodeName types.NodeName, nodeHasSynced func() bool, updates chan<- sourceUpdate) {
+   	lw := cache.NewListWatchFromClient(c.CoreV1().RESTClient(), "pods", metav1.NamespaceAll, fields.OneTermEqualSelector("spec.nodeName", string(nodeName)))
+   	// ...
+   ```
+
+2. 本地清单目录或 URL 里的静态 Pod。kubelet 读入时自己把 `pod.Spec.NodeName` 设成本节点名（`pkg/kubelet/config/common.go` 的 `applyDefaults`）。
+
+而 `nodename.Fits` 的判断是「`spec.nodeName` 为空，或者等于这个节点名」。两个来源的 Pod 都已经满足这个条件，所以这里的检查只是防御性的，正常情况下不会拦下任何 Pod。
+
+清单里缺的几项更能说明 kubelet 的职责范围：没有 `NodeUnschedulable`，没有 `NoSchedule` 污点，没有 Pod 间亲和，没有拓扑分布。所以：
 
 1. 给 cordon 掉的节点手写 `nodeName`，Pod 照样能跑起来；
 2. 节点上有 `NoSchedule` 污点，手写 `nodeName` 的 Pod 也能跑，只有 `NoExecute` 污点会被拒绝（第 05 篇细讲两者的分工）。

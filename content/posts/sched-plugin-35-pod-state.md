@@ -77,6 +77,11 @@ func (ps *PodState) NormalizeScore(ctx context.Context, state fwk.CycleState, po
 
 终止中的 Pod 来自 `nodeInfo.GetPods()`（第 10–14 行），也就是本轮调度周期的 snapshot。一个 Pod 被删除后，API Server 设置 `deletionTimestamp`，kubelet 开始优雅终止，直到容器全部退出、kubelet 确认删除之前，这个 Pod 都还在 NodeInfo 里，它的 request 也仍然计入节点的已请求量。
 
+它能在 NodeInfo 里留这么久，是因为调度器缓存只在 Pod 对象真正消失时才删它，分两点：
+
+1. 设置 `deletionTimestamp` 对调度器的 Pod informer 来说只是一次 Update，`updateAssignedPodInCache` 用新对象替换旧对象；只有收到 Delete 事件，`deletePod` 才会调用 `deleteAssignedPodFromCache` 把它移出缓存（`pkg/scheduler/eventhandlers.go`）；
+2. Pod 对象要等 kubelet 发出最终删除才会从 API Server 消失：kubelet 的 status manager 在 `canBeDeleted` 确认 Pod 带 `deletionTimestamp`、phase 已是终态、本地终止流程已完成之后，才以 `GracePeriodSeconds: 0` 调用 Delete（`pkg/kubelet/status/status_manager.go`）。
+
 被提名的 Pod 来自 `handle.NominatedPodsForNode`（第 9 行），调度队列内部的 nominator：
 
 ```go {linenos=inline}
@@ -96,7 +101,7 @@ func (p *PriorityQueue) NominatedPodsForNode(nodeName string) []fwk.PodInfo {
 }
 ```
 
-被提名的 Pod 是那些已经通过抢占在某个节点上「订了位置」、但还没有绑定的 Pod，它们带着 `status.nominatedNodeName`，不在 NodeInfo 里。
+被提名的 Pod 是那些已经通过抢占在某个节点上「订了位置」、但还没有绑定的 Pod，它们带着 `status.nominatedNodeName`，不在 NodeInfo 里。[DefaultPreemption](/posts/sched-plugin-18-default-preemption/) 第三节讲过提名是怎么记下的：抢占成功后，PostFilter 返回的提名节点在 `handleSchedulingFailure` 里一边通过 `AddNominatedPod` 写进调度队列的 nominator，一边写回 API 里 Pod 的 `status.nominatedNodeName`。
 
 注意这里每个元素都做了 `DeepCopy`（第 10 行），而插件只需要长度，每个节点每次打分都要为被提名的 Pod 各拷贝一份 Pod 对象。被提名的 Pod 通常不多，开销可以接受。
 
@@ -128,7 +133,9 @@ README 的解释是：终止中的 Pod 最终会从节点上物理移除。结�
 
 ### 4.2 被提名的 Pod 是「坏消息」
 
-被提名的 Pod 是抢占者：DefaultPreemption 为它驱逐了某个节点上的低优先级 Pod，并把它提名到这个节点，等受害者退出后它会在下一轮调度中落位。如果此时另一个 Pod 抢先占用了刚腾出的资源，抢占者可能又放不下，前一轮的驱逐就白做了。
+被提名的 Pod 是抢占者：DefaultPreemption 为它驱逐了某个节点上的低优先级 Pod，并把它提名到这个节点，等受害者退出后它会在下一轮调度中落位：受害者被删除会产生 Pod 删除事件，抢占者失败时记下的 Filter 插件（如 `NodeResourcesFit`）关心这类事件，队列据此把它移出 unschedulable 队列重新调度，这条唤醒路径在[开篇](/posts/sched-plugin-00-journey/)第五节讲过。
+
+如果此时另一个 Pod 抢先占用了刚腾出的资源，抢占者可能又放不下，前一轮的驱逐就白做了。
 
 框架本身对此有一层硬保护：Filter 阶段的 `RunFilterPluginsWithNominatedPods` 会把优先级不低于当前 Pod、且 UID 不是自己的被提名 Pod 临时加进 NodeInfo 再跑一遍 Filter（第 3 行是这两个条件）：
 

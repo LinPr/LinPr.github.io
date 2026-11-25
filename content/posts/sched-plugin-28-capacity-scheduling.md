@@ -260,7 +260,9 @@ func newPodInformer(cs clientset.Interface, resyncPeriod time.Duration) cache.Sh
 }
 ```
 
-Pod 进入 `Succeeded` 或 `Failed` 时就不再匹配这个选择器，informer 看到的是一次删除。插件复用的正是这个 informer，所以「跑完的 Job Pod 释放配额」走的是 `deletePod`。
+Pod 进入 `Succeeded` 或 `Failed` 时就不再匹配这个选择器。这次状态更新被转换成删除，是 apiserver 做的：watch cache 给每个 watcher 推送事件前，`cacheWatcher.convertToWatchEvent`（`k8s.io/apiserver@v0.36.4/pkg/storage/cacher/cache_watcher.go`）分别检查对象的旧版本和新版本是否匹配该 watcher 的选择器，旧版本匹配、新版本不匹配时发出 `DELETED` 事件。
+
+informer 因此看到的是一次删除。插件复用的正是这个 informer，「跑完的 Job Pod 释放配额」走的就是 `deletePod`。
 
 ### 2.2 CycleState 里的快照
 
@@ -1023,7 +1025,7 @@ var defaultQueueingHintFn = func(_ klog.Logger, _ *v1.Pod, _, _ interface{}) (fw
 
 也就是只要事件发生就重新入队，不做任何过滤。
 
-**Pod/Delete。** 释放配额的事件。它匹配框架内部的 `AssignedPodDelete`（`fwk.Pod` 会同时匹配 `assignedPod` 和 `unschedulablePod` 两种内部资源）。由于调度器的 Pod informer 用字段选择器排除了终态 Pod，Pod 跑完进入 `Succeeded`/`Failed` 也表现为一次删除，所以 Job 完成同样会唤醒等待配额的 Pod。
+**Pod/Delete。** 释放配额的事件。它匹配框架内部的 `AssignedPodDelete`（`fwk.Pod` 会同时匹配 `assignedPod` 和 `unschedulablePod` 两种内部资源）。由于调度器的 Pod informer 用字段选择器排除了终态 Pod（2.1 节），Pod 跑完进入 `Succeeded`/`Failed` 也表现为一次删除，所以 Job 完成同样会唤醒等待配额的 Pod。
 
 代价是集群里任何 Pod 删除，包括与配额毫无关系的 Namespace，都会把所有被 `CapacityScheduling` 拒绝的 Pod 重新入队。在 Pod 变动频繁的大集群里，这些 Pod 会被反复拿出来跑一遍 PreFilter（每次都要复制全部用量记录）再被拒绝。
 

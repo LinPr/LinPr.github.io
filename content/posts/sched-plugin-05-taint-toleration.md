@@ -203,7 +203,9 @@ Filter 本身分两步：
 
 有三处细节会直接影响排查：
 
-**失败码是 `UnschedulableAndUnresolvable`。** 驱逐节点上的 Pod 不会让污点消失，所以被污点拒绝的节点不会成为抢占候选。如果一个高优先级 Pod 在整个集群只被污点挡住，抢占找不到任何候选节点，调度失败事件里会带上 `Preemption is not helpful for scheduling`。
+**失败码是 `UnschedulableAndUnresolvable`。** 驱逐节点上的 Pod 不会让污点消失，所以被污点拒绝的节点不会成为抢占候选：抢占只从状态为 `Unschedulable` 的节点里挑候选（`preemption.go` 的 `NodesForStatusCode`，开篇 3.3 节），这类节点一开始就被排除。
+
+如果一个高优先级 Pod 在整个集群只被污点挡住，抢占找不到任何候选节点，调度失败事件里会带上 `Preemption is not helpful for scheduling`。
 
 **`NoSchedule` 和 `NoExecute` 在调度时没有区别。** 两者都会淘汰节点，且失败码相同。区别只在 Pod 已经运行之后。
 
@@ -491,7 +493,12 @@ func getNoExecuteTaints(taints []v1.Taint) []v1.Taint {
 }
 ```
 
-对节点上的每个 Pod，它判断这组 `NoExecute` 污点是否全部被容忍，以及容忍里的 `tolerationSeconds`：
+它靠 Node 和 Pod 两个 informer 驱动，入口有两个：
+
+1. 节点的 `NoExecute` 污点有变化时（`NodeUpdated` 比较新旧节点的 `getNoExecuteTaints` 结果，相同就忽略），`handleNodeUpdate` 用 `getPodsAssignedToNode` 从按 `spec.nodeName` 建的索引里取出这个节点上的所有 Pod，逐个交给 `processPodOnNode`；
+2. Pod 本身更新时（比如刚被绑定到一个有污点的节点），`handlePodUpdate` 只处理这一个 Pod。
+
+`processPodOnNode` 判断这组 `NoExecute` 污点是否全部被容忍，以及容忍里的 `tolerationSeconds`：
 
 ```go {linenos=inline}
 // pkg/controller/tainteviction/taint_eviction.go
