@@ -13,7 +13,7 @@ description: "系列开篇。沿着 ScheduleOne 的源码走一遍：Pod 怎么�
 
 这个系列按这条路线，把插件一个一个读下来。前 24 篇是随 Kubernetes 发布的 in-tree 插件，后 16 篇是 [scheduler-plugins](https://github.com/kubernetes-sigs/scheduler-plugins) 里的 out-of-tree 插件。每篇只讲一个插件，但都会落到同一套框架上。所以开篇先把这套框架走一遍：插件在什么时候被调用，被调用时能看到什么，返回的结果会被谁怎么处理。
 
-本系列的 in-tree 代码基于 Kubernetes master 提交 `aabdf5a2`（2026-10 下旬，1.38 开发周期），out-of-tree 代码基于 scheduler-plugins 提交 `cfeb3aa`（依赖 Kubernetes v1.36.4）。框架层面的设计讨论可以参考之前的[《从 OpenResty phase engine 到 scheduler framework》](/posts/scheduler-framework/)，这里只讲后续文章需要用到的部分。
+本系列的 in-tree 代码基于 Kubernetes master 提交 `aabdf5a2`（2026-10 下旬，1.38 开发周期），out-of-tree 代码基于 scheduler-plugins 提交 `cfeb3aa`（依赖 Kubernetes v1.36.4）。框架层面的设计讨论可以参考之前的[《从 OpenResty phase engine 到 scheduler framework》](/posts/scheduler-framework/)，这里只讲后续文章需要用到的部分。各扩展点的方法签名、返回的结构体和通用类型，汇总在文末的附录（第八节），读后续文章时可以随时回来查。
 
 调度器并不是孤立工作的。Pod 进入调度器之前，kube-apiserver 的准入链已经改写过它；调度器做完决定之后，还要经过 apiserver 的 binding 子资源和 kubelet 的准入才能真正运行；中间还有好几个控制器在改它依赖的对象。下面这张全景图把这条完整链路画了出来，后面 40 篇讲的插件都在图中间的 kube-scheduler 里。
 
@@ -542,6 +542,143 @@ Pod `api` 的 `spec.priority` 是 0，requests 2 CPU。node-1、node-2 的 `allo
 3. 失败时返回哪种 code；
 4. 被它拒绝的 Pod 靠什么事件回来。
 
-四个问题都答得上来，这个插件就算读懂了。
+四个问题都答得上来，这个插件就算读懂了。读的过程中遇到不认识的返回类型，可以回到下面的附录查。
 
 旅程从 Pod 进入队列之前开始：[下一篇](/posts/sched-plugin-01-scheduling-gates/)讲 `SchedulingGates`，一个让 Pod 连排队资格都没有的插件。
+
+## 八、附录：扩展点的签名与结构体速查
+
+后面 40 篇反复出现 `PreFilterResult`、`NominatingInfo`、`QueueingHint`、`PlacementProgress` 这类类型。它们分两种：
+
+1. 某个扩展点专用的返回结构体，只在那个阶段产生、被框架在那个阶段消费；
+2. 所有扩展点共用的通用类型，比如 `Status`、`CycleState`、`NodeInfo`。
+
+这一节把两类都列出来，读插件时遇到不认识的类型可以回来查。签名都取自 `staging/src/k8s.io/kube-scheduler/framework/interface.go`（`aabdf5a2`）。
+
+### 8.1 每个扩展点返回什么
+
+| 扩展点 | 方法与返回值 | 专用结果结构体 | 配套接口 |
+| --- | --- | --- | --- |
+| PreEnqueue | `PreEnqueue(ctx, pod) *Status` | 无 | 无 |
+| QueueSort | `Less(QueuedEntityInfo, QueuedEntityInfo) bool` | 无 | 无 |
+| PreFilter | `PreFilter(ctx, state, pod, nodes) (*PreFilterResult, *Status)` | `PreFilterResult` | `PreFilterExtensions`：`AddPod`、`RemovePod` |
+| Filter | `Filter(ctx, state, pod, nodeInfo) *Status` | 无 | 无 |
+| PostFilter | `PostFilter(ctx, state, pod, filteredNodeStatusMap) (*PostFilterResult, *Status)` | `PostFilterResult` | 无 |
+| PreScore | `PreScore(ctx, state, pod, nodes) *Status` | 无 | 无 |
+| Score | `Score(ctx, state, pod, nodeInfo) (int64, *Status)` | 无，分数直接是 `int64` | `ScoreExtensions`：`NormalizeScore` |
+| Reserve | `Reserve(...) *Status`，`Unreserve(...)` 无返回值 | 无 | 无 |
+| Permit | `Permit(ctx, state, pod, nodeName) (*Status, time.Duration)` | 无，等待时长直接是 `time.Duration` | 无 |
+| PreBind | `PreBindPreFlight(...) (*PreBindPreFlightResult, *Status)`，`PreBind(...) *Status` | `PreBindPreFlightResult` | 无 |
+| Bind | `Bind(ctx, state, pod, nodeName) *Status` | 无 | 无 |
+| PostBind | `PostBind(...)` 无返回值 | 无 | 无 |
+| PlacementGenerate | `GeneratePlacements(ctx, state, podGroup, parentPlacement) (*GeneratePlacementsResult, *Status)` | `GeneratePlacementsResult` | 无 |
+| PlacementFeasible | `PlacementFeasible(ctx, placementCycleState, podGroupInfo, placementProgress) *Status` | 无，输入是 `PlacementProgress` | 无 |
+| PlacementScore | `ScorePlacement(ctx, state, podGroup, placement) (int64, *Status)` | 无，输入是 `PodGroupAssignments` | `PlacementScoreExtensions`：`NormalizePlacementScore` |
+| PodGroupPostFilter | `PodGroupPostFilter(ctx, state, pgInfo, pgSchedulingFunc) (*PodGroupPostFilterResult, *Status)` | `PodGroupPostFilterResult` | 无 |
+
+有两个接口不对应某个扩展点，任何插件都可以实现：
+
+1. `EnqueueExtensions`：`EventsToRegister(ctx) ([]ClusterEventWithHint, error)`，声明「哪些集群事件可能让被我拒绝的 Pod 变得可调度」，每个事件可以带一个 QueueingHint 函数。它和 PreEnqueue 没有绑定关系，Filter 插件同样要实现它；
+2. `SignPlugin`：`SignPod(ctx, pod) ([]SignFragment, *Status)`，为批量调度给 Pod 生成签名，签名相同的 Pod 可以复用上一个 Pod 的过滤结果。
+
+### 8.2 专用结果结构体
+
+表里有专用结构体的扩展点只有六个，定义如下（删去了注释）：
+
+```go {linenos=inline}
+// staging/src/k8s.io/kube-scheduler/framework/interface.go
+type PreFilterResult struct {
+	NodeNames sets.Set[string]
+}
+
+type PostFilterResult struct {
+	*NominatingInfo
+}
+
+type NominatingInfo struct {
+	NominatedNodeName string
+	NominatingMode    NominatingMode
+}
+
+type PreBindPreFlightResult struct {
+	AllowParallel bool
+}
+
+type PodGroupPostFilterResult struct {
+	NominatingInfos map[types.NamespacedName]*NominatingInfo
+}
+
+type GeneratePlacementsResult struct {
+	Placements []*Placement
+}
+```
+
+各自的含义：
+
+1. `PreFilterResult`（第 2–4 行）：候选节点白名单。`NodeNames` 为 `nil` 表示所有节点都可以，非 `nil` 时只有名单里的节点会进入 Filter。多个插件的结果由 `Merge` 取交集；被排除的节点直接记为 `UnschedulableAndUnresolvable`，也不会成为抢占候选（第 03 篇 3.1、3.2 节）。
+2. `PostFilterResult`（第 6–8 行）：只包了一个 `NominatingInfo`。抢占成功时，`NominatedNodeName` 是选中的节点，失败处理会把它写进 Pod 的 `status.nominatedNodeName`（第 18 篇）。
+3. `NominatingInfo`（第 10–13 行）：`NominatingMode` 只有两个值，`ModeNoop` 表示不改动 Pod 现有的提名，`ModeOverride` 表示用 `NominatedNodeName` 覆盖。
+4. `PreBindPreFlightResult`（第 15–17 行）：`AllowParallel` 为 `true` 的相邻 PreBind 插件会被分成一组并行执行。PreBindPreFlight 本身只能返回 `Success`、`Skip` 或 `Error`，返回 `Skip` 表示这个插件的 PreBind 与本 Pod 无关（第 11、15 篇）。
+5. `PodGroupPostFilterResult`（第 19–21 行）：PodGroup 级别的抢占结果，按 Pod 名记录每个成员被提名的节点，只包含有提名的成员（第 21 篇）。
+6. `GeneratePlacementsResult`（第 23–25 行）：PlacementGenerate 插件把节点划分成的候选 `Placement` 列表，各个 `Placement` 之间可以重叠；框架可能打乱顺序、只评估其中一部分（第 22 篇）。
+
+还有三个结构体不是返回值，而是框架传给 PodGroup 扩展点的输入（同样删去了注释）：
+
+```go {linenos=inline}
+// staging/src/k8s.io/kube-scheduler/framework/types.go
+type Placement struct {
+	Name string
+	Nodes []NodeInfo
+}
+
+type PodGroupAssignments struct {
+	*Placement
+	ProposedAssignments []ProposedAssignment
+}
+
+// staging/src/k8s.io/kube-scheduler/framework/interface.go
+type PlacementProgress struct {
+	Remaining int
+	Scheduled int
+	Unschedulable int
+}
+```
+
+1. `Placement`（第 2–5 行）：一组候选节点加一个名字，比如「zone-a 的所有节点」。
+2. `PodGroupAssignments`（第 7–10 行）：在某个 `Placement` 上试放之后得到的方案，`ProposedAssignments` 是每个成员 Pod 被分到的节点，PlacementScore 对它打分（第 23 篇）。
+3. `PlacementProgress`（第 13–17 行）：在一个 `Placement` 上逐个试放成员时的进度，`Remaining` 是还没评估的成员数，`Scheduled` 是已放下（包括本周期 assume 的），`Unschedulable` 是已判定放不下的。GangScheduling 的 PlacementFeasible 只看这三个数决定返回 `Success`、`Wait` 还是 `Unschedulable`（第 21 篇 4.1 节）。
+
+### 8.3 通用类型
+
+下面这些类型几乎每个扩展点都会用到：
+
+| 类型 | 是什么 | 要点 |
+| --- | --- | --- |
+| `*Status` | 插件的判定结果 | `nil` 等同于 `Success`；`code` 的取值和后果见 3.3 节；`plugin` 字段由框架在 `Unschedulable`、`UnschedulableAndUnresolvable`、`Pending` 时填上插件名，Pod 的 `UnschedulablePlugins` 就从这里来 |
+| `CycleState` | 一次调度周期内插件之间共享的键值存储 | PreFilter、PreScore 写，Filter、Score 读；绑定周期沿用同一份，所以 PreBind 还能读到 Filter 阶段写的数据 |
+| `NodeInfo` | 快照里一个节点的视图 | 包含 Node 对象、节点上的 Pod（含已 assume 的）、已请求的资源、已用端口、镜像等 |
+| `PodInfo` / `QueuedEntityInfo` | Pod 的预处理视图 / 队列里的 entity | `QueuedEntityInfo` 带入队时间、尝试次数、`UnschedulablePlugins`，QueueSort 的 `Less` 比较的就是它 |
+| `NodeToStatusReader` | 每个节点的 Filter 结果 | 只传给 PostFilter；抢占用 `NodesForStatusCode` 从中挑出 `Unschedulable` 的节点做候选 |
+| `NodeScore` / `NodeScoreList` | 节点名和分数 | Score 返回的 `int64` 由框架包装成它；`NormalizeScore` 就地修改这个列表，最终范围是 `MinNodeScore`～`MaxNodeScore`（0～100） |
+| `ClusterEventWithHint` | 一个事件加它的 hint 函数 | `EventsToRegister` 的返回元素，包含 `Event`、`QueueingHintFn`，以及可选的 `PreQueueingHintFn` |
+| `QueueingHint` | hint 函数的结论 | 只有 `QueueSkip` 和 `Queue` 两个值，回答「这个事件是否可能让 Pod 变得可调度」，不预测调度结果 |
+
+### 8.4 几组容易混淆的概念
+
+1. PreFilter、`PreFilterResult`、`PreFilterExtensions` 是三样东西：
+   - PreFilter 是扩展点，在 Filter 之前对每个 Pod 调用一次，做预计算并写进 `CycleState`；
+   - `PreFilterResult` 是它的返回值之一，用来缩小候选节点；
+   - `PreFilterExtensions` 是另一个接口，只在抢占模拟时被调用：模拟移除受害者或加回提名 Pod 时，通过 `AddPod`、`RemovePod` 增量更新 `CycleState`，不必重跑 PreFilter（第 18 篇）。
+2. PreEnqueue 和 QueueingHint 都决定 Pod 能不能进 `activeQ`，但时机不同：
+   - PreEnqueue 在 Pod 每次要进入 `activeQ` 时检查，拒绝了 Pod 就以 gated 状态留在 `unschedulableEntities`（第 01 篇）；
+   - QueueingHint 在集群事件到达时检查，判断要不要把已经失败过的 Pod 从 `unschedulableEntities` 移出（第五节）。
+3. `Skip` 在三个地方含义不同：
+   - PreFilter 返回 `Skip`，跳过同一插件的 Filter 和 `PreFilterExtensions`；
+   - PreScore 返回 `Skip`，跳过同一插件的 Score；
+   - Bind 返回 `Skip`，表示这个插件不处理该 Pod，交给下一个 Bind 插件。
+4. `Wait` 也有两个来源：
+   - Permit 返回 `Wait`，Pod 进入等待列表，在绑定周期的 WaitOnPermit 里等别的插件 `Allow`，超时则失败；
+   - PlacementFeasible 返回 `Wait`，表示当前 `Placement` 上还差几个成员，继续试放剩下的成员再判断（第 21 篇）。
+5. Score 的分数和 `NodeScore` 的关系：
+   - 插件的 `Score` 只返回一个 `int64`，框架把所有节点的分数收集成 `NodeScoreList`；
+   - 再交给同一插件的 `NormalizeScore` 归一化，最后乘以插件权重求和（3.5 节）。
