@@ -587,6 +587,30 @@ node-lifecycle-controller 在节点 `Ready=False` 时会打两个同名污点：
 
 同一类问题，cordon 靠调度器多一个插件直接读 spec，新节点靠准入同步写污点，两种解法都是为了不依赖控制器的异步补写。
 
+### 6.4 与 NodeUnschedulable 的对比
+
+6.3 节又一次碰到了 cordon。cordon 的两份表示分别由两个插件处理：`spec.unschedulable` 由上一篇的 `NodeUnschedulable` 读，镜像出来的 `node.kubernetes.io/unschedulable:NoSchedule` 污点由本篇的 `TaintToleration` 读。两个插件经常一起拒绝同一个节点，但职责范围差得很远：
+
+| 对比项 | `NodeUnschedulable` | `TaintToleration` |
+| --- | --- | --- |
+| 读的字段 | `node.Spec.Unschedulable` 一个布尔值 | `node.Spec.Taints` 整个列表，key 和 effect 都是开放的 |
+| 谁写这个字段 | `kubectl cordon` / `uncordon` 同步写 | 管理员 `kubectl taint`、node-lifecycle-controller、`TaintNodesByCondition` 准入等多方 |
+| 扩展点 | PreFilter、Filter | PreFilter、Filter、PreScore、Score（权重 3） |
+| Filter 的例外条件 | Pod 容忍 `node.kubernetes.io/unschedulable:NoSchedule` 这一个污点 | Pod 容忍节点上每一个 `NoSchedule` 和 `NoExecute` 污点 |
+| 失败码 | `UnschedulableAndUnresolvable`（`node(s) were unschedulable`） | `UnschedulableAndUnresolvable`（`node(s) had untolerated taint(s)`） |
+| 能否被抢占解决 | 不能，节点不进抢占候选 | 不能，节点不进抢占候选 |
+| 软约束 | 没有，只有能和不能 | `PreferNoSchedule` 参与打分，不被容忍的越多分越低 |
+| 订阅的事件 | `Node` 的 `Add \| UpdateNodeTaint`、`TargetPod` 的 `UpdatePodToleration` | 同左 |
+| 容忍变化时的 hint | 检查新容忍是否覆盖 unschedulable 污点，不覆盖就 `QueueSkip` | 不检查，直接 `Queue`（第五节） |
+| kubelet 准入是否再查 | 不查，手写 `nodeName` 的 Pod 能跑在 cordon 节点上 | 只查 `NoExecute`，静态 Pod 除外（6.1 节） |
+| 对已运行 Pod 的影响 | 没有，cordon 不驱逐任何 Pod | `NoExecute` 由 taint-eviction-controller 驱逐（6.2 节） |
+
+从表里能读出两个插件的关系：
+
+1. **`NodeUnschedulable` 只是 `TaintToleration` 在 cordon 这一个污点上的提前版本**。它的例外条件就是「容忍那个污点」，两者对 cordon 的判定结果一致，区别只在于它读的是同步写入的 spec，不用等控制器补污点（第 04 篇 3.2 节）；
+2. 除 cordon 之外的所有「节点不接受某类 Pod」的需求，都要靠污点表达，由 `TaintToleration` 处理；
+3. 两者都不管已经在节点上的 Pod。cordon 之后要把 Pod 赶走，得用 `kubectl drain`（走 eviction API）或者打 `NoExecute` 污点，调度器本身不负责。
+
 下面几种情况在实际使用中容易出错。
 
 ## 七、边界情况与常见误解
