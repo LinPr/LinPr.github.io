@@ -311,6 +311,57 @@ NodeResourcesFit（MostAllocated）：
 
 如果只有 NodeResourcesFit，rack-c 会以 100 分胜出：它装得最满，但 6 个 Pod 里只放下 4 个，另外 2 个要回队等资源，组的规模被压到了下限。如果只有 PodGroupPodsCount，rack-a 和 rack-b 同为 100 分，只能随机二选一，有一半概率选到更空的 rack-b，把一个大块空闲域切碎。**两者都开、权重相同，得到的就是「先保证放得多，再在放得一样多的里面挑更满的」。**
 
+算例的输入写成清单是这样（6 个 Pod 只列一个，节点只列 rack-a 的一个）：
+
+```yaml {linenos=inline}
+# 5.2 节算例的输入：PodGroup、成员 Pod、rack-a 的一个节点
+apiVersion: scheduling.k8s.io/v1beta1
+kind: PodGroup
+metadata:
+  name: llm-train-0
+spec:
+  schedulingPolicy:
+    gang:
+      minCount: 4
+  schedulingConstraints:
+    topology:
+    - key: topology.kubernetes.io/rack
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: llm-train-0-worker-0
+spec:
+  schedulingGroup:
+    podGroupName: llm-train-0
+  containers:
+  - name: trainer
+    image: registry.example.com/trainer:v1
+    resources:
+      requests:
+        cpu: "8"
+        memory: 32Gi
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: rack-a-node-1
+  labels:
+    topology.kubernetes.io/rack: rack-a
+status:
+  allocatable:
+    cpu: "32"
+    memory: 128Gi
+  # ...
+```
+
+清单里的四处分别进入打分的不同环节：
+
+1. 第 7–9 行的 `minCount: 4` 让只放得下 4 个的 rack-c 也算可行，它才有资格参与打分；
+2. 第 10–12 行让 TopologyPlacementGenerator 按 rack 标签切 placement，第 34 行的标签值 `rack-a` 就是 placement 的 `Name`；
+3. 第 25–27 行是 `scorePlacement` 逐个累加进 `requested` 的请求量：rack-a、rack-b 放下 6 个，合计 48 CPU / 192Gi，rack-c 放下 4 个，合计 32 CPU / 128Gi；
+4. 第 36–38 行是单个节点的 allocatable，`scorePlacement` 把 rack 里 4 个节点相加，得到 128 CPU / 512Gi。
+
 ### 5.3 为什么默认权重是 1
 
 从源码能看到的理由有三条。
@@ -329,6 +380,23 @@ NodeResourcesFit（MostAllocated）：
 `getValidScoreWeights` 先看 `plugins.placementScore.enabled` 里单独写的权重，没有再用 `multiPoint` 里的权重，权重为 0 时按 1 处理。所以 NodeResourcesFit 的放置打分权重默认也是 1，两个插件都归一化到 0~100，等权相加。PodGroupPodsCount 的分差和 Pod 数的相对差成正比（少一个 Pod 大约少 `100/max` 分），MostAllocated 的分差和资源利用率差成正比。**权重相同时，「少放一个 Pod」和「利用率低十几个百分点」大致相当。**
 
 第二条是 MultiPoint 权重会同时影响两个扩展点。如果有人为了偏向装箱，把 NodeResourcesFit 在 `multiPoint` 里的权重调高，它的单 Pod Score 权重和放置打分权重会一起变。想单独调整放置打分，要在 `plugins.placementScore.enabled` 里写一项带权重的 NodeResourcesFit 或 PodGroupPodsCount，那里的权重优先于 `multiPoint`。
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：只提高 NodeResourcesFit 的放置打分权重
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: default-scheduler
+  plugins:
+    placementScore:
+      enabled:
+      - name: NodeResourcesFit
+        weight: 4
+```
+
+1. NodeResourcesFit 同时出现在默认的 `multiPoint` 和这里的 `placementScore`，框架展开 MultiPoint 时把它当作对 PlacementScore 的显式覆盖，`getValidScoreWeights` 先读到第 9–10 行的 4；单 Pod Score 的权重仍是 `multiPoint` 里的 1；
+2. 代入 5.2 节：rack-a `100 + 4 × 90 = 460`，rack-b `100 + 4 × 50 = 300`，rack-c `66 + 4 × 100 = 466`，rack-c 胜出；权重为 3 时是 370、250、366，rack-a 仍然胜出；
+3. 翻转的原因是 rack-a 与 rack-c 在 PodGroupPodsCount 上差 34 分，在 MostAllocated 上差 10 分，权重到 4 时 `4 × 10 = 40 > 34`。这份配置只在开启 `TopologyAwareWorkloadScheduling` 时有意义，否则 NodeResourcesFit 不会构造放置打分用的 scorer。
 
 第三条是溢出检查。`getValidScoreWeights` 会检查 `Σ weight × MaxScore` 不超过 `MaxTotalScore`，单 Pod 打分和放置打分各算各的，放置打分目前只有两个插件，权重 1 远不会触及上限。
 

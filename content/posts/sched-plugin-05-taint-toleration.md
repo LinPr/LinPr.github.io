@@ -120,6 +120,41 @@ func (t *Toleration) ToleratesTaint(logger klog.Logger, taint *Taint, enableComp
 
 第四条是 `TaintTolerationComparisonOperators` 引入的新能力（1.35 Alpha，默认关闭），gate 关闭时 API Server 拒绝创建带 `Lt`/`Gt` 的 Pod，调度器也把它们当作不匹配。它的用途是表达「SLA 等级不低于某个值的节点」这类数值阈值，测试里的用例就是用一个数值型的 SLA 污点。
 
+落到清单上，数值型污点和 `Gt` 容忍是这样配对的：
+
+```yaml {linenos=inline}
+# Node：用整数表达 SLA 等级（Lt/Gt 需开启 TaintTolerationComparisonOperators，1.35 Alpha）
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-a
+spec:
+  taints:
+  - key: example.com/sla
+    value: "950"
+    effect: NoSchedule
+---
+# Pod：只容忍 SLA 值大于 900 的节点
+apiVersion: v1
+kind: Pod
+metadata:
+  name: batch-1
+spec:
+  tolerations:
+  - key: example.com/sla
+    operator: Gt
+    value: "900"
+    effect: NoSchedule
+  # ...
+```
+
+按上面的四条规则走一遍：
+
+1. effect（第 10、22 行）和 key（第 8、19 行）都相同，进入 operator 分支；
+2. 第 20 行是 `Gt`，`compareNumericValues` 计算 `tntVal > tVal`，即 950 > 900，容忍成立，node-a 通过 Filter；
+3. 换成污点值为 `"850"` 的节点，850 > 900 不成立，这条 `NoSchedule` 污点不被容忍，Filter 返回 `node(s) had untolerated taint(s)`；污点值写成 `"high"` 这类非整数，解析失败，同样不容忍；
+4. gate 关闭时，第 20 行在 `ValidateTolerations` 里报 `NotSupported`（已在使用 `Lt`/`Gt` 的旧 Pod 更新时例外），容忍的 `value` 也必须是十进制整数。
+
 **`tolerationSeconds` 不参与匹配，调度器完全忽略它。** API 校验要求只有 `effect: NoExecute` 的容忍才能设置 `tolerationSeconds`，它是给驱逐用的（第六节）。
 
 `TolerationsTolerateTaint` 是在容忍列表上的「任一匹配」：
@@ -295,6 +330,32 @@ func (pl *TaintToleration) PreScore(ctx context.Context, cycleState fwk.CycleSta
 2. 值是 Pod 容忍里 effect 为空或 `PreferNoSchedule` 的子集（第 13–22 行挑出，第 25–32 行写进状态）。
 
 **effect 为 `NoSchedule` 的容忍反正匹配不上 `PreferNoSchedule` 污点（规则 1），提前剔除只是为了让每个节点的 Score 少做几次比较**：PreScore 每个调度周期跑一次，Score 每个可行节点跑一次。
+
+以第一节那个 GPU + 抢占式实例的节点为例，下面这个 Pod 有三条容忍：
+
+```yaml {linenos=inline}
+# Pod：三条容忍，PreScore 只留下 effect 为空或 PreferNoSchedule 的两条
+spec:
+  tolerations:
+  - key: dedicated
+    operator: Equal
+    value: gpu
+    effect: NoSchedule
+  - key: spot
+    operator: Exists
+    effect: PreferNoSchedule
+  - key: example.com/zone-drain
+    operator: Exists
+# ...
+```
+
+`getAllTolerationPreferNoSchedule` 对三条容忍的处理：
+
+1. 第 4–7 行 effect 是 `NoSchedule`，被剔除；它只在 Filter 里起作用，用来容忍 `dedicated=gpu:NoSchedule`；
+2. 第 8–10 行 effect 是 `PreferNoSchedule`，保留；
+3. 第 11–12 行没写 effect，表示匹配所有 effect，也保留。
+
+所以 `tolerationsPreferNoSchedule` 是后两条。在 GPU 节点上，`spot=true:PreferNoSchedule` 被第 8–10 行容忍，Score 的原始分是 0；第一节那个只写了 `dedicated` 容忍的 Pod，`tolerationsPreferNoSchedule` 为空，同一个节点的原始分是 1。
 
 `Clone` 直接返回自身，不做拷贝。CycleState 在抢占模拟时会被克隆，共享同一份数据安全的前提是 PreScore 写入之后再也没人修改它。这个切片只依赖 Pod 本身，不依赖节点上的 Pod，确实是不变的。
 
@@ -572,6 +633,46 @@ func getNoExecuteTaints(taints []v1.Taint) []v1.Taint {
 | cache-1 | `tolerationSeconds: 30` | 自己写的；已经容忍 unreachable，准入插件不再追加 |
 | agent-1（DaemonSet） | 不设 `tolerationSeconds` | `AddOrUpdateDaemonPodTolerations` |
 
+前两个 Pod 在 apiserver 里存下来的容忍分别是：
+
+```yaml {linenos=inline}
+# Pod：cache-1 自己写了 unreachable 的容忍
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cache-1
+spec:
+  tolerations:
+  - key: node.kubernetes.io/unreachable
+    operator: Exists
+    effect: NoExecute
+    tolerationSeconds: 30
+  # not-ready 的 300 秒容忍由准入插件追加，略
+---
+# Pod：web-1 没写容忍，DefaultTolerationSeconds 追加了两条
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-1
+spec:
+  tolerations:
+  - key: node.kubernetes.io/not-ready
+    operator: Exists
+    effect: NoExecute
+    tolerationSeconds: 300
+  - key: node.kubernetes.io/unreachable
+    operator: Exists
+    effect: NoExecute
+    tolerationSeconds: 300
+  # ...
+```
+
+两段清单和上表的对应关系：
+
+1. cache-1 第 8–11 行已经容忍 `unreachable:NoExecute`，准入插件的 `Admit` 检查到 key 和 effect 都匹配，就不再追加 unreachable 那条；not-ready 没被容忍，照样追加 300 秒（第 12 行省略的部分）；
+2. web-1 第 21–28 行全部来自准入插件，两条都是 `operator: Exists` 加 `tolerationSeconds: 300`；
+3. `tolerationSeconds` 只能配 `effect: NoExecute`，把第 10 行改成 `NoSchedule`，`ValidateTolerations` 会以 `effect must be 'NoExecute' when tolerationSeconds is set` 拒绝创建。
+
 `NodeUpdated` 发现 `getNoExecuteTaints` 的结果从空变成一项，`handleNodeUpdate` 取出这三个 Pod，逐个交给 `processPodOnNode`（上面代码块的行号）：
 
 1. `GetMatchingTolerations` 对三个 Pod 都返回 `allTolerated = true`，`usedTolerations` 里各是上表那一条容忍，所以都不走第 2–9 行的立即删除；
@@ -618,6 +719,50 @@ node-lifecycle-controller 在节点 `Ready=False` 时会打两个同名污点：
 ## 七、边界情况与常见误解
 
 **污点只排斥，不吸引。** 上面的 GPU 例子里，Pod 容忍了 `dedicated=gpu`，只说明它「可以」去 GPU 节点，不说明它「会」去。想让它只去 GPU 节点，还要加节点亲和或 `nodeSelector`，那是[下一篇](/posts/sched-plugin-06-node-affinity/)的 `NodeAffinity`。专用节点的标准做法是「污点挡住别人 + 亲和拉来自己」两件套。
+
+两件套写成清单是这样，Node 上同时有污点和标签：
+
+```yaml {linenos=inline}
+# Node：GPU 专用节点，污点挡住别人，标签供亲和选择
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-1
+  labels:
+    dedicated: gpu
+spec:
+  taints:
+  - key: dedicated
+    value: gpu
+    effect: NoSchedule
+---
+# Pod：容忍 GPU 污点，并用节点亲和只选 GPU 节点
+apiVersion: v1
+kind: Pod
+metadata:
+  name: train-1
+spec:
+  tolerations:
+  - key: dedicated
+    operator: Equal
+    value: gpu
+    effect: NoSchedule
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: dedicated
+            operator: In
+            values: ["gpu"]
+  # ...
+```
+
+两件套由两个插件分别处理，对照起来有三点：
+
+1. 第 9–12 行的污点由 `TaintToleration` 处理，第 20–24 行的容忍让 train-1 通过，没有这条容忍的 Pod 都被挡在 gpu-1 之外；
+2. 第 25–32 行的亲和由 `NodeAffinity` 处理，匹配的是第 6–7 行的标签，不是污点。污点和标签是两个独立字段，key 同名只是约定；
+3. 去掉第 25–32 行，train-1 仍可能被调度到任何普通节点；去掉第 20–24 行，gpu-1 被 `TaintToleration` 拒绝、其他节点被 `NodeAffinity` 拒绝，Pod 无处可去。
 
 **`operator: Exists` 且 key 为空的容忍容忍一切。** 包括 `NoExecute`，包括 unschedulable。一些系统组件这样写是为了在任何节点上都能运行，业务 Pod 这样写会让 cordon、not-ready、专用节点全部失效。
 

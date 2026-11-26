@@ -83,6 +83,33 @@ func (at *AffinityTerm) Matches(pod *v1.Pod, nsLabels labels.Set) bool {
 
 namespace 的默认值在 `getNamespacesFromPodAffinityTerm` 中确定：`namespaces` 为空且 `namespaceSelector` 为 nil 时，取规则所属 Pod 自己的 namespace。`namespaceSelector` 的 nil 与空对象含义完全不同——`metav1.LabelSelectorAsSelector(nil)` 返回 `labels.Nothing()`，空的 `{}` 返回 `labels.Everything()`，即所有 namespace。
 
+同一条规则的 namespace 范围有三种写法，以第一节位于 `shop` 的 `web-0` 为例：
+
+```yaml {linenos=inline}
+# Pod 片段：三条反亲和项，namespace 范围各不相同
+spec:
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels: {app: batch}
+        topologyKey: kubernetes.io/hostname
+      - labelSelector:
+          matchLabels: {app: batch}
+        namespaceSelector: {}
+        topologyKey: kubernetes.io/hostname
+      - labelSelector:
+          matchLabels: {app: batch}
+        namespaces: ["shop", "jobs"]
+        topologyKey: kubernetes.io/hostname
+```
+
+三条规则解析成 `AffinityTerm` 后的结果：
+
+1. 第 6–8 行既没有 `namespaces` 也没有 `namespaceSelector`，`Namespaces` 取 `{shop}`，`NamespaceSelector` 是 `Nothing()`，只排斥 `shop` 里的 batch；
+2. 第 11 行的 `{}` 解析成 `Everything()`，`Matches`（`AffinityTerm` 代码块第 11 行）的第二个条件对任何 namespace 都成立，所有 namespace 里的 batch 都被排斥；
+3. 第 15 行列出两个 namespace，`Namespaces` 为 `{shop, jobs}`。同时再写 `namespaceSelector` 时两者取并集，因为 `Matches` 用的是「或」。
+
 `NodeInfo` 还按规则类型维护了几个子集：`PodsWithAffinity`（有任何 Pod 亲和/反亲和的 Pod）、`PodsWithRequiredAntiAffinity`，以及快速路径用到的 `PodsWithRequiredNonHostScopedAntiAffinity`。快照（`Snapshot`）再据此维护「有这类 Pod 的节点列表」，PreFilter 和 PreScore 用它们缩小遍历范围。
 
 ### 2.2 新 Pod 的 `namespaceSelector` 被展开成 namespace 列表
@@ -134,6 +161,26 @@ func GetNamespaceLabelsSnapshot(logger klog.Logger, ns string, nsLister listersv
 两个方向各自选择了开销更小的展开方式：新 Pod 的规则少，展开 selector；已有 Pod 多，只取新 Pod 一个 namespace 的标签。
 
 `matchLabelKeys`/`mismatchLabelKeys` 不在调度器里处理。apiserver 的 `mutatePodAffinity` 在创建 Pod 时就把它们转换成 `labelSelector` 中的 `In`/`NotIn` 条件，调度器看到的已经是合并后的 selector。
+
+最常见的用法是在滚动更新期间只和同一版本的副本互斥：
+
+```yaml {linenos=inline}
+# Deployment web 的 Pod 模板片段：一节点一副本，只和同版本副本互斥
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels: {app: web}
+            matchLabelKeys: ["pod-template-hash"]
+            topologyKey: kubernetes.io/hostname
+```
+
+这条规则从清单到调度器经过两步：
+
+1. Pod 创建时，`applyMatchLabelKeysAndMismatchLabelKeys` 读出 Pod 自己的 `pod-template-hash` 值，在第 5 行的 selector 上追加 `pod-template-hash In [<hash>]`；第 6 行保留在 spec 里，调度器不再读它；
+2. 旧版本副本的 hash 不同，不再匹配这条规则，新副本可以落在旧副本所在的节点上；节点数等于副本数时，`maxSurge` 多出来的新副本不会因为每个节点都已有一个旧副本而 Pending。已有旧副本的反亲和项同样带着旧 hash，也不会反过来排斥新副本。
+
+`matchLabelKeys` 必须和 `labelSelector` 一起出现，否则 Pod 校验报 `must not be specified when labelSelector is not set`。第 7 行是 hostname，这条规则会被第五节的快速路径归入 `hostScopedAntiAffinityTerms`。
 
 规则到这里已经整理成可以直接匹配的形式。麻烦的地方在于，Filter 要对每个候选节点回答「这个拓扑对上有没有匹配 Pod」，不能现扫。
 
@@ -352,6 +399,38 @@ func nodeTopologyMatchesAffinity(state *preFilterState, nodeInfo fwk.NodeInfo) b
 `!podsExist` 时有一个特例（第 17–19 行）：如果整个集群都没有匹配的 Pod（表为空），而新 Pod 自己满足自己的全部亲和项，就放行。典型场景是一个 Deployment 要求「所有副本在同一个 zone」——亲和项选中的就是自己这类 Pod。**没有这个特例，第一个副本永远找不到可以亲近的对象，整个 Deployment 卡死。**
 
 注意条件是「全集群为空」而不是「本域为空」：只要别的 zone 已经有了匹配的 Pod，新副本就必须去那个 zone。
+
+下面这个例子里的 Deployment `cache` 是这样写的：
+
+```yaml {linenos=inline}
+# Deployment：所有副本必须和已有的 cache 副本在同一个 zone
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cache
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: cache}
+  template:
+    metadata:
+      labels: {app: cache}
+    spec:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels: {app: cache}
+            topologyKey: topology.kubernetes.io/zone
+      containers:
+      - name: cache
+        image: redis:7
+```
+
+自亲和特例能否成立，取决于两处字段的配合：
+
+1. 第 12 行的 Pod 标签满足第 18 行自己的 selector，`satisfiesSelfAffinityCheck` 对第一个副本成立；如果第 18 行改成只匹配另一类 Pod（比如 `app: db`），而集群里还没有 db，第一个副本就会在所有节点上返回 `UnschedulableAndUnresolvable`；
+2. 第 19 行的 `topologyKey` 决定「同处」的粒度，节点缺这个标签时直接在 `nodeTopologyMatchesAffinity` 第 13 行失败。
 
 举个例子：Deployment `cache` 的副本带 `app: cache` 标签，required 亲和项是 `app: cache` + `topology.kubernetes.io/zone`，gate 关闭。集群有 zone-a、zone-b 两组节点，另有一个没有 zone 标签的节点 n0。副本依次调度的过程：
 
@@ -660,6 +739,26 @@ type preScoreState struct {
 | `ignorePreferredTermsOfExistingPods` | false | — | 新 Pod 没有 preferred 规则时直接 `Skip` 整个打分 |
 
 默认值 1 相对于 preferred 规则常用的几十的权重是很小的，它更像是「平局时的倾向」。
+
+两个参数都在调度器配置里调整：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：加强已有 Pod 硬亲和的吸引力，并跳过无规则 Pod 的打分
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: default-scheduler
+  pluginConfig:
+  - name: InterPodAffinity
+    args:
+      hardPodAffinityWeight: 10
+      ignorePreferredTermsOfExistingPods: true
+```
+
+两行的影响分别落在 PreScore 的两处：
+
+1. 第 9 行让第三类贡献（`processExistingPod` 代码块第 6–10 行）每匹配一次加 10 分，超出 0～100 的值会被 `ValidateInterPodAffinityArgs` 拒绝；
+2. 第 10 行让没有 preferred 规则的新 Pod 在 7.3 节代码块第 4–6 行直接 `Skip`，已有 Pod 的 preferred 规则和硬亲和都不再影响它的落点，换来的是 PreScore 不再遍历 `HavePodsWithAffinityList`。
 
 ### 7.3 遍历范围的优化
 

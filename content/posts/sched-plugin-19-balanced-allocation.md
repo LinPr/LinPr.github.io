@@ -92,6 +92,32 @@ func SetDefaults_NodeResourcesBalancedAllocationArgs(obj *configv1.NodeResources
 
 标准差是对称的统计量，给某种资源加权没有清晰的含义，所以干脆禁止。这个类型复用了 `NodeResourcesFit` 的 `ResourceSpec`，字段保留了，语义被校验封死。资源名也不能重复。
 
+在调度器配置里改这份参数，要按插件名写进 `pluginConfig`：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：把 GPU 也纳入均衡度计算
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: default-scheduler
+  pluginConfig:
+  - name: NodeResourcesBalancedAllocation
+    args:
+      resources:
+      - name: cpu
+        weight: 1
+      - name: memory
+        weight: 1
+      - name: nvidia.com/gpu
+        weight: 1
+```
+
+写这份配置要注意三点：
+
+1. 一旦写了 `resources`，默认值整体不再生效：`SetDefaults_NodeResourcesBalancedAllocationArgs` 只在列表为空时填默认（默认值代码块第 3–6 行），所以 cpu 和 memory 必须显式列出（第 10–13 行）；
+2. `weight` 可以省略，默认补成 1（默认值代码块第 8–12 行）；写成 2 会被上面的校验以 `must be 1` 拒绝，kube-scheduler 无法启动；
+3. 第 14–15 行加入 GPU 之后，它何时真正进入标准差由 4.3 节的规则决定：Pod 请求了 GPU，且节点的 GPU allocatable 不为 0。
+
 工厂函数：
 
 ```go {linenos=inline}
@@ -150,7 +176,32 @@ func (ba *BalancedAllocation) PreScore(ctx context.Context, cycleState fwk.Cycle
 }
 ```
 
-`isBestEffortPod` 检查的是 `podRequests` 是否全为 0，而 `podRequests` 只覆盖配置的资源（默认 CPU 和内存）。**所以这里的「BestEffort」不是 QoS 意义上的 BestEffort**：一个只请求了 GPU、没写 CPU 和内存的 Pod，在默认配置下同样会被跳过。
+`isBestEffortPod` 检查的是 `podRequests` 是否全为 0，而 `podRequests` 只覆盖配置的资源（默认 CPU 和内存）。**所以这里的「BestEffort」由插件配置的资源列表决定，不是 QoS 意义上的 BestEffort**。默认配置下两者恰好一致，因为 QoS 也只看 CPU 和内存：一个只请求了 GPU 的 Pod，QoS 是 BestEffort，插件同样跳过它。两者只在 `resources` 里加了扩展资源时才会分开：配置成 cpu、memory、`nvidia.com/gpu` 之后，同一个 Pod 的 `podRequests` 不再全为 0，插件会给它打分，而它的 QoS 仍是 BestEffort。
+
+这样的 Pod 写成清单是：
+
+```yaml {linenos=inline}
+# Pod：只申请 GPU，没写 CPU 和内存
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-only
+spec:
+  containers:
+  - name: cuda
+    image: registry.example.com/cuda-job:v1
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+```
+
+它在两种口径下的结果：
+
+1. 扩展资源只写 `limits`（第 11–12 行）时，apiserver 把 `requests` 默认成同值，所以它请求 1 个 GPU；
+2. QoS 只看 cpu 和 memory（`pkg/apis/core/v1/helper/qos` 的 `supportedQoSComputeResources`），它的 QoS 类同样是 BestEffort；
+3. 默认配置下 `podRequests` 只有 cpu、memory 两项，都是 0，PreScore 返回 `Skip`；换成第二节那份带 `nvidia.com/gpu` 的配置后，`podRequests` 的 GPU 一项是 1，`isBestEffortPod` 为假，它照常参与打分。
+
+所以两者的分界在配置上：QoS 的口径固定是 cpu 和 memory，`isBestEffortPod` 的口径跟着 `resources` 走。
 
 跳过的理由写在注释里指向的 issue：请求量为 0 的 Pod 放到哪里都不改变节点的资源占比，如果参与打分，均衡度最好的那个节点每次都会胜出，而 BestEffort Pod 放上去之后它的均衡度并不变，于是下一个 BestEffort Pod 还会选它，大量 Pod 堆到同一个节点上。返回 `Skip` 后，框架把插件名记进 `SkipScorePlugins`，这个周期里它的 Score 不会被调用，在总分中贡献 0（对所有节点都是 0，不影响排序）。
 
@@ -297,6 +348,38 @@ score = 50 + (50 + Δ) / 2                     ∈ [50, 100]
 | 最终分 | 50 + (50 + 15) / 2 = 50 + 32 = 82 | 50 + (50 − 8) / 2 = 50 + 21 = 71 |
 
 注意 `(50 + 15) / 2` 是 Go 的整数除法，65 / 2 = 32。
+
+算例的输入在清单上的出处（节点只列 X）：
+
+```yaml {linenos=inline}
+# Pod 与节点 X：4.2 节算例的输入
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mem-heavy
+spec:
+  containers:
+  - name: app
+    image: registry.example.com/app:v3
+    resources:
+      requests:
+        cpu: "1"
+        memory: 8Gi
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-x
+status:
+  allocatable:
+    cpu: "10"
+    memory: 20Gi
+  # ...
+```
+
+1. 第 11–13 行是 `podRequests`，按真实 requests 计（`useRequested: true`），没写 requests 的容器在这里是 0；
+2. 第 20–22 行是 `allocatable`，由 kubelet 上报（节点容量减去预留和驱逐阈值）；
+3. 「放之前」的 7 核、2Gi 不在 Node 对象上，是调度器缓存把节点上已有 Pod 的 requests 加总得到的 `NodeInfo.Requested`。
 
 这样设计还有一个直观的好处：**Pod 对节点均衡度的影响越小（大节点、小 Pod），Δ 越接近 0，分数越接近 75，这个插件就越「中立」**；只有当 Pod 相对节点足够大、确实会改变均衡度时，它才会拉开差距。旧的「只看放上之后」的做法则会持续偏爱本来就均衡的大节点，不管放的是什么 Pod。
 

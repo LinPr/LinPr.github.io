@@ -107,6 +107,33 @@ func (f *restartAllContainersFeature) InferForUpdate(oldPodInfo, newPodInfo *typ
 2. `InferForScheduling`：Pod 只要有一个容器或 init 容器的 `RestartPolicyRules` 里出现 `rule.Action == v1.ContainerRestartRuleActionRestartAllContainers`，就算需要它（第 6–22 行）；
 3. `InferForUpdate`：字段不可变，所以更新时永远不需要（第 24–27 行）。
 
+会被推断为需要这个特性的 Pod 长这样，第五节的走查用的就是它：
+
+```yaml {linenos=inline}
+# Pod：容器以退出码 42 结束时，重启 Pod 内的所有容器
+apiVersion: v1
+kind: Pod
+metadata:
+  name: job-0
+spec:
+  restartPolicy: Never
+  containers:
+  - name: worker
+    image: trainer:latest
+    restartPolicy: Never
+    restartPolicyRules:
+    - action: RestartAllContainers
+      exitCodes:
+        operator: In
+        values: [42]
+```
+
+推断和校验各看其中几行：
+
+1. 第 13 行的 `action` 等于 `RestartAllContainers`，命中 `restart_all_containers.go` 代码块第 9 行的判断，`InferForScheduling` 返回 true；改成 `action: Restart` 则不命中，这个 Pod 在 PreFilter 返回 `Skip`；
+2. 第 11 行的容器级 `restartPolicy` 和第 14–16 行的 `exitCodes` 都是必填的，缺任何一个，Pod 校验都以 `Required value` 拒绝，消息分别是 `must specify restartPolicy when restart rules are used` 和 `must be specified`；
+3. 能写 `RestartAllContainers` 的前提是 apiserver 开启 `ContainerRestartRules`（1.35 Beta 默认开）和 `RestartAllContainersOnContainerExits`（1.36 Beta 默认开），否则第 13 行在校验阶段被拒（第七节）。
+
 有的特性的 `Discover` 还依赖容器运行时，比如 `UserNamespacesHostNetworkSupport` 要求 gate 开启并且 CRI 报告支持「user namespace + host network」；它的 `InferForScheduling` 检查 `hostNetwork: true` 且 `hostUsers: false`。
 
 ### 2.2 当前注册表
@@ -252,6 +279,27 @@ API 字段的定义是一个 `listType=atomic` 的字符串列表：
 1. `DeclaredFeatures` 承载的是节点声明的、与 feature gate 相关的特性名（第 2 行）；
 2. 字段只在 `NodeDeclaredFeatures` gate 开启时由 kubelet 写入，本身是可选的（`+featureGate`、`+optional`，第 3–4 行）；
 3. `+listType=atomic` 表示整个列表作为一个整体替换，没有按元素合并的语义；kubelet 按排序后的注册表顺序写入，所以第五节的事件处理器可以用 `slices.Equal` 直接比较新旧列表（第 5 行）。
+
+kubelet 写入后，在节点对象上看到的是一个按名字排序的字符串列表：
+
+```yaml {linenos=inline}
+# Node：kubelet 上报的 declaredFeatures（kubectl get node node-2 -o yaml 节选）
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-2
+status:
+  declaredFeatures:
+  # ... 排在前面的其它特性
+  - RestartAllContainersOnContainerExits
+  # ...
+```
+
+这个列表和位图的对应关系是：
+
+1. 第 7 行整个列表由 kubelet 写入，具体包含哪些名字取决于这个 kubelet 的 feature gate、CRI 能力和版本；
+2. 第 9 行的 `RestartAllContainersOnContainerExits` 在排序后的十项注册表里排第 8 位，位图下标为 7，第五节走查里检查的就是这一位；
+3. 列表里出现调度器不认识的名字时，`TryMap` 直接跳过，不影响其它位（4.1 节）。
 
 与之相比，同在 `NodeStatus` 里的 `features` 字段（`NodeFeatures` 结构体，目前只有一个 `supplementalGroupsPolicy` 布尔值）每增加一个特性都要改 API 类型。`declaredFeatures` 用字符串列表承载，增加特性只需要往注册表里加一个实现，不涉及 API 变更。
 

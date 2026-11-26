@@ -141,6 +141,46 @@ func BindPod(ctx context.Context, cs kubernetes.Interface, binding *v1.Binding) 
 3. **`spec.nodeName` 只能写一次，这就是多个调度器同时调度同一个 Pod 时的仲裁点**：谁的 binding 先到，谁赢，后到的拿到 `already assigned` 冲突。
 4. 顺带写入的字段（第 24–36 行）：`PodScheduled=True` condition；`ClearingNominatedNodeNameAfterBinding`（1.35 起 Beta，默认开）开启时清空 `nominatedNodeName`；`PodTopologyLabelsAdmission`（1.35 起 Beta，默认开）开启时把 Binding 上的 labels 拷到 Pod 上。Binding 上的这些 labels 来自 `PodTopologyLabels` 准入插件（`plugin/pkg/admission/podtopologylabels`）：binding 请求经过准入时，它按 `binding.Target.Name` 查到节点，把节点的拓扑标签合并进 `binding.Labels`。
 
+用第五节的 `web-1` 和 node-a 对照，请求体和绑定后的 Pod 分别是：
+
+```yaml {linenos=inline}
+# Binding：DefaultBinder 为 web-1 POST 到 pods/web-1/binding 的请求体
+apiVersion: v1
+kind: Binding
+metadata:
+  name: web-1
+  namespace: default
+  uid: 3f6c2a5e-8d1b-4c0e-9b7a-1e2d3c4b5a69
+target:
+  kind: Node
+  name: node-a
+---
+# 绑定成功后 web-1 上被改写的字段（kubectl get pod web-1 -o yaml 摘录）
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-1
+  namespace: default
+  labels:
+    topology.kubernetes.io/zone: zone-a
+spec:
+  nodeName: node-a
+  # ...
+status:
+  conditions:
+  - type: PodScheduled
+    status: "True"
+    # ...
+```
+
+Binding 不落盘，只作为这次请求的请求体存在。两段对照着看：
+
+1. 第 7 行的 `uid` 就是上面 storage 代码块第 2–9 行的前置条件；
+2. 第 8–10 行对应 `Bind` 代码块第 7 行的 `Target`，只有 `kind` 和 `name`；
+3. 第 21 行是 binding 子资源唯一写入的 spec 字段，第 25–26 行是顺带写入的 `PodScheduled=True`；
+4. 第 18–19 行：node-a 带 `topology.kubernetes.io/zone: zone-a` 标签时，`PodTopologyLabels` 准入把它合并进 Binding 的 labels，再由 binding 子资源拷到 Pod 上；默认配置只拷 `topology.kubernetes.io/zone` 和 `topology.kubernetes.io/region` 两个 key；
+5. `ClearingNominatedNodeNameAfterBinding` 开启时 `status.nominatedNodeName` 被清空，所以摘录里没有它。
+
 `spec.nodeName` 一旦写入，后续就是 kubelet 的事了。kubelet 在 `pkg/kubelet/config/apiserver.go` 的 `NewSourceApiserver` 里建 ListWatch 时带了字段选择器 `spec.nodeName=<本节点名>`，过滤在 apiserver 端完成（[第 3 篇](/posts/sched-plugin-03-node-name/) 5.1 节）。`spec.nodeName` 为空时这个 Pod 不匹配任何节点的选择器；binding 写入之后，它才第一次出现在目标节点 kubelet 的 watch 里。
 
 ## 三、绑定周期：DefaultBinder 被调用之前
@@ -403,6 +443,36 @@ func (sched *Scheduler) handleBindingCycleError(
 
 两个 Pod 最后都回到了会被重试的位置，node-a 上 3 CPU 的空闲也重新可见。没有第 5 步的广播，`web-2` 只能等别的事件或 `unschedulableEntities` 的定期 flush 才会被重新考虑，而它被拒的原因恰恰是 `web-1` 这份已经撤销的 assume。
 
+走查结束时两个 Pod 的 `PodScheduled` condition 不同，这正是第八节第 1 条说的排障标志：
+
+```yaml {linenos=inline}
+# 第 6 步之后：web-1 与 web-2 的 status（kubectl get pod -o yaml 摘录）
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-1
+status:
+  conditions:
+  - type: PodScheduled
+    status: "False"
+    reason: SchedulerError
+    # ...
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-2
+status:
+  conditions:
+  - type: PodScheduled
+    status: "False"
+    reason: Unschedulable
+    # ...
+```
+
+1. 第 10 行：`web-1` 的失败来自 Bind 返回的 `Error`，不属于 `IsRejected`，`handleSchedulingFailure` 写入的 reason 是 `SchedulerError`，它在 backoffQ 里等退避结束；
+2. 第 21 行：`web-2` 在第 2 步被 `NodeResourcesFit` 拒绝，reason 是 `Unschedulable`；第 5 步只把它移出 `unschedulableEntities`，不会改写这个 condition。
+
 ### 5.1 「其实已经绑定成功了」
 
 `handleSchedulingFailure` 里有一段专门处理这种情况：
@@ -545,6 +615,23 @@ func (c *APICache) WaitOnFinish(ctx context.Context, onFinish <-chan error) erro
 ### 7.1 extender binder
 
 在 `KubeSchedulerConfiguration` 的 `extenders` 里配置 `bindVerb`，extender 就成为 binder。**它优先于所有 Bind 插件。** 这种方式需要一个 HTTP 服务，延迟和可用性都要自己保证，`ignorable: true` 可以让它失败时退回到插件绑定。
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：只让申请 example.com/vgpu 的 Pod 走 extender 绑定
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+extenders:
+- urlPrefix: http://vgpu-extender.kube-system.svc:8888/scheduler
+  bindVerb: bind
+  httpTimeout: 5s
+  ignorable: true
+  managedResources:
+  - name: example.com/vgpu
+```
+
+1. 第 6 行让它成为 binder（`IsBinder()`）；整个配置里最多一个 extender 写 `bindVerb`，否则校验报 `only one extender can implement bind`；
+2. 第 9–10 行限定了 `IsInterested`：Pod 的容器或 init 容器在 requests 或 limits 里出现 `example.com/vgpu` 才交给它，其余 Pod 照常走 `DefaultBinder`；不写 `managedResources` 时它对所有 Pod 都感兴趣；
+3. 第 8 行对应 `extendersBinding` 里的 `IsIgnorable` 分支：extender 绑定出错就跳过它，落回 Bind 插件。
 
 ### 7.2 自定义 Bind 插件
 

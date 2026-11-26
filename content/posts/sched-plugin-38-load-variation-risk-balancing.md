@@ -210,6 +210,39 @@ func GetEffectiveResource(pod *v1.Pod, fn func(container *v1.Container) v1.Resou
 
 它没有处理 sidecar（`restartPolicy: Always` 的 init 容器应该累加，而不是取 max），也不读 Pod 级 `spec.resources`。与 TLP 不同，这里用的是 **request**，不是 limit。
 
+以 4.4 节算例的 Pod 为基础，加一个 sidecar 形式的 init 容器，差别就出来了：
+
+```yaml {linenos=inline}
+# Pod：4.4 节算例的 Pod，外加一个 sidecar（节选）
+apiVersion: v1
+kind: Pod
+metadata:
+  name: api
+spec:
+  schedulerName: trimaran
+  initContainers:
+  - name: log-agent
+    image: example/log-agent:1.0
+    restartPolicy: Always
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+  containers:
+  - name: app
+    image: example/api:1.0
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+```
+
+两种口径算出的 request 不同：
+
+1. 第 20–22 行是 4.4 节用的 request，只有这个容器时，`GetEffectiveResource` 得到 500m / 1Gi；
+2. 第 11 行的 `restartPolicy: Always` 让 `log-agent` 成为 sidecar，它和 `app` 一起运行到 Pod 结束，in-tree 调度器和 kubelet 都把它的 request 累加进来，Pod 合计 700m / 1.25Gi；
+3. `GetEffectiveResource` 第 10–19 行仍按普通 init 容器取 max：`max(500m, 200m) = 500m`、`max(1Gi, 256Mi) = 1Gi`，sidecar 的 200m / 256Mi 没有进入 μ。
+
 ### 3.2 GetResourceData：从一组 Metric 里挑出均值和标准差
 
 同一个资源在指标里可能同时有均值记录和标准差记录，由 `GetResourceData` 挑出来。
@@ -295,6 +328,29 @@ func GetMuSigma(rs *ResourceStats) (float64, float64) {
 
 这里绕了一圈：百分比 × Allocatable 得到绝对量，再除以 Allocatable 变回比例，`ResourceStats` 只在加 request 的时候需要绝对量。但百分比本身的分母是什么，取决于指标源：metrics-server provider 用的是 `Capacity`（上一篇 2.2 节，`k8s.go` 里用 `host.Usage` 除以 `cpuNodeCapacityMap` 换算百分比）。所以，在 Capacity 明显大于 Allocatable 的节点上（预留了较多 system/kube reserved），μ 中「已用」的部分和「request」的部分口径不完全一致。
 
+两个分母都在 Node 的 `status` 里，由 kubelet 上报：
+
+```yaml {linenos=inline}
+# Node：预留了 500m CPU、1Gi 内存的 4 核节点（status 节选）
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-x
+status:
+  capacity:
+    cpu: "4"
+    memory: 8Gi
+  allocatable:
+    cpu: 3500m
+    memory: 7Gi
+```
+
+假设 metrics-server 测得这个节点用了 2000m CPU，CPU 这一项按两个分母各走一遍：
+
+1. load-watcher 用第 8 行的 `capacity` 换算百分比：`100 × 2000 / 4000 = 50`；
+2. `CreateResourceStats` 用第 11 行的 `allocatable` 还原绝对量：`UsedAvg = 50 × 3500 / 100 = 1750`，比真实的 2000m 少了 250m；
+3. `GetMuSigma` 算出的已用比例是 `1750 / 3500 = 0.5`，按 Allocatable 计的真实比例是 `2000 / 3500 ≈ 0.571`。加上一个 500m 的 request，μ 是 0.643，而按真实用量应是 0.714。
+
 ## 四、computeScore：风险公式
 
 `ResourceStats` 备齐之后，`computeScore` 从中取出 μ 和 σ（第 17 行），合成一个 0~100 的分数。每一步都带截断（第 12–14 行、第 25 行），合起来决定了模型的形状。
@@ -359,6 +415,27 @@ sensitivity（s）是开方次数（第 20–21 行的 `math.Pow(sigma, 1/sensit
 
 1. s = 0：defaulting 只替换负数，0 会原样保留。此时 `1/s = +Inf`，`math.Pow(σ, +Inf)` 对 σ < 1 得 0、对 σ = 1 得 1，相当于**关掉了波动项**。单测 `zero sensitivity` 用 μ=0.5、σ=0.36 断言得 75 分，正好是 `100 − 50 × 0.5`。
 2. s < 0：只有在绕过 defaulting、直接构造内部参数时才会出现（单测里就是这样）。此时 `if sensitivity >= 0` 不成立，不开方，等同于 s=1。
+
+#### 两个和字面意思不符的配置
+
+把第一节配置里的两个参数换成下面的值，调度器照样能启动：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration（节选）：负的 margin 与为 0 的 sensitivity
+pluginConfig:
+- name: LoadVariationRiskBalancing
+  args:
+    safeVarianceMargin: -2
+    safeVarianceSensitivity: 0
+    metricProvider:
+      type: Prometheus
+      address: http://prometheus-k8s.monitoring.svc.cluster.local:9090
+```
+
+两行各自的结果：
+
+1. 第 5 行的 `-2` 在 `SetDefaults_LoadVariationRiskBalancingArgs` 第 5–7 行被换成 1，和不写这一行完全一样，日志里也没有提示；
+2. 第 6 行的 0 原样保留，按上面 s = 0 的分析，波动项被关掉。代入 4.4 节的数字：N1 的 CPU、内存分别得 `100 − 50 × 0.625 = 68.75`、`100 − 50 × 0.525 = 73.75`，取小后四舍五入为 69；N2 两项都是 `100 − 50 × 0.525 = 73.75`，得 74。结果从选 N1 变成了选 N2，和只看均值的策略一样。
 
 ### 4.3 等分线
 

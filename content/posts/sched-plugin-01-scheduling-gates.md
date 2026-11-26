@@ -446,6 +446,30 @@ func validateOnlyDeletedSchedulingGates(newGates, oldGates []core.PodSchedulingG
 
 所以无论是默认调度器、第二个调度器，还是自己写的绑定脚本，只要 gate 没删光，Pod 都不可能被绑定到节点上。
 
+#### 会被 apiserver 拒绝的两种写法
+
+上面的规则落到清单上，最常见的反例是创建时就指定节点：
+
+```yaml {linenos=inline}
+# 反例：创建时同时写 nodeName 和 schedulingGates
+apiVersion: v1
+kind: Pod
+metadata:
+  name: job-worker-1
+spec:
+  nodeName: node-1
+  schedulingGates:
+  - name: example.com/quota-check
+  containers:
+  - name: main
+    image: busybox
+```
+
+这份清单和另一种更新操作都会被拒绝：
+
+1. 第 7 行与第 8–9 行同时出现，`ValidatePodCreate` 返回 `spec.nodeName: Forbidden: cannot be set until all schedulingGates have been cleared`，Pod 创建失败；去掉第 7 行就是第一节 `job-worker-0` 的正常写法。
+2. 对已经创建的 `job-worker-0` 追加一项 `- name: example.com/extra-check`，`validateOnlyDeletedSchedulingGates` 在新列表里找到旧列表没有的名字，返回 `Forbidden`，消息是本节第一段代码第 18 行的 `only deletion is allowed, but found new scheduling gate 'example.com/extra-check'`。
+
 ### 5.2 gated 期间放宽的字段
 
 Pod 的 spec 大部分字段创建后不可变。`ValidatePodUpdate` 的白名单里有两项只在 gated 期间生效：
@@ -468,6 +492,59 @@ var updatablePodSpecFields = []string{
 2. `requiredDuringSchedulingIgnoredDuringExecution` 原来为空时可以随便设，原来非空时不能增删 term，每个 term 里只能追加 requirement（`validateNodeAffinityMutation`）。
 
 只能收紧的原因是，外部控制器可能基于原来的约束做过决策（比如按可选节点预留了配额），放宽约束会让那些决策失效。
+
+#### 一次更新里收紧约束并 ungate
+
+拿 4.2 节例子第 3 步之后的 `job-worker-0` 演示，并假设它创建时还带了一条区域亲和。更新前：
+
+```yaml {linenos=inline}
+# Pod job-worker-0 更新前：还剩一个 gate，带一条区域亲和
+apiVersion: v1
+kind: Pod
+metadata:
+  name: job-worker-0
+spec:
+  schedulingGates:
+  - name: example.com/network-ready
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: topology.kubernetes.io/zone
+            operator: In
+            values: ["zone-a", "zone-b"]
+  # ...
+```
+
+网络控制器选好了机架，一次 update 提交下面的 spec：
+
+```yaml {linenos=inline}
+# Pod job-worker-0 更新后：补上约束，删掉最后一个 gate
+spec:
+  nodeSelector:
+    example.com/network: ready
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: topology.kubernetes.io/zone
+            operator: In
+            values: ["zone-a", "zone-b"]
+          - key: example.com/rack
+            operator: In
+            values: ["rack-1"]
+  # ...（schedulingGates 已删除，其余字段不变）
+```
+
+三处改动都能通过校验，因为 `podIsGated` 看的是旧对象（更新前第 7–8 行还有 gate）：
+
+1. 第 3–4 行的 `nodeSelector` 原来为空，新增键是允许的；改掉或删掉已有的键会被 `validateNodeSelectorMutation` 拒绝；
+2. 原来唯一的 term 里，zone 那条 requirement 原样保留在最前面（第 10–12 行），第 13–15 行在后面追加了一条 rack requirement；`validateNodeSelectorTermHasOnlyAdditions` 只要求旧 requirement 是新列表的前缀且一字不变；
+3. `schedulingGates` 从一项变为空，`validateOnlyDeletedSchedulingGates` 只检查有没有新增的名字，删光是允许的。
+
+两种写法会失败：把第 12 行改成 `["zone-a", "zone-b", "zone-c"]` 属于修改已有 requirement，报 `only additions are allowed (no mutations or deletions)`；在 `nodeSelectorTerms` 里再加一个 term，报 `no additions/deletions to non-empty NodeSelectorTerms list are allowed`。这次更新同时满足 4.2 节的事件条件：旧 Pod 有 gate、新 Pod 没有，产生 `UpdatePodSchedulingGatesEliminated`，Pod 带着收紧后的约束进入 `activeQ`。
 
 `podAffinity`/`podAntiAffinity` 不在白名单里。源码注释给出的原因是 `matchLabelKeys`/`mismatchLabelKeys` 会在创建时被展开进 `labelSelector`，允许修改就要处理展开结果和后续人为修改之间的冲突。
 
@@ -495,6 +572,25 @@ func applySchedulingGatedCondition(pod *api.Pod) {
 ```
 
 kubectl 的打印逻辑看到 `PodScheduled` 条件的 reason 是 `SchedulingGated`，就把 STATUS 列显示成它。gate 删光之后，这个条件要等调度器第一次处理该 Pod 时才会被覆盖（调度失败写成 `Unschedulable`，成功则绑定）。
+
+创建 `job-worker-0` 之后用 `kubectl get pod job-worker-0 -o yaml` 查看，status 里是这样一段：
+
+```yaml {linenos=inline}
+# Pod job-worker-0 的 status：创建后、gate 删光前
+status:
+  phase: Pending
+  conditions:
+  - type: PodScheduled
+    status: "False"
+    reason: SchedulingGated
+    message: Scheduling is blocked due to non-empty scheduling gates
+    # ...（lastTransitionTime 由 UpdatePodCondition 填为创建时刻）
+```
+
+片段和上面的代码一一对应：
+
+1. 第 5–8 行就是 `applySchedulingGatedCondition` 写入的四个字段（上面代码第 8–11 行）；
+2. 第 3 行的 `Pending` 由 Pod 的创建策略写入，和 gate 无关，所以单看 `phase` 分不出 Pod 是 gated 还是调度失败，要看第 7 行的 `reason`。
 
 字段语义、校验规则和状态展示是正常路径。接下来是几个不按正路走的组合。
 

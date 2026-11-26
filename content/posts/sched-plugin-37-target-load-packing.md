@@ -242,6 +242,28 @@ func SetDefaultTrimaranSpec(args *TrimaranSpec) {
 
 `checkSpecs` 只在没有 `watcherAddress` 时校验 provider 类型，合法值只有上面三种，否则 `New` 返回 `invalid MetricProvider.Type` 错误，调度器启动失败。
 
+#### 库模式在配置里的写法
+
+服务模式只需要一行 `watcherAddress`，第四节的示例配置就是这样写的；库模式则要把 `MetricProviderSpec` 展开：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration（节选）：库模式，调度器进程内直接查询 Prometheus
+pluginConfig:
+- name: TargetLoadPacking
+  args:
+    metricProvider:
+      type: Prometheus
+      address: https://prometheus-k8s.monitoring.svc:9091
+      insecureSkipVerify: false
+```
+
+这几行和上面的类型、默认值逐一对应：
+
+1. `TrimaranSpec` 在 v1 类型里以 `json:",inline"` 内嵌，所以 `metricProvider` 直接写在 `args` 下（第 5 行），不需要再套一层；
+2. 第 6 行的 `type` 只能是 `KubernetesMetricsServer`、`Prometheus`、`SignalFx` 之一，大小写要完全一致，否则 `checkSpecs` 报错；
+3. 第 8 行显式写 `false` 才会校验证书，省略时 `SetDefaultTrimaranSpec` 第 7–8 行把它设成 `true`；
+4. `watcherAddress` 和 `metricProvider` 同时写时，Collector 代码第 2 行的分支先判断 `WatcherAddress`，走服务模式，`metricProvider` 整段被忽略。
+
 ### 2.4 Collector：每 30 秒一份快照
 
 指标在 load-watcher 里是每分钟刷新的，插件不能每次打分都去问一遍，于是每个插件实例各持有一个 Collector，把结果缓存在本地。
@@ -501,6 +523,50 @@ func PredictUtilisation(container *v1.Container) int64 {
 用 limit 而不用 request 的原因在 KEP 里有说明：limit 是更强的上界，按上界预测，利用率更不容易冲过目标值。代价是 limit 远大于 request 的 Pod 会被视为「很重」。
 
 Pod 级的预测只累加 `Spec.Containers`，再加上 `Spec.Overhead` 里的 CPU。**init 容器不参与预测**，Pod 级资源（`spec.resources`）也不会被读取。
+
+#### 三层兜底落到一个 Pod 上
+
+下面这个 Pod 的三个 app 容器正好各落在一层上：
+
+```yaml {linenos=inline}
+# Pod：三个容器分别命中 PredictUtilisation 的三个分支（节选）
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-multi
+spec:
+  schedulerName: trimaran
+  initContainers:
+  - name: init-config
+    image: busybox
+    resources:
+      limits:
+        cpu: "4"
+  containers:
+  - name: app
+    image: nginx
+    resources:
+      requests:
+        cpu: 500m
+      limits:
+        cpu: "1"
+  - name: proxy
+    image: example/proxy:1.0
+    resources:
+      requests:
+        cpu: 200m
+  - name: log
+    image: busybox
+```
+
+`PredictUtilisation` 逐个容器算出的值如下：
+
+1. `app` 有 CPU limit（第 20–21 行），取 limit，1000m；
+2. `proxy` 只有 request（第 25–26 行），`round(200 × 1.5)` 得 300m；
+3. `log` 两者都没有（第 27–28 行），取 `requestsMilliCores`，1000m；
+4. `init-config`（第 8–13 行）不参与，Pod 合计 2300m，在 8 核节点上是 28.75%。
+
+同一个 Pod 在 `NodeResourcesFit` 眼里是另一个数。apiserver 的默认值逻辑会给只写了 limit 的容器补上同值 request，`init-config` 的 request 因此是 4 核；Fit 取「app 容器 request 之和」与「最大的 init 容器 request」中的较大者，即 `max(500m + 200m, 4000m) = 4000m`。Filter 按 4 核找节点，TLP 却按 2.3 核预测用量。
 
 ### 3.3 Score
 

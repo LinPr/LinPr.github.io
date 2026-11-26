@@ -109,6 +109,50 @@ func getDefaultPlugins() *v1.Plugins {
 
 这份列表本身就有语义。注释里写明 `DynamicResources` 要排在 `DefaultPreemption` 前面（第 20–26 行）：两者都实现了 PostFilter，Pod 调度失败时，先尝试释放一个闲置的 ResourceClaim，比驱逐一个正在干活的 Pod 代价小。本系列的文章顺序基本就是这份列表的顺序。
 
+#### Profile 在配置文件里的样子
+
+`getDefaultPlugins` 只是默认值，用户写的 `KubeSchedulerConfiguration` 在它上面做增减。下面的配置保留默认 profile，再加一个调整了打分的 profile：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：两个 profile，第二个调整了打分插件
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+  - schedulerName: default-scheduler
+  - schedulerName: batch-scheduler
+    plugins:
+      multiPoint:
+        enabled:
+          - name: ImageLocality
+            weight: 5
+        disabled:
+          - name: NodeResourcesBalancedAllocation
+```
+
+这份配置按行对应上面的默认列表：
+
+1. 第 5 行的 `default-scheduler` 不写 `plugins`，插件链就是 `getDefaultPlugins` 加上 feature gate 追加的那几个；
+2. 第 9–11 行在 `multiPoint.enabled` 里写了默认列表中已有的 `ImageLocality`，合并函数 `mergePluginSet`（`pkg/scheduler/apis/config/v1/default_plugins.go`）会原位替换默认项：位置不变，打分权重从 1 改成 5；
+3. 第 12–13 行把 `NodeResourcesBalancedAllocation` 从它实现的所有扩展点上去掉；
+4. 两个 profile 都没写 `queueSort`，QueueSort 都是默认的 `PrioritySort`，满足 2.1 节「所有 profile 的 QueueSort 必须相同」的校验。
+
+Pod 用 `spec.schedulerName` 选择 profile：
+
+```yaml {linenos=inline}
+# Pod：选择 batch-scheduler 这个 profile
+apiVersion: v1
+kind: Pod
+metadata:
+  name: batch-worker
+spec:
+  schedulerName: batch-scheduler
+  containers:
+  - name: main
+    image: busybox
+```
+
+第 7 行的名字必须和某个 profile 的 `schedulerName` 一致。写成一个不存在的名字，2.1 节的 `responsibleForPod` 判为假，Pod 不会进入调度队列，一直 Pending，调度器也不会给它写任何条件或事件。
+
 ### 1.2 由 feature gate 追加的插件
 
 另外 5 个插件在对应 feature gate 打开时才追加进来。其中 `NodeDeclaredFeatures` 的 gate 在 1.37 已经 GA 并锁定开启，所以实际的默认 profile 是 20 个插件；其余几个 gate 默认关闭：
@@ -314,6 +358,26 @@ func (a *SchedulingAlgorithm) numFeasibleNodesToFind(percentageOfNodesToScore *i
 
 这意味着大集群里打分阶段看到的只是一部分节点，「全局最优」只是局部最优，后面讲打分插件时会反复遇到这个前提。
 
+这个比例可以在配置里固定，全局写一个值，单个 profile 还能覆盖：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：固定 percentageOfNodesToScore
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+percentageOfNodesToScore: 30
+profiles:
+  - schedulerName: default-scheduler
+  - schedulerName: batch-scheduler
+    percentageOfNodesToScore: 100
+```
+
+仍以 1000 个节点的集群为例，两个 profile 的结果不同：
+
+1. `default-scheduler` 没写自己的值，profile 级字段为 `nil`，`numFeasibleNodesToFind` 在省略的那段（上面代码第 6 行）退回全局的 30（本段第 4 行），找到 300 个可行节点就停；
+2. `batch-scheduler` 的 profile 级取值（第 8 行）优先于全局值，100 表示 1000 个节点全部跑 Filter；
+3. 两个字段的合法范围都是 0~100（`validatePercentage`），写 0 或都不写就回到上面的自适应公式；
+4. 无论写多少，节点数不到 100 时仍检查全部节点，算出来不足 100 个时也按 100 个找。
+
 ### 3.3 Status code 决定了失败之后的路
 
 插件返回的不是布尔值，而是 `Status`。它的 code 决定了调度器下一步做什么：
@@ -368,6 +432,36 @@ Pod 要等下一个周期才能真正放上去，那时就会走上面的「提�
 | --- | --- | --- | --- |
 | node-1 | `low-a`（priority 0，requests 3 CPU） | 3 | 1 |
 | node-2 | `sys-a`（priority 2000000000，requests 3 CPU） | 3 | 1 |
+
+新 Pod `web` 的优先级来自它引用的 PriorityClass：
+
+```yaml {linenos=inline}
+# PriorityClass 与 Pod：抢占算例里的 web
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: web-critical
+value: 1000
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web
+spec:
+  priorityClassName: web-critical
+  containers:
+  - name: web
+    image: nginx
+    resources:
+      requests:
+        cpu: "2"
+```
+
+清单里有三处决定了下面的走向：
+
+1. 第 6 行的 `value` 由 apiserver 的 Priority 准入插件在创建 `web` 时拷贝成 `spec.priority: 1000`，Pod 自己只写第 13 行的名字（第 02 篇 2.1 节）；`low-a` 没写 `priorityClassName`，集群里也没有 `globalDefault` 的 PriorityClass，所以是 0；
+2. PriorityClass 没写 `preemptionPolicy`，默认是 `PreemptLowerPriority`，`web` 有资格抢占；写成 `Never` 的话，下面第 2 步的 PostFilter 直接放弃（第 02 篇 6.2 节）；
+3. 第 19 行的 `cpu: "2"` 是 `NodeResourcesFit` 拿去和节点剩余 1 CPU 比较的请求量。
 
 新 Pod `web` 的 `spec.priority` 是 1000，requests 2 CPU。它从出队到落到节点上经过五步：
 

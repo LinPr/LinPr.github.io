@@ -221,13 +221,67 @@ func applyPodLevelResources(result, effectiveResources v1.ResourceList) {
 **Pod 级的值会覆盖容器级聚合的结果，不是相加**（第 7 行是直接赋值，不是 `addResourceList`）。生效范围有两条规则：
 
 1. 只对 CPU、内存和 hugepages 生效；
-2. 写在 Pod 级的扩展资源或临时存储会被忽略，这些维度仍然以容器级聚合为准。
+2. 扩展资源、临时存储写不进 Pod 级：apiserver 的 `validatePodResourceName`（`pkg/apis/core/validation/validation.go`）只接受 `cpu`、`memory` 和 `hugepages-*`，其余资源名直接被拒绝；`applyPodLevelResources` 里的 `IsSupportedPodLevelResource` 判断是第二道过滤，这些维度始终以容器级聚合为准。
+
+一个只在 Pod 级写总量、容器只写了部分 requests 的清单：
+
+```yaml {linenos=inline}
+# Pod：Pod 级 resources（PodLevelResources，Beta，默认开）
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-level
+spec:
+  resources:
+    requests:
+      cpu: "2"
+      memory: 2Gi
+    limits:
+      cpu: "4"
+      memory: 4Gi
+  containers:
+  - name: app
+    image: nginx:1.27
+    resources:
+      requests:
+        cpu: 500m
+  - name: metrics
+    image: prom/statsd-exporter:v0.27.1
+```
+
+按 `PodRequests` 的顺序算这个 Pod：
+
+1. 容器级聚合：只有第 19 行的 `cpu: 500m`，内存没有任何容器写，聚合结果是 `cpu: 500m`；
+2. Pod 级覆盖：第 9–10 行把 CPU 换成 2000m、补上内存 2Gi，`ComputePodResourceRequest` 得到 `(2000m, 2Gi)`；
+3. 第 19 行的值必须不大于第 9 行，否则 `validatePodResourceConsistency` 以 `must be greater than or equal to aggregate container requests` 拒绝；
+4. 在第 8 行下面加一项 `nvidia.com/gpu` 或 `ephemeral-storage`，创建时就会得到 `NotSupported` 错误。
 
 ### 2.4 overhead
 
 前两步都只涉及容器和 Pod 自己声明的量，还有一项来自运行时。`spec.overhead` 由 RuntimeClass 准入控制器在创建 Pod 时根据 `runtimeClassName` 填入，代表沙箱运行时（Kata、gVisor 等）自身的开销。
 
 它在最后**相加**，并且在 Pod 级覆盖之后，所以 Pod 级 resources 写 2 核，overhead 100m，最终请求是 2100m。
+
+2.2 节例子里 `runtimeClassName: kata` 引用的 RuntimeClass 是这样的：
+
+```yaml {linenos=inline}
+# RuntimeClass：overhead 的来源
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: kata
+handler: kata
+overhead:
+  podFixed:
+    cpu: 100m
+    memory: 120Mi
+```
+
+从 RuntimeClass 到请求量分三步：
+
+1. 第 5 行的名字和 Pod 的 `runtimeClassName` 对上，第 6 行的 `handler` 交给节点上的 CRI 选择运行时；
+2. Pod 创建时，RuntimeClass 准入插件（`plugin/pkg/admission/runtimeclass/admission.go` 的 `setOverhead`）把第 8–10 行的 `podFixed` 复制进 `spec.overhead`；Pod 自己写了 `spec.overhead` 且与之不同，会被拒绝；
+3. `PodRequests` 在最后加上这份 overhead，2.2 节算例的最后一行就是这样从 `(1200m, 704Mi)` 变成 `(1300m, 824Mi)` 的。
 
 ### 2.5 落到 Resource 结构体
 
@@ -418,6 +472,39 @@ func SetDefaults_NodeResourcesFitArgs(obj *configv1.NodeResourcesFitArgs) {
 1. `ignoredResources` 每项必须是合法的标签名；`ignoredResourceGroups` 不能包含 `/`。
 2. `scoringStrategy.type` 只能是三种之一；每个资源的权重必须在 `(0, 100]`。
 3. `type` 为 `RequestedToCapacityRatio` 时必须给 `shape`，否则必须**不**给。`shape` 的点按利用率严格递增，利用率在 0 到 100，分数在 0 到 10（`MaxCustomPriorityScore`）。
+
+这些参数写在调度器配置文件的 `pluginConfig` 里：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：给 NodeResourcesFit 配参数
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: default-scheduler
+  pluginConfig:
+  - name: NodeResourcesFit
+    args:
+      ignoredResources:
+      - example.com/foo
+      ignoredResourceGroups:
+      - vendor.example.com
+      scoringStrategy:
+        type: MostAllocated
+        resources:
+        - name: cpu
+          weight: 1
+        - name: memory
+          weight: 1
+        - name: nvidia.com/gpu
+          weight: 5
+```
+
+四组字段分别落到前面讲的规则上：
+
+1. 第 9–10 行：Filter 不再检查 `example.com/foo`，节点没上报它也不会报 `Insufficient`；
+2. 第 11–12 行：所有以 `vendor.example.com/` 开头的扩展资源都跳过；写成 `vendor.example.com/` 会被校验以 `resource group name can't contain '/'` 拒绝；
+3. 第 14 行：打分改为装箱；同时再写 `requestedToCapacityRatio` 会被拒绝（`must be nil when type is not RequestedToCapacityRatio`）；
+4. 第 15–21 行：`resources` 一旦写了，`SetDefaults_NodeResourcesFitArgs` 不会再补 CPU 和内存，所以要给 GPU 加权时 `cpu`、`memory` 也得显式列出；`weight` 不写或写 0 由默认值填成 1，写 101 则被校验拒绝。
 
 `NewFit` 根据策略类型从一张表里取出打分器：
 
@@ -642,6 +729,41 @@ CPU、内存、临时存储在代码里是同构的三段，判定式完全相�
 2. `Unresolvable` 为真（请求 > 0，第 28 行）。
 
 所以请求了 `nvidia.com/gpu` 的 Pod 在没有 GPU 的节点上返回 `UnschedulableAndUnresolvable`，抢占不会去这些节点上找受害者。
+
+扩展资源在节点和 Pod 两侧各有一个落点：
+
+```yaml {linenos=inline}
+# Node（kubelet 上报的 status 片段）与请求 GPU 的 Pod
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-1
+status:
+  allocatable:
+    cpu: 15890m
+    memory: 61Gi
+    pods: "110"
+    nvidia.com/gpu: "4"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: trainer
+spec:
+  containers:
+  - name: train
+    image: nvcr.io/nvidia/pytorch:24.05-py3
+    resources:
+      limits:
+        nvidia.com/gpu: 1     # requests 由默认值补成同样的 1
+```
+
+对照上面的循环：
+
+1. 第 11 行由设备插件经 kubelet 上报，进入节点的 `ScalarResources`；第 23 行经默认值补出 `requests`，进入 `podRequest.ScalarResources`；
+2. `gpu-1` 上已请求 4 张卡时，`1 > 4 − 4` 成立，报 `Insufficient nvidia.com/gpu`，`Unresolvable` 是 `1 > 4`，不成立，可以抢占；
+3. 换到一个没有第 11 行的 CPU 节点，`allocatable` 取到 0，`Unresolvable` 为真；
+4. 扩展资源不允许超售：只写 `requests` 不写 `limits` 会被 apiserver 以 `Limit must be set for non overcommitable resources` 拒绝，两者都写时必须相等。
 
 `ShouldDelegateResourceToDRA` 处理的是 `DRAExtendedResource`（1.37 GA）：节点 `allocatable` 里没有这种资源，但集群里存在一个 `DeviceClass` 声明了 `extendedResourceName` 与之对应，说明这种资源由 DRA 驱动通过 ResourceSlice 提供。
 
@@ -961,6 +1083,40 @@ func BuildBrokenLinearFunction(shape FunctionShape) func(int64) int64 {
 2. B：CPU 利用率 81，落在第二段，`100 + (30−100)×(81−70)/30 = 100 + (−770/30) = 100 − 25 = 75`（Go 的整数除法向零截断）；内存利用率 31，`100×31/70 = 44`；平均 `round((75+44)/2) = round(59.5) = 60`。
 
 选 B，但理由和 `MostAllocated` 不同：B 的 CPU 超过了 70% 的「甜区」被扣分，它赢在内存。
+
+这条 `shape` 在调度器配置里写成：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：上面算例用的 RequestedToCapacityRatio
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: default-scheduler
+  pluginConfig:
+  - name: NodeResourcesFit
+    args:
+      scoringStrategy:
+        type: RequestedToCapacityRatio
+        resources:
+        - name: cpu
+          weight: 1
+        - name: memory
+          weight: 1
+        requestedToCapacityRatio:
+          shape:
+          - utilization: 0
+            score: 0
+          - utilization: 70
+            score: 10
+          - utilization: 100
+            score: 3
+```
+
+配置和算例的对应关系：
+
+1. 第 18–23 行的三个点就是 `[{0,0},{70,10},{100,3}]`，`score` 按 0 到 10 写，`requestedToCapacityRatioScorer` 乘以 10 后才是算例里的 (70,100)、(100,30)；
+2. 第 11–15 行的两项权重都是 1，所以 B 的平均是 `(75+44)/2`；
+3. `score` 写成 30、或者 `utilization` 写成 70 之后又写 70，都会被 `validateFunctionShape` 拒绝；保留第 10 行却删掉第 16–23 行，同样被拒绝（`must be specified when type is RequestedToCapacityRatio`）。
 
 `NodeResourcesFit` 的 `ScoreExtensions()` 返回 `nil`，没有 NormalizeScore：三种策略的输出天然在 0 到 100 之间，乘以权重 1 直接进入总分。
 

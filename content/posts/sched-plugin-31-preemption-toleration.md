@@ -272,6 +272,36 @@ func (pl *PreemptionToleration) PostFilter(ctx context.Context, state fwk.CycleS
 
 想要「门槛以下永远抢不动」，必须同时写 `toleration-seconds: "-1"`。KEP 里的 `low-non-preempted` 正是这么配的。
 
+把这个反直觉的写法和修正后的写法放在一起：
+
+```yaml {linenos=inline}
+# 反例：只写门槛，toleration-seconds 取默认 0
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: batch-guarded
+  annotations:
+    preemption-toleration.scheduling.x-k8s.io/minimum-preemptable-priority: "10000"
+value: 8000
+---
+# 修正：门槛以下永远抢不动
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: batch-guarded
+  annotations:
+    preemption-toleration.scheduling.x-k8s.io/minimum-preemptable-priority: "10000"
+    preemption-toleration.scheduling.x-k8s.io/toleration-seconds: "-1"
+value: 8000
+```
+
+一个优先级 9000 的抢占者面对两份配置时，`ExemptedFromPreemption` 的走向不同：
+
+1. 两份的第 7 行和第 16 行相同，9000 小于门槛 10000，都越过门槛判断（第 34–37 行），继续往下走；
+2. 反例没有 `toleration-seconds`，`TolerationSeconds` 为 0，对已有 `PodScheduled=True` 的 Pod，第 51 行的 `scheduledAt + 0 > now` 不成立，不豁免；
+3. 修正后第 17 行是 `"-1"`，在第 39–41 行直接返回豁免，走不到时间比较；
+4. 两份的第 8、18 行 `value` 都是 8000，注解只影响「谁能抢它」，不影响它作为抢占者时的优先级。
+
 反过来，只写 `toleration-seconds` 不写门槛也几乎无效：门槛默认是 `value + 1`，任何能抢它的 Pod（优先级严格更高）都达到了门槛，在第五步就判为不豁免，根本走不到时长判断。
 
 ### 3.2 门槛只能往上调
@@ -372,6 +402,36 @@ func (pl *PreemptionToleration) PostFilter(ctx context.Context, state fwk.CycleS
 | `a` | `low`（无 annotation） | 2 | `now` 前 60 分钟 |
 | `b` | `low-non-preempted-10min` | 4 | `now` 前 3 分钟 |
 | `c` | `low-non-preempted-10min` | 2 | `now` 前 30 分钟 |
+
+插件读到的 `b` 是这样的（status 由 API server 在绑定时写入）：
+
+```yaml {linenos=inline}
+# Pod b：受 low-non-preempted-10min 保护，3 分钟前调度
+apiVersion: v1
+kind: Pod
+metadata:
+  name: b
+spec:
+  nodeName: n1
+  priorityClassName: low-non-preempted-10min
+  priority: 8000
+  containers:
+  - name: train
+    image: trainer:2.0
+    resources:
+      requests: {cpu: "4"}
+status:
+  conditions:
+  - type: PodScheduled
+    status: "True"
+    lastTransitionTime: "2026-11-20T10:57:00Z"
+```
+
+`ExemptedFromPreemption` 用到的是其中三处：
+
+1. 第 8 行的 `priorityClassName` 决定去 Lister 里取哪个 `PriorityClass`、解析哪组 annotation；第 9 行的 `priority` 由 Priority 准入插件按类名填好，`SelectVictimsOnNode` 先用它判断 `b` 低于抢占者；
+2. 第 17–19 行是第 44–51 行读的 condition，`lastTransitionTime` 即 `scheduledAt`。设 `now` 为 11:00:00，10:57:00 加 600 秒是 11:07:00，晚于 `now`，判豁免；
+3. 第 14 行的 4 核在 `b` 被豁免后仍留在节点副本上，所以下文第 2 步只空出 4 核。
 
 抢占者 `p` 的优先级是 9000（`high`），请求 2 核。`PreemptionToleration` 的 `SelectVictimsOnNode` 在 `n1` 上分五步：
 

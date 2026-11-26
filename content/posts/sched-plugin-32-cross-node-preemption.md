@@ -70,6 +70,49 @@ scheduled due to "cross node" constraints such as PodTopologySpread and PodAntiA
 2. zone1 的 node-a、node-b 各有一个带 `foo` 的低优先级 Pod（第 6–7 行）；
 3. zone2 只有 node-x，它的 `pods` 容量是 1（第 13 行的 `Capacity(onePodRes)`），已经被一个优先级同为 100 的 `pod-x`（第 8 行）占满。
 
+把测试里的抢占者 `p` 和 node-x 写成真实清单：
+
+```yaml {linenos=inline}
+# 抢占者 p：按 zone 均匀分布
+apiVersion: v1
+kind: Pod
+metadata:
+  name: p
+  labels:
+    foo: ""
+spec:
+  priorityClassName: high          # value: 100 的 PriorityClass
+  topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: zone
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchExpressions:
+      - {key: foo, operator: Exists}
+  containers:
+  - name: app
+    image: nginx
+---
+# node-x：zone2 唯一的节点，只能放 1 个 Pod
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-x
+  labels:
+    zone: zone2
+    node: node-x
+status:
+  allocatable:
+    pods: "1"
+  # ...
+```
+
+清单里的字段和测试构造器一一对应：
+
+1. 第 6–7 行的 `foo` 标签让 `p` 自己也被第 14–16 行的 `labelSelector` 选中，PodTopologySpread 计数时把 `p` 本身算进目标 zone，所以放进 zone1 后计数是 3 减去被驱逐的个数；
+2. 第 11–13 行就是 `SpreadConstraint(1, "zone", v1.DoNotSchedule, fooSelector)`，`topologyKey: zone` 对应节点上第 27 行的 `zone` 标签，node-a、node-b 的这个标签都是 `zone1`；
+3. 第 30–31 行是 `Capacity(onePodRes)` 的效果，`pod-x` 已经占满这一个名额，`NodeResourcesFit` 在 node-x 上以 Pod 数不足拒绝 `p`；
+4. 第 9 行引用的 `PriorityClass` 值为 100，与 `pod-x` 相同，所以 `pod-x` 不是候选受害者。
 {{< figure src="/images/posts/sched-plugins/32-why-cross-node.svg" link="/images/posts/sched-plugins/32-why-cross-node.svg" caption="zone1 的 foo 计数来自两个节点，单节点抢占每次只能移除其中一个；只有同时移除 pod-a 与 pod-b，p 才能放进 zone1（点击查看大图）" >}}
 
 逐个节点看 in-tree 抢占能做什么：
@@ -81,6 +124,26 @@ scheduled due to "cross node" constraints such as PodTopologySpread and PodAntiA
 三个节点都失败，`p` 无法调度。而只要同时驱逐 `pod-a` 和 `pod-b`，zone1 计数变为 1，skew 为 1，`p` 放在 node-a 或 node-b 上都满足约束。测试期望的结果正是这两个候选。
 
 反亲和的第二个测试用例结构相同：`p` 对带 `foo` 的 Pod 有 zone 级别的 required 反亲和，zone1 里两个节点上都有 `foo`，必须两个一起驱逐，`p` 才能进入 zone1。
+
+这个用例里 `p` 的约束换成了 required 反亲和：
+
+```yaml {linenos=inline}
+# 抢占者 p：不与任何带 foo 标签的 Pod 处在同一个 zone
+spec:
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - topologyKey: zone
+        labelSelector:
+          matchExpressions:
+          - {key: foo, operator: Exists}
+```
+
+对照单节点抢占的视角：
+
+1. 第 6 行的 `topologyKey: zone` 把冲突范围扩大到整个 zone，node-a 上的 `pod-a` 和 node-b 上的 `pod-b` 都匹配第 9 行，都会让 `p` 进不了 zone1；
+2. 在 node-a 上只驱逐 `pod-a`，`InterPodAffinity` 在 PreFilter 写入 CycleState 的 `clusterWideAntiAffinityCounts` 里，`zone=zone1` 这一项经 `RemovePod` 减一后仍有 `pod-b` 的 1，Filter 照样失败；node-b 对称；
+3. 只有一次移除两者，zone1 的计数归零，这正是测试期望的两个候选。
 
 两个用例的共同点是判定依据分布在多个节点上，任何单节点的视角都看不到全貌。下一节看它怎么把多个节点放进同一次评估。
 

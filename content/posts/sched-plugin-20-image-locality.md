@@ -102,6 +102,35 @@ func sumImageScores(nodeInfo fwk.NodeInfo, pod *v1.Pod, totalNumNodes int) (int6
 
 只有节点上存在的镜像才会累加分数，但**每一个来源都计入 `imageCount`**（第 17 行、第 26 行），不管节点上有没有。两个容器用同一个镜像，会被累加两次，`imageCount` 也计两次。
 
+三类来源在 Pod 清单里的位置：
+
+```yaml {linenos=inline}
+# Pod：三类镜像来源各一个，imageCount = 3
+apiVersion: v1
+kind: Pod
+metadata:
+  name: llm-infer
+spec:
+  initContainers:
+  - name: prepare
+    image: registry.example.com/tools:v1
+  containers:
+  - name: server
+    image: registry.example.com/app:v3
+    volumeMounts:
+    - name: weights
+      mountPath: /models
+  volumes:
+  - name: weights
+    image:
+      reference: registry.example.com/llm-weights:v1
+      pullPolicy: IfNotPresent
+```
+
+1. 第 9、12、19 行分别被 `sumImageScores` 的三个循环读到，`imageCount = 3`，上限变成 3000MiB；
+2. `image` 卷按第 19 行的 `reference` 匹配，第 20 行的 `pullPolicy` 不影响打分；
+3. 假设节点上只有第 12 行的 800MiB 镜像，且全集群 50 个节点里 40 个有它（第二节第一行的情形），`sum = 640MiB`，得分 `100 × (640 − 23) / (3000 − 23) = 20`，比单容器时的 63 低得多。
+
 ### 1.2 按铺开程度缩放
 
 ```go {linenos=inline}
@@ -244,6 +273,32 @@ func Images(nodeStatusMaxImages int32,
 这两个上限是为了控制 Node 对象的大小：Node 对象被所有 kube-proxy、CNI 插件、调度器 watch，每次 kubelet 更新状态都要序列化传输。**代价是 `ImageLocality` 看不到小镜像。** 在一个缓存了上百个镜像的节点上，排在 50 名之后的镜像对调度器是不可见的。好在小镜像拉取本来就快，打分阈值下限 23MiB 也决定了它们贡献不了多少分，所以截断的影响主要落在「节点上镜像很多，而目标镜像不在最大的 50 个里」这种情况。
 
 一个镜像如果被打了超过 5 个 tag，或者有多个 digest，后面的名字会被截掉。Pod 用了被截掉的那个名字，调度器就认为节点上没有这个镜像。
+
+节点对象上的数据和 kubelet 侧的上限配置分别是这样：
+
+```yaml {linenos=inline}
+# Node：node-41 拉完镜像后 status.images 里的一项（kubectl get node node-41 -o yaml 摘录）
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-41
+status:
+  images:
+  - names:
+    - registry.example.com/app@sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+    - registry.example.com/app:v3
+    sizeBytes: 838860800
+  # ...
+---
+# KubeletConfiguration：放宽上报的镜像数
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+nodeStatusMaxImages: 200
+```
+
+1. 第 9–10 行先 digest 后 tag，4.3 节的 `addNodeImageStates` 会为每个名字建一个独立条目；Pod 写 `registry.example.com/app:v3` 命中的是第 10 行；
+2. 第 11 行就是 `Size`，838860800 字节即 800MiB，也就是第二节算例里的镜像；
+3. 第 17 行把截断上限从 50 提到 200（`-1` 表示不限），代价是 Node 对象变大，所有 watch Node 的组件都要多传这部分数据。
 
 ### 4.2 名字归一化
 

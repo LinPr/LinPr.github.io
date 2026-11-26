@@ -131,6 +131,50 @@ func initNodePowerModels(powerModel map[string]config.PowerModel) error {
 2. `deployment/README.md` 里给的 JSON 模板把系数写成了带引号的字符串（`"k0":"<replace with node 1 k0>"`），而 `PowerModel` 的字段是 `float64`，替换时必须写成数字，否则解码报错，`New` 失败；
 3. 同目录下的 `deployment.yaml` 既没有挂载这个 ConfigMap，也没有设置 `NODE_POWER_MODEL`，需要自己补上。
 
+#### 文件方式的完整写法
+
+把三处要求都补上，调度器配置和 Deployment 各需要改几行：
+
+```yaml {linenos=inline}
+# 用文件提供功耗模型：调度器配置的 args 与 Deployment（节选）
+pluginConfig:
+- name: Peaks
+  args:
+    WatcherAddress: http://load-watcher.kube-system.svc:2020
+    NodePowerModel: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: peaks
+  namespace: kube-system
+spec:
+  template:
+    spec:
+      containers:
+      - name: peaks
+        # ...
+        env:
+        - name: NODE_POWER_MODEL
+          value: /etc/peaks/peaks-power-model-config.json
+        volumeMounts:
+        - name: power-model
+          mountPath: /etc/peaks
+          readOnly: true
+      volumes:
+      - name: power-model
+        configMap:
+          name: peaks-node-power-model
+```
+
+各段的作用：
+
+1. 第 6 行的 `NodePowerModel: {}` 让 `args.NodePowerModel` 成为非 nil 的空 map，`initNodePowerModels` 解码出的模型才会写进插件用的那个 map；
+2. 第 26–29 行引用 README 里 `kubectl create configmap peaks-node-power-model --from-file=peaks-power-model-config.json` 创建的 ConfigMap，`--from-file` 以文件名作为 key，挂载到第 24 行的目录后就是同名文件；
+3. 第 20–21 行的环境变量指向这个文件，`os.ReadFile(os.Getenv("NODE_POWER_MODEL"))` 读的就是它。
+
+第 5、6 行的键名首字母大写，原因是 2.1 节的 json tag 写坏了；ConfigMap 里 JSON 的 `k0`、`k1`、`k2` 则是小写，因为 `PowerModel` 的 tag 是正常的。
+
 找不到节点对应的模型时，使用零值：
 
 ```go {linenos=inline}
@@ -311,6 +355,41 @@ Score 在以下五种情况下都返回 0：
 | n1 | 30 | 0.02 | 30% | 55% |
 | n2 | 60 | 0.015 | 10% | 35% |
 | n3 | 30 | 0.02 | 90% | 115% |
+
+模型和待调度 Pod 写成清单是这样：
+
+```yaml {linenos=inline}
+# 算例对应的 Peaks 参数与待调度 Pod（节选）
+pluginConfig:
+- name: Peaks
+  args:
+    WatcherAddress: http://load-watcher.kube-system.svc:2020
+    NodePowerModel:
+      n1: {k1: 30, k2: 0.02}
+      n2: {k1: 60, k2: 0.015}
+      n3: {k1: 30, k2: 0.02}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: batch
+spec:
+  schedulerName: Peaks
+  containers:
+  - name: app
+    image: example/batch:1.0
+    resources:
+      requests:
+        cpu: "2"
+```
+
+清单和表格的对应关系有三点：
+
+1. 第 7–9 行以节点名为键，`k0` 省略时取 0，它在 ΔP 里被消掉，不影响结果；
+2. 第 16 行的 `schedulerName: Peaks` 对应 `deployment/scheduler-config.yaml` 里的 Profile 名；
+3. 第 21–22 行的 2 核 request 是 `GetResourceRequestQuantity` 读到的值，在 8 核节点上就是 b = 25%。
+
+仓库里的 `deployment/test-po.yaml` 没有写 `resources`。那个 Pod 的 request 是 0，p 等于 x，每个节点的 ΔP 都是 0，Score 全部返回 0，`NormalizeScore` 提前返回，用它测试看不出 Peaks 有任何效果。
 
 **n1**：ΔP = 30 × (e^1.1 − e^0.6) = 30 × (3.00417 − 1.82212) = 35.46 W，原始分 35461416706677740。
 

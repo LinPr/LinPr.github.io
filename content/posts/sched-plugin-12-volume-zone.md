@@ -47,6 +47,28 @@ spec:
 
 不满足的节点返回 `UnschedulableAndUnresolvable`，原因 `node(s) had no available volume zone`。
 
+节点一侧要比较的是同名的两个标签，通常由 kubelet 或 cloud-controller-manager 打上：
+
+```yaml {linenos=inline}
+# Node：位于 us-west1-b 的节点（只列出拓扑标签）
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-b1
+  labels:
+    topology.kubernetes.io/region: us-west1
+    topology.kubernetes.io/zone: us-west1-b
+    # ...
+```
+
+拿它和上面的 `pd-data-1` 逐条比对：
+
+1. PV 的 region 要求 `us-west1`，节点第 7 行相同，通过；
+2. PV 的 zone 取值集合是 `{us-west1-a, us-west1-b}`，节点第 8 行的 `us-west1-b` 在集合里，通过；
+3. 同一份 PV 遇到 zone 为 `us-west1-c` 的节点，第 2 条不满足，返回 `node(s) had no available volume zone`。
+
+PV 的标签值里可以有 `__`，节点的标签值只能是单个可用区，所以比较永远是「节点的一个值是否落在 PV 的集合里」。
+
 参与比较的标签只有四个：
 
 ```go {linenos=inline}
@@ -373,6 +395,38 @@ PV 的 hint 没有检查「这块 PV 是不是 Pod 要用的」，任何 PV 的�
 4. Filter 中 node-b1 的 zone 值 `us-west1-b` 不在集合里，返回 `UnschedulableAndUnresolvable`；node-a1 通过。
 
 同一个 Pod、同一块 PV，两次调度被放到了不同的可用区。如果 Pod 自己还用 `nodeSelector` 限定在 `us-west1-b`，第二次调度时 node-a1 被 NodeAffinity 拒绝、node-b1 被 VolumeZone 拒绝，就没有任何节点可选。
+
+同样的约束改写进 PV 的 `nodeAffinity`，两次调度的结论就一致了：
+
+```yaml {linenos=inline}
+# PV：manual-pv-1 用 nodeAffinity 而不是 label 声明可用区
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: manual-pv-1
+spec:
+  capacity:
+    storage: 100Gi
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: manual-wffc
+  csi:
+    driver: pd.csi.storage.gke.io
+    volumeHandle: projects/p/zones/us-west1-a/disks/manual-1
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: topology.kubernetes.io/zone
+          operator: In
+          values: ["us-west1-a"]
+```
+
+和打标签的版本相比，变化在两处：
+
+1. `metadata` 里不再有 `topology.kubernetes.io/zone` 标签，VolumeZone 的 `getPVTopologies` 展开结果为空，两次调度的 PreFilter 都返回 `Skip`；
+2. 第 14–20 行的 `nodeAffinity` 由 VolumeBinding 检查：首次调度时 `FindMatchingVolume` 的第 5 个条件让 node-b1 匹配不到这块 PV（上一篇 5.2 节），第 10 行的 `manual-wffc` 是 provisioner 为 `kubernetes.io/no-provisioner` 的静态 class，不能改走动态供给，`app-0` 只能落到 node-a1；重建后 `checkBoundClaims` 用 `CheckNodeAffinity` 再查一次，结论相同。
+
+`nodeSelectorTerms` 里只能写 `matchExpressions` 和 `matchFields`，没有 `matchLabels`；这里用 `In` 加一个可用区，等价于原来标签的取值集合。
 
 重复检查。早期由云厂商 admission 创建的 in-tree PV，往往同时带有 zone 标签和对应的 `nodeAffinity`，两者会被 VolumeZone 和 VolumeBinding 各检查一次，结论一致，只是多花一点时间。
 

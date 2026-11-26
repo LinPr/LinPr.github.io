@@ -166,6 +166,40 @@ func mutateTopologySpreadConstraints(pod *api.Pod) {
 
 两边都合并，selector 里会出现一条重复的等值条件，但在「与」运算下没有副作用。apiserver 侧合并的意义在于让 `labelSelector` 自身完整：**其它读 Pod spec 的组件不需要理解 `matchLabelKeys`，也能得到正确的 selector**。这类组件包括 descheduler、cluster-autoscaler 的模拟器。
 
+第一节的 Deployment 创建出 Pod 之后，在 Pod 对象上能直接看到 apiserver 合并的结果：
+
+```yaml {linenos=inline}
+# Pod：apiserver 合并 matchLabelKeys 之后的第一条约束（kubectl get pod -o yaml 节选）
+metadata:
+  name: web-5d8f7c9b6-x2k9p
+  labels:
+    app: web
+    pod-template-hash: 5d8f7c9b6
+spec:
+  topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app: web
+      matchExpressions:
+      - key: pod-template-hash
+        operator: In
+        values: ["5d8f7c9b6"]
+    matchLabelKeys: ["pod-template-hash"]
+    minDomains: 3
+  # ...
+```
+
+和第一节模板里的写法对比，有三点不同：
+
+1. 第 6 行的 `pod-template-hash` 由 ReplicaSet 控制器打在 Pod 上，模板里没有；
+2. `applyMatchLabelKeys` 读出这个值，在第 15–18 行追加一条 `In` 表达式，原有的 `matchLabels`（第 13–14 行）和第 19 行的 `matchLabelKeys` 都保留；
+3. 调度器读到这份 spec 后，`filterTopologySpreadConstraints` 第 9–19 行还会再合并一次 `pod-template-hash=5d8f7c9b6`，结果是第 15–18 行的重复条件。
+
+因为合并发生在 Pod 创建时，模板里不能把 `pod-template-hash` 同时写进 `labelSelector`：合并后同一个键会同时出现在 `matchLabels` 和 `matchExpressions` 里，Pod 校验以 `exists in both matchLabelKeys and labelSelector` 拒绝创建。同理，上面这份合并后的 spec 不能原样拿去创建新 Pod：合并会再做一次，第 15–18 行的键在 `matchExpressions` 里出现两次，同样被拒绝。
+
 ### 2.3 默认约束：System 与 List
 
 Pod 没写 `topologySpreadConstraints` 时，`getConstraints` 走另一条分支：
@@ -607,6 +641,27 @@ func (tsc *topologySpreadConstraint) matchNodeInclusionPolicies(logger klog.Logg
 
 `Honor` 的意思是「Pod 本来就去不了的节点，不参与计数」。`nodeTaintsPolicy: Honor` 时，判断污点用的过滤函数只看 `NoSchedule` 和 `NoExecute`，与 `TaintToleration` 的 Filter 口径一致。
 
+两个策略都写在约束上，和 `maxSkew` 平级：
+
+```yaml {linenos=inline}
+# Deployment web 的 Pod 模板片段：带污点的节点不参与 zone 计数
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels: {app: web}
+        nodeAffinityPolicy: Honor
+        nodeTaintsPolicy: Honor
+```
+
+两行的效果分别是：
+
+1. 第 8 行与缺省值相同，写出来只是为了明确：Pod 的 `nodeSelector` 和 required nodeAffinity 选不中的节点，在 `matchNodeInclusionPolicies` 第 3–8 行被排除；
+2. 第 9 行改变了缺省口径：节点上有 Pod 没有容忍的 `NoSchedule`/`NoExecute` 污点时，第 10–14 行返回 false，`calPreFilterState` 跳过这条约束的计数（3.2 节代码块第 19–22 行），这个节点所在的域就不会以计数 0 进入 `TpValueToMatchNum`。
+
+两个字段只接受 `Honor` 和 `Ignore`，其它取值会被 Pod 校验拒绝。
+
 为什么默认 `Ignore` 污点会出问题，下图的右半边是一个典型场景：zone-c 只剩一个带 `NoSchedule` 污点的节点（比如被 cordon 了，节点生命周期控制器会给 `spec.unschedulable` 的节点加上 `node.kubernetes.io/unschedulable:NoSchedule`）。默认口径下 zone-c 仍以计数 0 参与统计，最小值被拉到 0，zone-a、zone-b 都超出 maxSkew，而 zone-c 的节点又被 `TaintToleration` 过滤掉，Pod 无处可去。
 
 {{< figure src="/images/posts/sched-plugins/13-pts-inclusion.svg" caption="左：minDomains 让「域不够」时最小值按 0 计，迫使副本等待新域；右：nodeTaintsPolicy 决定带污点的节点是否贡献计数为 0 的域（点击查看大图）" link="/images/posts/sched-plugins/13-pts-inclusion.svg" >}}
@@ -936,6 +991,27 @@ func (pl *PodTopologySpread) SignPod(ctx context.Context, pod *v1.Pod) ([]fwk.Si
 判断默认约束时看的是插件配置而不是 Pod（第 7–9 行）：默认 System 模式下 `pl.defaultConstraints` 永远非空，于是**每一个 Pod** 都拒签。KEP-5598 的 opportunistic batching（feature gate `OpportunisticBatching`，1.35 起 Beta 且默认开启）依赖 Pod 签名识别「等价」的 Pod、复用上一个 Pod 的过滤与打分结果。
 
 **gate 虽然默认开着，在默认插件配置下它对任何 Pod 都不会生效。** 想让它工作，需要把 `defaultingType` 设为 `List` 并给一个空的 `defaultConstraints`——代价是失去默认打散。
+
+对应的调度器配置是：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：关闭默认约束，让没写约束的 Pod 可以签名
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: default-scheduler
+  pluginConfig:
+  - name: PodTopologySpread
+    args:
+      defaultingType: List
+      defaultConstraints: []
+```
+
+和后面 9.2 节的配置相比，只有第 10 行不同：
+
+1. 第 9 行的 `List` 让 `New` 不再换成 `systemDefaultConstraints`，`pl.defaultConstraints` 取第 10 行的空列表，`SignPod` 第 7–9 行不再拒签；
+2. 只写 `defaultConstraints: []`、省略第 9 行是不行的，`SetDefaults_PodTopologySpreadArgs` 会把空的 `defaultingType` 填成 `System`，又回到系统默认约束；
+3. 写了显式 `topologySpreadConstraints` 的 Pod 仍然在 `SignPod` 第 3–5 行被拒签，这份配置只影响没写约束的 Pod。
 
 这样设计的原因是拓扑分布依赖集群中其它 Pod 的位置，同一个 Deployment 的两个副本在调度第一个之后，第二个的可行性和打分就变了，不能复用前一个的结果。
 

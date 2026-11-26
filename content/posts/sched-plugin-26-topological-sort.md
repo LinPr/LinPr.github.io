@@ -243,6 +243,36 @@ func FindPodOrder(t agv1alpha1.AppGroupTopologyList, selector string) int32 {
 | 2 | frontend | 1 |
 | 3 | redis | 4 |
 
+controller 写回 `status` 后，AppGroup 里对应的部分是：
+
+```yaml {linenos=inline}
+# AppGroup shop 的 status：数组按 selector 排序，顺序看 index
+apiVersion: appgroup.diktyo.x-k8s.io/v1alpha1
+kind: AppGroup
+metadata:
+  name: shop
+  namespace: default
+spec:
+  # ...
+status:
+  topologyOrder:
+  - workload: {kind: Deployment, name: cart, selector: cart}
+    index: 2
+  - workload: {kind: Deployment, name: catalog, selector: catalog}
+    index: 3
+  - workload: {kind: Deployment, name: frontend, selector: frontend}
+    index: 1
+  - workload: {kind: Deployment, name: redis, selector: redis}
+    index: 4
+```
+
+这段 status 和上表一一对应：
+
+1. 第 11–18 行的数组顺序是 cart、catalog、frontend、redis，即 `workload.selector` 的字典序，`FindPodOrder` 的二分查找依赖这个顺序；
+2. 拓扑序只体现在 `index` 上，frontend 的 `index: 1`（第 16 行）排在第三个元素里；
+3. `workload` 里 `kind`、`name`、`selector` 是 CRD 的必填字段，插件只读 `selector`；
+4. 这个 CRD 没有声明 status 子资源，status 和 spec 一起写，手工编辑时同样要遵守排序约定。
+
 查 frontend 分两步：
 
 1. `low` 0、`high` 3，`mid` 为 1，catalog 小于 frontend，第 11–12 行把 `low` 移到 2；
@@ -299,6 +329,35 @@ func SetDefaults_TopologicalSortArgs(obj *TopologicalSortArgs) {
 
 默认值是 `["default"]`（第 3–5 行），`apis/config/validation` 里没有针对它的校验。AppGroup 只会在这些 namespace 里找，与 Pod 自己在哪个 namespace 无关。
 
+仓库的示例配置 `manifests/appgroup/scheduler-config.yaml` 里，TopologicalSort 占据 queueSort，参数写在 `pluginConfig`：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：启用 TopologicalSort 并指定 AppGroup 所在的 namespace
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: network-aware-scheduler
+  plugins:
+    queueSort:
+      enabled:
+      - name: TopologicalSort
+      disabled:
+      - name: "*"
+    # ...
+  pluginConfig:
+  - name: TopologicalSort
+    args:
+      namespaces:
+      - "default"
+```
+
+配置分两部分：
+
+1. 第 7–11 行把 queueSort 换成 TopologicalSort，`disabled: "*"` 的作用和[上一篇](/posts/sched-plugin-25-qos-sort/)一样，防止 multiPoint 再展开出 PrioritySort；
+2. 第 16–17 行的 `namespaces` 对应 `TopologicalSortArgs.Namespaces`，这里写的是 AppGroup 所在的 namespace，不是 Pod 所在的 namespace。第一节 Deployment 的 `schedulerName: network-aware-scheduler` 正是第 5 行这个 Profile。
+
+省略 `pluginConfig` 中 TopologicalSort 这一项，`SetDefaults_TopologicalSortArgs` 同样填成 `["default"]`；把 AppGroup 建在其它 namespace 却不改这里，就会落到第五节的 nil 解引用。
+
 `New` 里构造了一个 controller-runtime 客户端（第 9 行），读操作走本地缓存：
 
 ```go {linenos=inline}
@@ -351,6 +410,27 @@ func NewClientWithCachedReader(ctx context.Context, config *rest.Config, scheme 
 调度器自己的 `SharedInformerFactory` 只认识内置类型，CRD 只能另起一套缓存。这里的 `cache.New` 启动时还没有任何 informer，controller-runtime（v0.24.1）的 informer 是按类型懒创建的：第一次 `Get` 一个 AppGroup 时才创建 AppGroup 的 informer，并且默认阻塞到它完成首次同步。
 
 调度器的 ServiceAccount 因此需要 `appgroups` 的 get/list/watch 权限。helm chart 的 `rbac.yaml` 只在 `plugins.enabled` 包含 `NetworkOverhead` 时才生成这条规则，单独启用 TopologicalSort 时要自己补上。
+
+要补的是调度器 ClusterRole 里的一条规则，写法取自 chart 的 `rbac.yaml`：
+
+```yaml {linenos=inline}
+# ClusterRole：调度器读取 AppGroup 需要的权限
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: scheduler-plugins-scheduler
+rules:
+# ...
+- apiGroups: ["appgroup.diktyo.x-k8s.io"]
+  resources: ["appgroups"]
+  verbs: ["get", "list", "watch"]
+```
+
+第 8–10 行就是 TopologicalSort 需要的全部权限：
+
+1. `get` 对应 `findAppGroupTopologicalSort` 里的 `ts.Get`；
+2. `list`、`watch` 供 controller-runtime 懒创建的 AppGroup informer 使用，缺了它们 informer 无法完成首次同步，而 `Less` 传入的是没有超时的 `context.TODO()`，第一次 `Get` 会一直阻塞在等待同步上；
+3. chart 生成的规则还带 `create`、`update` 等写权限，TopologicalSort 只读不写，用不到。
 
 ### 3.2 Less
 

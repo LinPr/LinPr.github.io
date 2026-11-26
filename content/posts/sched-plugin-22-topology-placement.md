@@ -106,6 +106,36 @@ spec:
 
 **它的语义是「16 个 Pod 必须同时放进同一个 rack」**，和 `PodTopologySpread` 的「尽量均匀打散」方向相反，更接近一个组级别的 `requiredDuringScheduling` 亲和。
 
+`schedulingConstraints` 在 apiserver 侧同样受 gate 保护（`+k8s:ifDisabled(TopologyAwareWorkloadScheduling)=+k8s:forbidden`），kube-apiserver 和 kube-scheduler 都要同时打开 `GenericWorkload` 和 `TopologyAwareWorkloadScheduling`，上面的 PodGroup 才能创建并生效。约束里的 key 还要和节点标签对上：
+
+```yaml {linenos=inline}
+# Node：带 rack 标签的节点，与两个不属于任何域的节点
+apiVersion: v1
+kind: Node
+metadata:
+  name: n1
+  labels:
+    topology.kubernetes.io/rack: r1
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: n7
+  labels:
+    topology.kubernetes.io/rack: ""
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: n8
+  labels:
+    kubernetes.io/hostname: n8
+```
+
+1. n1（第 7 行）进入名为 `r1` 的 placement；
+2. n7 的标签值为空（第 14 行），n8 没有这个标签（第 20–21 行），按上面第 3 条规则都不属于任何域，`llm-train-0` 的 Pod 不会被放到它们上面；
+3. `topology.kubernetes.io/rack` 不是 kubelet 或云厂商会自动设置的标签，要由管理员自己给节点打上，例如 `kubectl label node n1 topology.kubernetes.io/rack=r1`。
+
 ## 三、GeneratePlacements 源码
 
 ### 3.1 placement 是什么
@@ -426,6 +456,21 @@ NNN 一般是上一轮整组抢占留下的。抢占已经在某个 rack 里腾�
 
 **这和单 Pod 调度的 `percentageOfNodesToScore` 是同一个思路：集群越大，越不追求全局最优。** 比例可以用 `KubeSchedulerConfiguration` 的 `percentageOfPlacementsToScore` 配置（全局或 profile 级，0~100），这个字段只在开启 `TopologyAwareWorkloadScheduling` 时允许设置，默认值是 0，也就是上面的自适应公式。
 
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：全局与 profile 级的 percentageOfPlacementsToScore
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+percentageOfPlacementsToScore: 50
+profiles:
+- schedulerName: default-scheduler
+- schedulerName: gang-scheduler
+  percentageOfPlacementsToScore: 20
+```
+
+1. 第 4 行是全局值，第 8 行是 profile 级覆盖：`spec.schedulerName: gang-scheduler` 的组按 20 计算，`default-scheduler` 沿用 50；
+2. 40 个 rack 都生成了 placement 时，`gang-scheduler` 找够 `max(1, 40 × 20 / 100) = 8` 个可行 placement 就停，`default-scheduler` 要找 20 个；
+3. kube-scheduler 没开 `TopologyAwareWorkloadScheduling` 时，这两行任何一行都会让配置校验以 Forbidden 失败（`validatePercentageOfPlacementsToScore`）。
+
 第三个设计点是顺序：`placementsToEvaluate` 在 `numToFind < N` 时克隆并随机打乱 placement 顺序，避免总是偏向生成插件先返回的那些域。
 
 每评估一个 placement，都要完整地跑一遍第 21 篇的逐 Pod 算法，然后立刻 `revert`（第 8–9 行）：
@@ -455,6 +500,35 @@ func (sched *Scheduler) evaluatePlacement(ctx context.Context, schedFwk framewor
 3. **拓扑约束只是「同一个域」，不是「尽量紧凑」。** 插件保证整组在同一个 rack，但 rack 内部 Pod 怎么分布，仍然由逐 Pod 的 Score 插件决定。想要 rack 内也尽量集中，需要配合节点打分策略。
 4. 标签值不能含 `/`，在这里恰好不是问题。placement 名字禁止 `/`，而名字就是标签值。Kubernetes 的标签值本身不允许 `/`，所以这条校验对 TopologyPlacement 永远不会触发，但第三方生成插件如果用节点名、路径之类做名字就要注意。
 5. 和 PodTopologySpread 同时使用。如果 PodGroup 要求同一个 rack，而 Pod 模板里又写了按 rack 打散的 `DoNotSchedule` 约束，两者是矛盾的：placement 已经把候选节点限定在一个 rack 里，PodTopologySpread 却要求 rack 之间的 skew 不超过 maxSkew。结果通常是组里只能放下很少的 Pod，触发 PlacementFeasible 的 Unschedulable。
+
+第 5 条的矛盾写成清单是这样（反例）：
+
+```yaml {linenos=inline}
+# 反例：Pod 属于带 rack 约束的 llm-train-0，又要求按 rack 打散
+apiVersion: v1
+kind: Pod
+metadata:
+  name: llm-train-0-worker-0
+  labels:
+    job: llm-train-0
+spec:
+  schedulingGroup:
+    podGroupName: llm-train-0
+  topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/rack
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        job: llm-train-0
+  # ...
+```
+
+假设集群只有 r1、r2 两个 rack，16 个 Pod 都这样写，评估 r1 这个 placement 时：
+
+1. 第 1 个 Pod 放进 r1：PreFilter 统计的是全集群节点（4.2 节末尾），r1、r2 上匹配第 15–17 行的 Pod 数都是 0，放下后 skew 为 1，不超过第 12 行的 `maxSkew`；
+2. 第 2 个 Pod：r1 已有 1 个（snapshot 里 assume 的），r2 仍是 0，再放进 r1 时 skew 变成 2，`PodTopologySpread` 返回 `Unschedulable`，而 r2 的节点不在这个 placement 里，它没有别处可去；
+3. `minCount: 16` 时 `Remaining + Scheduled = 14 + 1 = 15 < 16`，GangScheduling 在第 2 个 Pod 之后就判这个 placement 不可行；r2 同理，整组 Unschedulable。
 
 ## 六、发散
 

@@ -207,6 +207,46 @@ Deferred Pod 的资源判断有一个特殊之处：它已经在节点上了，�
 
 resize 被推迟时后两项还是旧值，所以 resize 中的 Pod 按新的、更大的 spec 计入。如果 Filter 再按常规把 Pod 的请求量加上去，就重复计算了。
 
+三个量在 Pod 对象上的位置，可以用下文算例里的 `preemptor-pod` 对照（`kubectl get pod -o yaml` 摘录）：用户通过 `resize` 子资源把 CPU request 从 100m 改成 300m，kubelet 准入失败后写回了状态。
+
+```yaml {linenos=inline}
+# Pod：resize 被推迟的 preemptor-pod（spec 已是 300m，kubelet 仍按 100m 分配）
+apiVersion: v1
+kind: Pod
+metadata:
+  name: preemptor-pod
+spec:
+  containers:
+  - name: app
+    image: registry.example.com/db:v1
+    resources:
+      requests:
+        cpu: 300m
+  # ...
+status:
+  conditions:
+  - type: PodResizePending
+    status: "True"
+    reason: Deferred
+    # ...
+  containerStatuses:
+  - name: app
+    allocatedResources:
+      cpu: 100m
+    resources:
+      requests:
+        cpu: 100m
+    # ...
+```
+
+片段里的字段与上面三个量一一对应：
+
+1. 第 10–12 行是 spec，用户的修改已经写进去；
+2. 第 22–23 行是已分配、第 24–26 行是实际，都还是 100m，说明 kubelet 没有接受这次 resize；
+3. 第 16–18 行是 `IsPodResizeDeferred` 读的 condition，`reason: Deferred` 让事件处理器把这个 Pod 送回调度队列。
+
+`status` 部分由 kubelet 写入，用户提交的只有 spec。调度器缓存按 `max(300m, 100m, 100m)` 给它计 300m，就是下面算例第 1 步里的数字。
+
 `helper/resource_fit.go` 为此加了一个调整函数：
 
 ```go {linenos=inline}
@@ -326,6 +366,28 @@ type NodePodPreemptionPolicy struct {
 ```
 
 `DisableResizePreemption`（第 14 行）是一个「所有者」列表而不是布尔值。多个组件（运维工具、节点维护控制器、某个 operator）可能各自出于不同原因要求临时禁止这个节点上的 resize 抢占，每个组件把自己的名字加进去、用完再删掉，列表为空时才恢复。用布尔值的话，两个组件先后设置、其中一个提前清除，就会覆盖另一个的意图。
+
+两个所有者同时登记时，Node 上的字段是这样的（apiserver 同样要开启这个 gate，否则字段会被清空，见本节末尾）：
+
+```yaml {linenos=inline}
+# Node：两个所有者要求禁止 node-1 上的 resize 抢占
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-1
+spec:
+  podPreemptionPolicy:
+    disableResizePreemption:
+    - example.com/checkpoint-controller
+    - example.com/node-maintenance
+  # ...
+```
+
+这份清单对应三条规则：
+
+1. 第 7–10 行就是 Filter 代码块第 16–18 行读的字段，列表非空，Deferred Pod 在这个节点上得到 `UnschedulableAndUnresolvable`；
+2. 每一项按标签 key 的格式校验（可以带 `example.com/` 这样的前缀），列表是 set 语义、最多 20 项，见 `staging/src/k8s.io/api/core/v1/types.go` 上的 `+k8s:eachVal=+k8s:format=k8s-label-key` 和 `+k8s:maxItems=20`；
+3. 维护结束后 `node-maintenance` 只删掉自己的第 10 行，列表还剩一项，节点仍然禁止；第六节的 hint 也只在列表变空时才唤醒 Pod。
 
 节点禁止了 resize 抢占时，Filter 返回 `UnschedulableAndUnresolvable`，抢占不会把这个节点列为候选——而这是 Deferred Pod 唯一可能的节点，所以抢占直接放弃，Pod 留在队列里等待。
 
@@ -481,6 +543,30 @@ func (pl *DeferredPodScheduling) EventsToRegister(_ context.Context) ([]fwk.Clus
 ## 七、边界情况与坑
 
 **`PreemptNever` 依然有效。** Deferred Pod 走的是标准的 `DefaultPreemption`，`PodEligibleToPreemptOthers` 照常检查 `preemptionPolicy`。集成测试的「no preemption when preemptor policy is PreemptNever」用例确认了这一点：Pod 的 `preemptionPolicy: Never` 时不会驱逐任何 Pod，resize 会一直 Deferred。
+
+这个字段通常不直接写在 Pod 上，而是来自 PriorityClass：
+
+```yaml {linenos=inline}
+# PriorityClass + Pod：优先级高，但不抢占
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: db-nonpreempting
+value: 100000
+preemptionPolicy: Never
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: preemptor-pod
+spec:
+  priorityClassName: db-nonpreempting
+  # ...
+```
+
+1. Pod 创建时，Priority 准入插件（`plugin/pkg/admission/priority/admission.go`）按第 14 行找到 PriorityClass，把第 6 行写进 `spec.priority`、第 7 行写进 `spec.preemptionPolicy`；
+2. Pod 自己写了与 PriorityClass 不一致的 `preemptionPolicy` 会被准入拒绝；PriorityClass 的 `value` 和 `preemptionPolicy` 创建后也不能修改；
+3. 这样的 Pod 进入 Deferred 后，`PodEligibleToPreemptOthers` 直接判定它没有抢占资格，resize 只能等 kubelet 在节点上自然腾出资源后重试。
 
 **只能驱逐更低优先级的 Pod。** 受害者的优先级必须低于 Deferred Pod 自己。节点上都是同优先级的 Pod 时，抢占找不到受害者。Deferred Pod 自己在节点上，优先级等于自身，不会被选为受害者。
 

@@ -309,6 +309,42 @@ Pod 没有任何 PVC 时，PreFilter 写入一个**空的** `stateData` 再返�
 
 只要有一个 `unboundClaimsImmediate`，PreFilter 就返回 `UnschedulableAndUnresolvable`（前面 PreFilter 那个块的第 15–22 行），原因 `pod has unbound immediate PersistentVolumeClaims`。
 
+两个都还没完全绑定的 PVC，可能因为一个字段被分到不同的类：
+
+```yaml {linenos=inline}
+# PVC：data 交给调度器，data-prebound 只能等 PV 控制器
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-storage
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-prebound
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-storage
+  volumeName: local-pv-node2
+  resources:
+    requests:
+      storage: 40Gi
+```
+
+两者用的都是第一节的 `local-storage`（`WaitForFirstConsumer`），分类结果却不同：
+
+1. `data` 没有 `volumeName`，`IsDelayBindingMode` 为真，进 `unboundClaimsDelayBinding`（`GetPodVolumeClaims` 分类代码块第 13–15 行），由 Filter 为每个节点找 PV；
+2. `data-prebound` 第 20 行写死了 `local-pv-node2`，在 PV 控制器写上 `pv.kubernetes.io/bind-completed` 之前，它进的是 `unboundClaimsImmediate`（分类代码块第 16–20 行），引用它的 Pod 在 PreFilter 就以 `pod has unbound immediate PersistentVolumeClaims` 被拒；
+3. 把第 8 行写成一个不存在的 class 名，`data` 也会落进第二类，报同样的原因，这就是上面说的「名字写错了」的情形。
+
+预绑定的 PVC 由 PV 控制器的 `syncUnboundClaim` 直接完成绑定，PVC 更新事件到来后 Pod 才会重新排队。
+
 `IsDelayBindingMode` 有个容易踩的细节：PVC 的 StorageClass **不存在**时它返回 false，没有报错。于是「StorageClass 名字写错了」的 WaitForFirstConsumer PVC 会被当成 Immediate 处理，报的也是 unbound immediate。
 
 而 StorageClass 存在但 `volumeBindingMode` 为 nil 时才会返回错误。正常情况下走不到这条分支：StorageClass 写入时，apiserver 的默认值函数 `SetDefaults_StorageClass`（`pkg/apis/storage/v1/defaults.go`）会把 nil 填成 `Immediate`。
@@ -598,6 +634,30 @@ func (pl *VolumeBinding) Filter(ctx context.Context, cs fwk.CycleState, pod *v1.
 
 StorageClass 不存在、PVC 没有 class 则作为 error 返回（第 5–12 行），Filter 给出的是 `Error` 状态，Pod 进 backoff 队列重试，而不是 unschedulable。
 
+第二关的 `allowedTopologies` 写在 StorageClass 上，格式和 PV 的 `nodeAffinity` 不一样：
+
+```yaml {linenos=inline}
+# StorageClass：只允许在 node-1 上动态供给
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: topolvm-ssd-node1
+provisioner: topolvm.io
+volumeBindingMode: WaitForFirstConsumer
+allowedTopologies:
+- matchLabelExpressions:
+  - key: topology.topolvm.io/node
+    values: ["node-1"]
+```
+
+`checkVolumeProvisions` 对它的处理分三步：
+
+1. 第 6 行的 `provisioner` 不为空也不是 `kubernetes.io/no-provisioner`，过第一关；
+2. 第 8–11 行交给 `MatchTopologySelectorTerms` 和节点标签比较：node-2 的 `topology.topolvm.io/node` 是 `node-2`，不在 `values` 里，返回 `(false, true)`，原因 `node(s) didn't find available persistent volumes to bind`；
+3. node-1 匹配，继续做第三关的容量检查。
+
+`allowedTopologies` 的元素是 `TopologySelectorTerm`，只有 `matchLabelExpressions` 一个字段，每条要求只有 `key` 和 `values`、没有 `operator`，语义固定为 `In`；多条 term 之间是「或」。
+
 ### 5.3 CSIStorageCapacity：容量感知的动态供给
 
 第三关的容量检查依赖 `CSIStorageCapacity` 对象，它只在驱动主动开启时才起作用。
@@ -667,6 +727,24 @@ maximumVolumeSize: 200Gi
 3. `nodeTopology` 这个 label selector 匹配节点标签，`nodeTopology` 为 nil 视为不可访问。
 
 只要找到一个满足的对象就返回，这个对象会作为 `NodeCapacity` 记进 `DynamicProvision`，供打分使用。
+
+容量检查的开关和上面这个 `CSIStorageCapacity` 由同一个驱动提供：
+
+```yaml {linenos=inline}
+# CSIDriver：开启容量跟踪，调度器才会去找 CSIStorageCapacity
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: topolvm.io
+spec:
+  attachRequired: false
+  storageCapacity: true
+```
+
+和 `hasEnoughCapacity` 的对应关系有两处：
+
+1. 第 5 行的名字要等于 StorageClass 的 `provisioner`，函数第 10 行按 `provisioner` 去 `csiDriverLister` 里取；对象不存在时第 12–15 行直接放行，相当于不做容量检查；
+2. 第 8 行为 `true` 才越过第 18–20 行，开始扫描 `CSIStorageCapacity`。省略这一行时 apiserver 默认填 `false`，检查同样被跳过，Score 里这类 PVC 的 `NodeCapacity` 为 nil。
 
 实现上是在 `hasEnoughCapacity` 里对全体 `CSIStorageCapacity` 线性扫描（同一块第 24–36 行），源码里关于「beta 前做基准测试、考虑加索引」的 TODO 一直还在。对象数量是 StorageClass 数 × 拓扑段数，节点级拓扑（如 TopoLVM）的大集群里，这会让每个节点的 Filter 都扫描一遍上千个对象。
 
@@ -823,6 +901,32 @@ func buildScorerFunction(scoringFunctionShape helper.FunctionShape) volumeCapaci
 PV 越贴合请求的节点分越高，这是紧凑策略，避免小 PVC 占用大 PV 造成浪费。它与测试用例「static binding」期望的 15、15、30、30 一致。
 
 **两个例子说明 shape 的方向决定了策略**。默认 shape 对动态供给合理，但它同样作用于静态绑定，会让调度器偏好「PV 比请求大得多」的节点，这与 `findMatchingVolumes` 在单个节点内「挑最小 PV」的思路正好相反。大量使用 local PV 的集群，值得显式配置一个递增的 shape。
+
+递增的 shape 和 `bindTimeoutSeconds` 都在调度器配置的 `pluginConfig` 里给：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：VolumeBinding 改用紧凑策略，并缩短 PreBind 等待
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: default-scheduler
+  pluginConfig:
+  - name: VolumeBinding
+    args:
+      bindTimeoutSeconds: 300
+      shape:
+      - utilization: 0
+        score: 0
+      - utilization: 100
+        score: 10
+```
+
+两项参数各管一处：
+
+1. 第 10–14 行替换默认 shape，`New` 里乘以 10 后是 (0, 0) → (100, 100)，分数等于利用率。代入算例二，zone-a 得 25、zone-b 得 50，PV 越贴合请求分越高；`shape` 只在 `StorageCapacityScoring` 开启时允许出现，gate 关闭时这份配置会被校验拒绝；
+2. 第 9 行把 PreBind 的轮询上限从 600 秒降到 300 秒，第十节「绑定周期最长阻塞 10 分钟」相应变成 5 分钟。
+
+配置了 `shape` 就不会再套用默认值，`SetDefaults_VolumeBindingArgs` 只在 `len(obj.Shape) == 0` 时填默认的两点。
 
 源码里还有一处需要留意：内部类型 `pkg/scheduler/apis/config/types_pluginargs.go` 中 `Shape` 字段的注释写着默认值是「0 for 0 utilization, 10 for 100 utilization」，这是 alpha 时代的说法。
 
@@ -1155,6 +1259,35 @@ PV 事件没有 hint 是有代价的：PV 控制器（写 `status.phase`、`clai
 5. 调度失败信息里，1 个节点的原因是 `node(s) were unschedulable`，2 个节点是 `node(s) didn't find available persistent volumes to bind`。
 
 后两个节点的报错指向 PV，真正的原因是 `data` 被钉在了 node-1。只有 node-1 恢复可调度，或者人工删掉注解（PVC 更新事件让 hint 返回 `Queue`），Pod 才能继续调度。
+
+这时 `kubectl get pvc data -o yaml` 看到的是：
+
+```yaml {linenos=inline}
+# PVC：被钉在 node-1 上的 data（节选）
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data
+  annotations:
+    volume.kubernetes.io/selected-node: node-1
+    volume.kubernetes.io/storage-provisioner: ebs.csi.aws.com
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: ebs-gp3
+  resources:
+    requests:
+      storage: 100Gi
+status:
+  phase: Pending
+```
+
+三处字段对应三个写入者：
+
+1. 第 7 行由调度器写入：Reserve 时进 `pvcCache`，PreBind 的 `bindAPIUpdate` 写进 API；
+2. 第 8 行由 PV 控制器的 `setClaimProvisioner` 写入（第八节第 1 步），external-provisioner 据此认领；
+3. `spec`（第 9–14 行）里没有 `volumeName`，第 16 行仍是 `Pending`，说明供给从未成功、PV 控制器也就没有可绑定的 PV。
+
+解除钉住的办法是删掉第 7 行：`kubectl annotate pvc data volume.kubernetes.io/selected-node-`。这次更新触发 `isSchedulableAfterPersistentVolumeClaimChange` 返回 `Queue`，Pod 下一轮在 Filter 里重新为每个节点匹配。
 
 **存储失败不会触发抢占。** Filter 和 PreFilter 的所有拒绝都是 `UnschedulableAndUnresolvable`。高优先级 Pod 因为本地盘被低优先级 Pod 占着而无法调度时，抢占不会发生。对 local PV 而言，PV 绑定后就不会因为 Pod 删除而释放（PVC 还在），驱逐 Pod 本来也没用。
 

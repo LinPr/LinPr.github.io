@@ -114,6 +114,28 @@ func responsibleForPod(pod *v1.Pod, profiles profile.Map) bool {
 
 出队之后，`frameworkForPod` 再按同一个字段挑出对应 Profile 的 framework 实例，后面的 PreFilter、Filter、Score、Bind 都在这个实例里跑。作为第二调度器部署时，Pod 必须显式写 `schedulerName: scheduler-plugins-scheduler`（helm chart 的默认名字），否则会被默认调度器接走。原因在 API Server：Pod 不写这个字段时，默认值函数（`pkg/apis/core/v1/defaults.go` 的 `SetDefaults_PodSpec`）把它填成 `default-scheduler`，只有默认调度器的 `responsibleForPod` 会认领它。
 
+作为第二调度器部署时，Pod 侧要写的只有一个字段：
+
+```yaml {linenos=inline}
+# Pod：交给 scheduler-plugins 的第二调度器
+apiVersion: v1
+kind: Pod
+metadata:
+  name: payment-api
+spec:
+  schedulerName: scheduler-plugins-scheduler
+  containers:
+  - name: api
+    image: payment:1.4
+  # ...
+```
+
+这个片段和路由逻辑的对应关系有三点：
+
+1. 第 7 行的 `schedulerName` 必须和第二调度器某个 Profile 的 `schedulerName` 完全相同，`responsibleForPod` 才会认领；
+2. 删掉第 7 行，`SetDefaults_PodSpec` 把它填成 `default-scheduler`，Pod 由默认调度器处理，QOSSort 不参与它的排序；
+3. 写在 Deployment 等控制器里时，字段位置是 `spec.template.spec.schedulerName`，由控制器创建的 Pod 继承。
+
 ### 1.3 一个进程只有一个排序函数
 
 `schedulerName` 能把 Pod 分到不同的插件链，但分不开队列。整个调度器进程只有一个 `SchedulingQueue`，它的比较函数在构造时就定死了：
@@ -173,6 +195,30 @@ func responsibleForPod(pod *v1.Pod, profiles profile.Map) bool {
 ```
 
 不写这一行，`queueSort.enabled` 里的 QOSSort 和 multiPoint 展开出来的 PrioritySort 会同时进入 `queueSortPlugins`，启动时报上面那条 `but got 2`。另一种写法是 helm chart 采用的：在 `multiPoint.enabled` 里启用插件，同时在 `multiPoint.disabled` 里禁用 `PrioritySort`。
+
+换成 multiPoint 写法，启用 QOSSort 的配置是：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：用 multiPoint 启用 QOSSort（helm chart 的写法）
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: scheduler-plugins-scheduler
+  plugins:
+    multiPoint:
+      enabled:
+      - name: QOSSort
+      disabled:
+      - name: PrioritySort
+```
+
+和上面 `queueSort` 写法的区别在于禁用的粒度：
+
+1. 第 8–9 行把 QOSSort 放进 multiPoint，框架按它实现的接口展开，QOSSort 只实现了 `QueueSortPlugin`，所以只落到 queueSort 扩展点；
+2. 第 10–11 行只从默认的 multiPoint 列表里去掉 `PrioritySort`，其余默认插件照常展开，queueSort 扩展点最终只剩 QOSSort 一个；
+3. 删掉第 10–11 行，queueSort 上会同时有 PrioritySort 和 QOSSort，启动时同样报 `but got 2`。
+
+两种写法都绕不开 1.3 节的进程级约束：同一份配置里再加一个 Profile、在它的 queueSort 里换成 Coscheduling，`ValidateKubeSchedulerConfiguration` 会以 `must be the same for all profiles` 拒绝这份配置，调度器启动不了。
 
 到这里，运行机制就齐了：插件编译进二进制、由 Profile 启用、按 `schedulerName` 路由到各自的 framework，而排序队列是整个进程共享的。QOSSort 唯一能动的地方，正是这个共享的队列。
 
@@ -308,6 +354,30 @@ func GetPodQOS(pod *v1.Pod) v1.PodQOSClass {
 3. 其余是 Burstable。
 
 开启 `PodLevelResources` 且 Pod 声明了 `spec.resources` 时，改用 Pod 级资源判断。GPU 之类的扩展资源不影响 QoS，一个只申请了 `nvidia.com/gpu` 的 Pod 仍然是 BestEffort。
+
+两个容易判断错的写法：
+
+```yaml {linenos=inline}
+# Pod：只写 limits，不写 requests
+containers:
+- name: api
+  image: payment:1.4
+  resources:
+    limits: {cpu: "2", memory: 4Gi}
+---
+# Pod：只申请 GPU
+containers:
+- name: train
+  image: trainer:2.0
+  resources:
+    limits: {nvidia.com/gpu: 1}
+```
+
+它们的 `status.qosClass` 分别是：
+
+1. 第一个是 Guaranteed。第 6 行只写了 limits，API Server 的 `SetDefaults_Pod`（`pkg/apis/core/v1/defaults.go`）在 requests 缺失时按 limits 补齐，补完后 requests 等于 limits；
+2. 第二个是 BestEffort。第 13 行的 `nvidia.com/gpu` 同样会被补成 requests，但 `ComputePodQOS` 只统计 cpu 和 memory，这个容器在它看来什么都没声明；
+3. 在 QOSSort 的 `qosOrder` 里，前者是 3、后者是 1，同优先级时第一个 Pod 先出队。
 
 `qosOrder` 每次比较都新建一个 map，严格说是一次小的堆分配。activeQ 每次 Push/Pop 做 O(log n) 次比较，这点开销在调度周期面前可以忽略，但它说明这份代码定位是示范，没有为热路径优化。
 

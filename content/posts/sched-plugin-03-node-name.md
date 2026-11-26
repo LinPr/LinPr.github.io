@@ -114,6 +114,29 @@ func assignedPod(pod *v1.Pod) bool {
 
 所以手写一个带 `nodeName` 的 Pod，是完全绕过调度器的：节点资源够不够、污点容不容忍、亲和满不满足，调度器一概不管。真正的把关者是目标节点上的 kubelet（第五节）。
 
+落到清单上，「手写 `nodeName`」就是下面这样一个 Pod：
+
+```yaml {linenos=inline}
+# Pod：创建时直接写死 spec.nodeName，不经过调度器
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-b
+spec:
+  nodeName: node-1
+  containers:
+  - name: app
+    image: nginx:1.27
+    resources:
+      requests:
+        cpu: "2"
+```
+
+这份清单在两个组件里的处理分别是：
+
+1. 第 7 行让 `assignedPod` 返回 true，`addPod` 只调用 `addAssignedPodToCache`，Pod 不进调度队列，`NodeName` 和其他插件都不会被调用；
+2. 第 13 行的 `cpu: "2"` 不经过 `NodeResourcesFit` 检查，只被记进 node-1 在缓存里的已用量；node-1 放不放得下，由 node-1 上 kubelet 的准入决定（5.1）。
+
 ### 2.2 唯一的入口：被推迟的原地扩容
 
 `addPod` 里那个 `isPodDeferred` 条件（第 4–5 行）是 `NodeName` PreFilter 存在的理由。
@@ -143,6 +166,37 @@ func assignedPod(pod *v1.Pod) bool {
 ```
 
 这种 Pod 不能换节点，只能在原节点上想办法。`NodeName.PreFilter` 的注释说得很直白：**把评估限制在这一个节点上，其他节点被视为 `UnschedulableAndUnresolvable`，不会成为抢占目标。**
+
+「被推迟的原地扩容」在 Pod 对象上的样子如下，用的是 3.2 节走查例子里的 `db-0`：
+
+```yaml {linenos=inline}
+# Pod：原地扩容被 kubelet 推迟（db-0 运行在 node-3 上）
+apiVersion: v1
+kind: Pod
+metadata:
+  name: db-0
+spec:
+  nodeName: node-3
+  containers:
+  - name: db
+    image: postgres:17
+    resources:
+      requests:
+        cpu: "8"   # 通过 pods/resize 子资源从 4 改成 8
+# ...
+status:
+  conditions:
+  - type: PodResizePending
+    status: "True"
+    reason: Deferred
+    # ...
+```
+
+和调度器相关的是三处：
+
+1. 第 7 行：`spec.nodeName` 已有值，`assignedPod` 为 true，正常情况下 Pod 只在缓存里；
+2. 第 17–19 行：kubelet 的状态管理器（`pkg/kubelet/status/status_manager.go` 的 `SetPodResizePendingCondition`）写入 `PodResizePending` 条件，`status` 固定为 `"True"`，`reason` 为 `Deferred`；`IsPodResizeDeferred` 只看这个条件的 `reason`，所以 `reason: Infeasible`（节点总容量都不够）的 Pod 不会被放回队列；
+3. 第 7 行同时让 `NodeName.PreFilter` 返回 `{node-3}`，后续的评估和抢占只发生在 node-3 上。
 
 与此同时，`NodeUnschedulable`、`TaintToleration`、`NodeAffinity` 对这种 Pod 的 PreFilter 都返回 `Skip`：Pod 已经在节点上跑着，节点被 cordon、加了新污点、标签变了，都不影响它扩容。
 
@@ -419,6 +473,67 @@ func ReplaceDaemonSetPodNodeNameNodeAffinity(affinity *v1.Affinity, nodename str
 ```
 
 `metav1.ObjectNameField` 就是 `metadata.name`（第二段代码第 4 行，条件在第 3–7 行拼装）。这正好落在 `NodeAffinity.PreFilter` 能识别的形式上，它会返回 `PreFilterResult{NodeNames: {nodename}}`。所以**DaemonSet Pod 在调度器里享受的「只看一个节点」的优化，来自 `NodeAffinity` 而不是 `NodeName`。**
+
+用一个模板里自带节点亲和的 DaemonSet 对照控制器改写前后的样子。模板只要求 Linux 节点：
+
+```yaml {linenos=inline}
+# DaemonSet：模板里声明只跑在 Linux 节点上
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/os
+                operator: In
+                values: ["linux"]
+      containers:
+      - name: node-exporter
+        image: quay.io/prometheus/node-exporter:v1.8.2
+```
+
+控制器为 node-a 创建的 Pod：
+
+```yaml {linenos=inline}
+# Pod：DaemonSet 控制器为 node-a 创建的 Pod，spec.nodeName 仍为空
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-exporter-x7k2p
+  labels:
+    app: node-exporter
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchFields:
+          - key: metadata.name
+            operator: In
+            values: ["node-a"]
+  # tolerations: 控制器追加的默认容忍 ...
+  containers:
+  - name: node-exporter
+    image: quay.io/prometheus/node-exporter:v1.8.2
+```
+
+两段对照有三点：
+
+1. 模板第 19–22 行的 `matchExpressions` 在 Pod 里不见了。`ReplaceDaemonSetPodNodeNameNodeAffinity` 在 required 亲和已存在时，把整个 `nodeSelectorTerms` 替换成只含 `matchFields` 的一个 term。这样不会丢约束：控制器在 `predicates` 里先用模板的 required 亲和匹配过 node-a，不匹配的节点根本不会创建 Pod；
+2. Pod 第 13–16 行就是改写结果：`matchFields` 的 key 只能是 `metadata.name`，运算符只能是 `In`/`NotIn` 且 `values` 只能有一个值（`pkg/apis/core/validation/validation.go` 的 `ValidateNodeFieldSelectorRequirement`）；
+3. Pod 里没有 `nodeName`，它走正常的调度路径，`NodeAffinity.PreFilter` 从第 13–16 行解析出 `{node-a}`。
 
 效果相同，但 Pod 是经过调度器的，因此多了三点保障：
 

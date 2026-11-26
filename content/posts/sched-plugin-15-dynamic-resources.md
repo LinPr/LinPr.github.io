@@ -188,6 +188,28 @@ func SetDefaults_DynamicResourcesArgs(obj *configv1.DynamicResourcesArgs) {
 
 `filterTimeout` 是**每个节点**一次 Filter 的上限，不是整个调度周期的上限。分配器本质是回溯搜索，最坏情况是指数级的，这个超时是兜底。
 
+两个参数在调度器配置里这样写：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：收紧 DRA 的两个超时
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: default-scheduler
+  pluginConfig:
+  - name: DynamicResources
+    args:
+      filterTimeout: 5s
+      bindingTimeout: 300s
+```
+
+取值写成 `metav1.Duration` 的字符串形式，两行分别作用于：
+
+1. 第 9 行：6.2 节里每个节点调用 `Allocate` 前建的超时上下文，写 `0s` 表示不限时；
+2. 第 10 行：8.4 节 PreBind 轮询 binding conditions 的上限，不足 `1s` 会被校验拒绝。
+
+对应的 gate 关闭时，配置里出现这两个字段同样会被拒绝，而不是被静默忽略。
+
 参数说完，先看它在 CycleState 里放了什么——这决定了后面每个扩展点能拿到什么。
 
 ## 三、CycleState：一个指针、不拷贝
@@ -585,6 +607,63 @@ Filter 先遍历所有 claim，对已分配的 claim 做三项检查，任何一
 3. 返回：只取第一个完整解，找到就停（第 9 行）；
 4. 代价：这是穷举搜索，可接受的前提是「找到即中止」；一旦加入打分，还要用额外的手段避免尝试等价的解，比如两个相同的 request、两块相同的设备（第 11–15 行）。
 
+上图的输入写成清单，是驱动发布的一个 ResourceSlice 和一个要两块同 PCIe root GPU 的 claim：
+
+```yaml {linenos=inline}
+# ResourceSlice 与 ResourceClaim：上图搜索的输入
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: node-1-gpu.example.com-x2k9d
+spec:
+  driver: gpu.example.com
+  nodeName: node-1
+  pool:
+    name: node-1
+    generation: 1
+    resourceSliceCount: 1
+  devices:
+  - name: gpu0
+    attributes:
+      pcieRoot: {string: pci0000:00}
+    capacity:
+      memory: {value: 40Gi}
+  - name: gpu1
+    attributes:
+      pcieRoot: {string: pci0000:80}
+    capacity:
+      memory: {value: 40Gi}
+  - name: gpu2
+    attributes:
+      pcieRoot: {string: pci0000:80}
+    capacity:
+      memory: {value: 40Gi}
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: gpu-pair
+spec:
+  devices:
+    requests:
+    - name: gpus
+      exactly:
+        deviceClassName: gpu.example.com
+        count: 2
+    constraints:
+    - requests: ["gpus"]
+      matchAttribute: gpu.example.com/pcieRoot
+```
+
+清单里的字段和搜索过程的对应关系：
+
+1. 第 8 行的 `nodeName` 让这个 slice 只对 node-1 可达，`GatherPools` 只在 node-1 的 Filter 里收进它；分配成功后，`allocation.nodeSelector` 也因此被写成一条 `metadata.name In [node-1]` 的 `matchFields`；
+2. 第 13–28 行的设备顺序就是搜索顺序，`pci0000:00` 和 `pci0000:80` 对应图里的 A 和 B；
+3. 第 40 行要两块设备，第 41–43 行的 `matchAttribute` 要求它们的 `pcieRoot` 相同。属性在 slice 里写成不带域名的 `pcieRoot`，默认归属第 7 行的驱动域名，所以约束里要写全名 `gpu.example.com/pcieRoot`；
+4. gpu0 与 gpu1、gpu2 都不同根，以 gpu0 开头的分支全部失败，回溯后得到 `{gpu1, gpu2}`。
+
+同一个驱动在每个节点各发布一个 pool，`pool.name` 通常就用节点名；`resourceSliceCount` 告诉分配器这个 pool 一共有几个 slice，没收齐时 pool 被视为不完整。
+
 `allocateOne` 每次处理一个「设备槽位」。对于普通请求，它按 pool → slice → device 的顺序遍历，每块设备走三步：
 
 1. 试这块设备（第 2 行）；
@@ -664,6 +743,40 @@ Filter 里 `filterExtendedResources` 对每个节点分两种情况：
 2. 没有、但能映射到 DeviceClass，就给这个节点生成一个带具体 `requests` 的 claim 副本交给分配器。
 
 PreBind 时才真正在 API Server 里 `Create` 这个 claim（名字由 `GenerateName` 生成），再更新 Pod 的 `status.extendedResourceClaimStatus`，记录容器到请求的映射。
+
+落到清单上，管理员在 DeviceClass 上声明资源名，用户照旧写 `resources.limits`：
+
+```yaml {linenos=inline}
+# DeviceClass 与 Pod：用扩展资源名申请 DRA 设备
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: gpu.example.com
+spec:
+  selectors:
+  - cel:
+      expression: device.driver == "gpu.example.com"
+  extendedResourceName: example.com/gpu
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: infer-0
+spec:
+  containers:
+  - name: infer
+    image: infer:latest
+    resources:
+      limits:
+        example.com/gpu: 1
+```
+
+这份清单从声明到分配经过四步：
+
+1. 第 5–9 行就是 1.1 节模板和上面 `gpu-pair` 引用的那个 class，`selectors` 圈定驱动为 `gpu.example.com` 的设备，分配器在 `isSelectable` 里先用它和请求自己的 `selectors` 过滤候选，通过的设备才进入 `allocateDevice`；
+2. 第 10 行把这个 class 和扩展资源名 `example.com/gpu` 关联起来，名字必须是带域名、非 `kubernetes.io` 前缀的扩展资源名，否则校验报错；
+3. Pod 第 22 行只写了 `limits`，apiserver 把 `requests` 默认成相同的值；Pod 没有任何 `resourceClaims`，PreFilter 却会因为这一行构造出 `<extended-resources>` 这个特殊 claim；
+4. Filter 到某个节点时，节点 `allocatable` 里有 `example.com/gpu` 就交给 `NodeResourcesFit`，没有就生成一个 `deviceClassName: gpu.example.com`、数量为 1 的请求交给分配器。
 
 ### 7.2 DRANodeAllocatableResources：设备映射到 CPU/内存
 
@@ -850,6 +963,68 @@ in-flight 条目的移除被推迟到整个 PreBind 成功之后：
 5. `pod-b` 的新一轮：PreFilter 看到 claim 已有 allocation，只编译 nodeSelector；Filter 中 node-1 以外的节点都因 `availableOnNodes.Match` 不通过而被拒；Reserve 对已分配的 claim 不做任何事；PreBind 里 `bindClaim` 拿到的 allocation 为 nil，只往 `reservedFor` 追加 `pod-b`。
 
 最终 claim 的 `reservedFor` 是 `[pod-a, pod-b]`，allocation 只由 `pod-a` 写过一次。`pod-b` 在第 2 步被拒的那一次是有意为之：如果它当时就按「已分配」处理，它的 PreBind 可能抢在 `pod-a` 之前执行，正好落进 8.2 节的第一个反例。
+
+走完之后，`pod-a` 的写法和 `shared-gpu` 在 API 里的样子如下（`pod-b` 的写法与 `pod-a` 相同）：
+
+```yaml {linenos=inline}
+# Pod 与 ResourceClaim：直接引用手工创建的 claim，以及两次 PreBind 之后的 claim
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-a
+spec:
+  resourceClaims:
+  - name: gpu
+    resourceClaimName: shared-gpu
+  containers:
+  - name: app
+    image: cuda-app:latest
+    resources:
+      claims:
+      - name: gpu
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaim
+metadata:
+  name: shared-gpu
+  finalizers:
+  - resource.kubernetes.io/delete-protection
+spec:
+  devices:
+    requests:
+    - name: gpu
+      exactly:
+        deviceClassName: gpu.example.com
+status:
+  allocation:
+    devices:
+      results:
+      - request: gpu
+        driver: gpu.example.com
+        pool: node-1
+        device: gpu-0
+    nodeSelector:
+      nodeSelectorTerms:
+      - matchFields:
+        - key: metadata.name
+          operator: In
+          values: ["node-1"]
+  reservedFor:
+  - resource: pods
+    name: pod-a
+    uid: 7c1e5f2a-3b9d-4c8e-a6f1-0d2b4e8c9a13
+  - resource: pods
+    name: pod-b
+    uid: 2f8a6d4c-1e7b-4a3f-9c5d-6b0e1a7f3d82
+```
+
+Pod 和 claim 的 `spec` 由用户编写，claim 的 `finalizers` 与 `status` 由调度器写入，分三处看：
+
+1. 第 9 行用 `resourceClaimName` 直接引用一个已存在的 claim，和 1.1 节的 `resourceClaimTemplateName` 二选一；第 14–15 行让容器真正用上这个 claim，名字对应第 8 行；
+2. 第 21–22 行的 finalizer 是 `pod-a` 的 PreBind 用普通 `Update` 加的，第 30–42 行的 `allocation` 是随后 `UpdateStatus` 写的；`nodeSelector` 写成 `matchFields` 是因为设备所在的 slice 带 `nodeName`，`pod-b` 在 Filter 里就是被这几行限制在 node-1；
+3. 第 43–49 行的 `reservedFor` 先后由 `pod-a`、`pod-b` 各自的 PreBind 追加，`allocation` 只写过一次。
+
+两个 Pod 都结束后，resourceclaim controller 从第 43–49 行移除它们，最后一个移除时清空 `allocation`（1.2 节）。
 
 ### 8.4 binding conditions：PreBind 里的等待
 

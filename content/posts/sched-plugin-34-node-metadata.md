@@ -299,6 +299,41 @@ func (nm *NodeMetadata) NormalizeScore(ctx context.Context, state framework.Cycl
 
 1.2 元和 1.7 元的节点得分完全相同。如果成本差异主要在小数部分，应该先把值放大成整数再写进 annotation，比如以「分」为单位写 `120` 和 `170`。
 
+#### 这些值在 Node 上的样子
+
+算例里的输入就是 Node 对象上的 annotation，取其中三个节点：
+
+```yaml {linenos=inline}
+# Node：算例中的 node-a、node-b、node-e（节选）
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-a
+  annotations:
+    node.example.com/hourly-cost: "2.5"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-b
+  annotations:
+    node.example.com/hourly-cost: "1.2"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-e
+  # 没有 node.example.com/hourly-cost
+```
+
+三个节点对应算例的三种结果：
+
+1. 第 7 行的 `"2.5"` 经 `parseNumericValue` 截断为 2、取负为 −2，是本轮最小值，node-a 得 1 分；
+2. 第 14 行的 `"1.2"` 截断为 1，与 node-c 的 `"1.7"` 同分，都是 50；
+3. node-e 没有这个 key（第 20 行），Score 返回 `invalidScore`，归一化后固定为 0。
+
+annotation 的值必须是字符串，YAML 里要加引号。写成不带引号的 `2.5`，它会被解析成数字，而 `metadata.annotations` 的类型是 `map[string]string`，对象在解码阶段就会被拒绝。用 `kubectl annotate node node-a node.example.com/hourly-cost=2.5 --overwrite` 写入则没有这个问题，命令行参数本来就是字符串。
+
 时间戳场景，`Newest`：三个节点的 `last-maintenance` 分别是 2 小时前、1 天前、10 天前。
 
 1. 年龄：7200、86400、864000 秒；取负：−7200、−86400、−864000。
@@ -320,6 +355,29 @@ func (nm *NodeMetadata) NormalizeScore(ctx context.Context, state framework.Cycl
    检查在 `RunScorePlugins`（`pkg/scheduler/framework/runtime/framework.go`）里，位于各插件 `NormalizeScore` 之后、乘权重之前，错误信息是 `plugin %q returns an invalid score ...`。秒级时间戳和常见的业务数字远到不了这个量级，但用纳秒时间戳当 `Number` 就有可能碰到。
 4. 它只是偏好：KEP 强调这个插件是 advisory 的，它和其他打分插件按权重相加，不能保证 Pod 一定落在分数最高的节点上，也不会在 annotation 变化后迁移已运行的 Pod。需要硬约束时应使用 NodeAffinity。
 
+#### label 与 annotation 的写法对照
+
+第 1 条的限制在清单里是这样体现的，两个 key 分别对应 `manifests/nodemetadata/scheduler-config.yaml` 的第三、第四个示例：
+
+```yaml {linenos=inline}
+# Node：时间戳分别写在 label 和 annotation 上（节选）
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-a
+  labels:
+    node.example.com/created-at: "2024-03-15"
+    # node.example.com/created-at: "2024-03-15T08:00:00Z"   # 含 ':'，apiserver 拒绝
+  annotations:
+    node.example.com/last-maintenance: "2026-11-25T08:00:00Z"
+```
+
+三行分别对应三种情况：
+
+1. 第 7 行配第四个示例（`metadataSource: "Label"`、`timestampFormat: "2006-01-02"`），值只含数字和 `-`，能通过 label 值校验；
+2. 第 8 行如果取消注释，`2024-03-15T08:00:00Z` 含有 `:`，不符合 label 值的字符集，apiserver 拒绝更新这个 Node；
+3. 第 10 行配第三个示例（`metadataSource: "Annotation"`、RFC3339），annotation 值没有字符集限制，可以带时分秒和时区。
+
 ## 六、发散：和 NodeAffinity 加权偏好的对比
 
 同样是「按节点 label 表达偏好」，NodeAffinity 的 `preferredDuringSchedulingIgnoredDuringExecution` 也能做到，但两者的表达能力不同：
@@ -333,6 +391,43 @@ func (nm *NodeMetadata) NormalizeScore(ctx context.Context, state framework.Cycl
 | 时间语义 | 无 | 支持按时间新旧打分 |
 
 **当偏好是「越便宜越好」这种连续量时，NodeMetadata 不需要在每个工作负载里罗列档位**；当偏好只对部分工作负载生效时，NodeAffinity 更灵活。两者也可以组合：用 Profile 区分工作负载类别，再在对应 Profile 里启用 NodeMetadata。
+
+#### 同一个偏好用 NodeAffinity 写
+
+以第一个示例的 `node.example.com/priority` label 为例，用 NodeAffinity 表达「priority 越高越好」，每多一档就要多一条 term：
+
+```yaml {linenos=inline}
+# Pod：用 preferredDuringSchedulingIgnoredDuringExecution 分两档偏好高 priority 节点（节选）
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web
+spec:
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 50
+        preference:
+          matchExpressions:
+          - key: node.example.com/priority
+            operator: Gt
+            values: ["5"]
+      - weight: 50
+        preference:
+          matchExpressions:
+          - key: node.example.com/priority
+            operator: Gt
+            values: ["8"]
+  containers:
+  - name: app
+    image: nginx
+```
+
+这段清单和 NodeMetadata 的差别体现在三处：
+
+1. 两条 term（第 10–15 行、第 16–21 行）把节点分成三档：priority 为 9 的节点两条都命中，累计 weight 100；为 6 的命中一条，50；为 3 的都不命中，0。6 和 8 落在同一档，NodeMetadata 则会给它们不同的分数；
+2. `Gt` 的 `values` 只能有一个元素，匹配时 label 值和这个值都要能按 `strconv.ParseInt` 解析成整数，label 写成 `"7.5"` 时解析失败，这条 term 不命中；
+3. 这段写在 Pod 的 `spec.affinity` 里，每个工作负载各写一份；NodeMetadata 的配置只在调度器 Profile 里写一次。
 
 这个插件的另一个价值是解耦：成本系统、资产管理系统只需要往 Node 上写 annotation，就能影响调度，而不必改动调度器或工作负载定义。代价是数据质量完全依赖这些外部系统，元数据过期了，调度器无从知晓。
 

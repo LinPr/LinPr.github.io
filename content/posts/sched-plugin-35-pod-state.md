@@ -67,6 +67,25 @@ func (ps *PodState) NormalizeScore(ctx context.Context, state fwk.CycleState, po
 
 所有节点原始分相同时（最常见的情况：没有终止中的 Pod，也没有被提名的 Pod）`oldRange == 0`（第 11–12 行），全部 0 分，插件不影响结果。这段归一化与 [NodeResourcesAllocatable](/posts/sched-plugin-33-node-resources-allocatable/) 的逐字相同。
 
+插件没有参数，启用它只需要在 Profile 的 Score 扩展点点名，`manifests/podstate/scheduler-config.yaml` 就是这样写的：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：启用 PodState（节选）
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: default-scheduler
+  plugins:
+    score:
+      enabled:
+      - name: PodState
+```
+
+这段配置有两点要注意：
+
+1. 第 8–9 行只追加了 `PodState`，没写 `weight`，框架按 1 处理；默认插件照常保留，`PodState` 和它们的分数按权重相加；
+2. 不需要 `pluginConfig`，`PodState` 没有 args 类型，工厂也不读参数。
+
 公式部分到此为止，剩下的是两个数从哪里来。
 
 ## 二、两个数据源
@@ -173,6 +192,57 @@ DefaultPreemption 选中一个节点后，会同时制造两件事：
 4. 再来优先级 2000、request 1 核的 `web-high`。`hi` 的优先级低于它，不会被加进 NodeInfo：7 + 1 = 8 核，node-2 通过 Filter；
 5. `web-high` 的打分：`score` 第 16 行算出 node-2 的原始分是 2 − 1 = 1，node-1、node-3 都是 0；`NormalizeScore` 第 14 行得到 node-2 为 (1 − 0) × 100 / 1 = 100，另两个节点 0 分；
 6. `web-high` 落到 node-2 后，`batch-2`、`batch-3` 退出，node-2 上是 `app-1` 1 核 + `batch-1` 2 核 + `web-high` 1 核，空闲 4 核，`hi` 要 5 核，又放不下了。
+
+第 2 步之后，用 `kubectl get -o yaml` 能在 API 对象上看到 `PodState` 两个数据源对应的字段：
+
+```yaml {linenos=inline}
+# 第 2 步之后的 PriorityClass、抢占者 hi 与受害者 batch-2（节选）
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: high
+value: 1000
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hi
+spec:
+  priorityClassName: high
+  priority: 1000
+  containers:
+  - name: app
+    image: nginx
+    resources:
+      requests:
+        cpu: "5"
+status:
+  nominatedNodeName: node-2
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: batch-2
+  deletionTimestamp: "2026-11-26T10:00:00Z"
+  deletionGracePeriodSeconds: 30
+spec:
+  nodeName: node-2
+  priority: 0
+  # ...
+status:
+  conditions:
+  - type: DisruptionTarget
+    status: "True"
+    reason: PreemptionByScheduler
+  # ...
+```
+
+除了第 13 行的 `priorityClassName` 和第 20 行的 request，其余字段都由系统写入：
+
+1. `spec.priority`（第 14 行）由 apiserver 的 Priority 准入插件按 PriorityClass 的 `value`（第 6 行）填入，Filter 代码第 3 行的 `corev1.PodPriority` 读的就是它；
+2. `status.nominatedNodeName`（第 22 行）是抢占成功后调度器写回的，`PodState` 不读这个字段，而是读调度队列 nominator 里的同一条提名；
+3. `metadata.deletionTimestamp`（第 28 行）不为 nil，`score` 第 11 行就把 `batch-2` 计入 `terminatingPodNum`；
+4. 第 35–38 行的 `DisruptionTarget` condition 是 DefaultPreemption 在删除受害者之前打上的，`PodTerminatingByPreemption` 靠它识别「因抢占而终止」，`PodState` 不看它。
 
 `web-high` 本来就有资格使用这块资源，框架的硬保护对它不设防；`PodState` 却在 node-1、node-3 同样可行的情况下把它主动引到 node-2，让前一轮驱逐白做。这正是本节开头说的「与初衷相反」。
 

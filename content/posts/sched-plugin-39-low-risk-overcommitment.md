@@ -102,6 +102,38 @@ func SetDefaults_LowRiskOverCommitmentArgs(args *LowRiskOverCommitmentArgs) {
 
 所以只写 `cpu: 0.8` 时，内存仍是 0.5。写了其它资源名也不会报错，但 `computeRank` 只计算 CPU 和内存，其它资源名不会生效。
 
+#### 在调度器配置里的写法
+
+两个参数和 `TrimaranSpec` 并列写在 `args` 下：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration（节选）：启用 LowRiskOverCommitment
+profiles:
+- schedulerName: trimaran
+  plugins:
+    score:
+      enabled:
+      - name: LowRiskOverCommitment
+  pluginConfig:
+  - name: LowRiskOverCommitment
+    args:
+      smoothingWindowSize: 5
+      riskLimitWeights:
+        cpu: 0.5
+        memory: 0.7
+        nvidia.com/gpu: 0.5
+      metricProvider:
+        type: Prometheus
+        address: http://prometheus-k8s.monitoring.svc.cluster.local:9090
+```
+
+逐段对照上面的默认值逻辑：
+
+1. 第 11 行的 `smoothingWindowSize` 写的是默认值 5，写成 0 或负数也会被换回 5；
+2. 第 12–15 行的 `riskLimitWeights` 是以资源名为键的 map，内存取 0.7 是第八节讨论的做法；某个值写成 `1.5` 这类越界数时，defaulting 把它换成 0.5，不报错；
+3. 第 15 行的 `nvidia.com/gpu` 能通过解析，也会进入 `New` 里的 map，但 `computeRank` 只算 CPU 和内存，它不起作用；
+4. 第 16–18 行是公共的 `TrimaranSpec`，写法和第 37 篇 2.3 节相同。
+
 ## 三、PreScore 与 CycleState
 
 LROC 比前两个插件多一个 PreScore：一个 Pod 只会落到一个节点上，它的 request 和 limit 对每个节点都是同一份，没必要在 Score 里重复计算。于是这项准备工作放在 PreScore 里做一次，结果写进 CycleState（第 16–17 行的 `CreatePodResourcesStateData` 与 `cycleState.Write`）。
@@ -159,7 +191,35 @@ PreScore 每个调度周期只执行一次，分两步：
 1. 计算 Pod 的 request 和 limit（口径与上一篇的 `GetEffectiveResource` 相同：容器求和、与 init 容器取 max、加 overhead）；
 2. 用 `SetMaxLimits` 保证每种资源的 limit 不小于 request（第 4–7 行）。
 
-没写 CPU limit 的容器，limit 被视为等于 request，而不是无穷大。
+整个 Pod 都没写 CPU limit 时，limit 被视为等于 request，而不是无穷大。`SetMaxLimits` 比较的是 Pod 级合计，只有部分容器写了 limit 时，结果就不是「每个容器的 limit 至少等于 request」了：
+
+```yaml {linenos=inline}
+# Pod：一个容器写了 limit，另一个没写（节选）
+apiVersion: v1
+kind: Pod
+metadata:
+  name: api-mixed
+spec:
+  schedulerName: trimaran
+  containers:
+  - name: app
+    image: example/api:1.0
+    resources:
+      requests: {cpu: 500m, memory: 512Mi}
+      limits:   {cpu: "2",  memory: 1Gi}
+  - name: worker
+    image: example/worker:1.0
+    resources:
+      requests: {cpu: 500m, memory: 512Mi}
+```
+
+`CreatePodResourcesStateData` 对这个 Pod 的计算分三步：
+
+1. `GetResourceRequested` 累加第 12、17 行，request 为 1000m / 1Gi；
+2. `GetResourceLimits` 累加 limit，`worker` 没有 limit（第 16–17 行），按 0 计入，合计只有第 13 行的 2000m / 1Gi；
+3. `SetMaxLimits` 逐项取 max：CPU `max(2000m, 1000m) = 2000m`，内存 `max(1Gi, 1Gi) = 1Gi`。
+
+`worker` 实际可以用满整个节点，在 LROC 里却等于没有突发空间，riskLimit 因此偏低。只有当合计 limit 小于合计 request 时（比如把 `app` 的 CPU limit 改成 `600m`，合计 600m 小于 1000m），`SetMaxLimits` 才会把它抬到 1000m。
 
 `Clone` 直接返回自身。这样做是安全的，因为数据写入后只读不改，抢占模拟时复制 CycleState 也不需要深拷贝。Score 读不到这个 key 时（比如 PreScore 被跳过），会现场重新计算一遍，不会报错。
 

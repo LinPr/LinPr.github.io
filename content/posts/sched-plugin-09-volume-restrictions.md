@@ -50,6 +50,26 @@ spec:
 
 已经有一个 Pod 挂着 `single-writer`，第二个引用它的 Pod 会在所有节点上失败，原因是 `node(s) unavailable due to PersistentVolumeClaim with ReadWriteOncePod access mode already in-use by another pod`。这条约束和 `ReadWriteOnce` 不同：RWO 限制的是「一个节点」，同节点多个 Pod 可以共享；RWOP 限制的是「一个 Pod」。
 
+想「既要 RWO 又要 RWOP」把两种模式写在一起是行不通的：
+
+```yaml {linenos=inline}
+# PVC 反例：ReadWriteOncePod 与其它访问模式混写
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: single-writer-mixed
+spec:
+  accessModes: ["ReadWriteOnce", "ReadWriteOncePod"]
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+这份清单在创建时就会被 apiserver 拒绝：
+
+1. 第 7 行同时出现 `ReadWriteOncePod` 和别的模式，PVC 校验（`pkg/apis/core/validation/validation.go` 的 `ValidatePersistentVolumeClaimSpec`）报 `may not use ReadWriteOncePod with other access modes`，PV 校验也有同样的规则；
+2. 所以能进入集群的 RWOP PVC，`accessModes` 里只有 `ReadWriteOncePod` 这一项，插件只需判断「含不含 RWOP」，不存在「RWO 与 RWOP 谁优先」的问题。
+
 两类冲突都返回 `Unschedulable`，都可以被抢占解决，但解决的方式不一样，后面会细说。
 
 ## 二、源码拆解
@@ -302,6 +322,38 @@ func isVolumeConflict(volume *v1.Volume, pod *v1.Pod) bool {
 1. EBS 的规则最严，只读也冲突，对应的是 EBS 卷（在不考虑 multi-attach 的前提下）一次只能挂到一台实例的一个设备上。
 2. RBD 的 monitor 用「有交集」而不是「完全相等」判断，因为同一个 Ceph 集群可以用不同的 monitor 列表来描述，`haveOverlap` 先把较短的一侧放进 set，再遍历较长的一侧。
 
+落到清单上，「双方都只读」指的是两个 Pod 的卷定义里都写了 `readOnly: true`：
+
+```yaml {linenos=inline}
+# Pod：以只读方式挂载一块 GCE PD，另一个 Pod reader-b 写法相同
+apiVersion: v1
+kind: Pod
+metadata:
+  name: reader-a
+spec:
+  volumes:
+  - name: dataset
+    gcePersistentDisk:
+      pdName: shared-dataset
+      fsType: ext4
+      readOnly: true
+  containers:
+  - name: app
+    image: busybox:1.36
+    volumeMounts:
+    - name: dataset
+      mountPath: /data
+      readOnly: true
+```
+
+两个 Pod 落在同一节点时，`isVolumeConflict` 的判断分三种情况：
+
+1. `reader-a` 和 `reader-b` 的第 10 行 `pdName` 相同、第 12 行 `readOnly` 都为 `true`，`isVolumeConflict` 代码块第 7 行的 `!(disk.ReadOnly && existingDisk.ReadOnly)` 为假，不冲突，节点通过；
+2. 换成一个省略第 12 行的 `writer`（`readOnly` 默认为 `false`），同样的比较为真，Filter 返回 `Unschedulable`，原因 `node(s) had no available disk`；
+3. 第 19 行 `volumeMounts[].readOnly` 只决定容器内挂载点是否只读，插件不看它，判定只认卷源里的 `readOnly`。
+
+同样的两个 Pod 改用第一节的 `awsElasticBlockStore`，即使都写 `readOnly: true` 也会冲突，因为 `isVolumeConflict` 的 EBS 分支（代码块第 12–16 行）只比较 `volumeID`。
+
 几个容易误解的地方：
 
 1. 这段检查只看 **Pod spec 里直接写的内联卷**。通过 PVC 使用的 GCE PD、EBS 卷（PV 的 `spec.gcePersistentDisk` 等）不在检查范围内。
@@ -483,6 +535,46 @@ PreFilter 计数加 `AddPod`/`RemovePod` 的组合，是框架里「集群级约
 
 1. 给真正需要「独占写」的工作负载用，比如单副本数据库。RWO 已经能保证单节点挂载，RWOP 额外保证的是同一节点上的第二个 Pod 也进不来。
 2. 滚动更新要配合 `maxSurge: 0` 或 `Recreate` 策略，否则新 Pod 会一直因为 RWOP 冲突处于 Pending，直到旧 Pod 删除。新 Pod 优先级不比旧 Pod 高，抢占也帮不上忙。
+
+把第三节例子里的单副本数据库写成清单：
+
+```yaml {linenos=inline}
+# Deployment：使用 RWOP PVC 的单副本数据库
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db
+  namespace: prod
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels: {app: db}
+  template:
+    metadata:
+      labels: {app: db}
+    spec:
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: single-writer
+      containers:
+      - name: db
+        image: postgres:16
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+```
+
+三处字段决定了它和插件的交互：
+
+1. 第 21–23 行是 `readWriteOncePodPVCsForPod` 遍历的 `persistentVolumeClaim` 卷，`single-writer` 就是第一节那个 RWOP PVC；
+2. 第 12–13 行让控制器先把旧 ReplicaSet 缩到 0、再扩新的，第三节例子第 4 步「互相等待」的死锁不再出现。旧 Pod 优雅退出期间仍在调度缓存里，新 Pod 会短暂 Pending，旧 Pod 对象删除后由 `isSchedulableAfterAssignedPodDeleted` 唤醒；两个值不能同时为 0，Deployment 校验会拒绝；
+3. 把第 9–13 行换成 `type: Recreate`，控制器要等旧 Pod 全部进入 `Succeeded`/`Failed` 或消失才创建新 Pod（`pkg/controller/deployment/recreate.go` 的 `oldPodsRunning`）。调度器的 Pod informer 用字段选择器 `status.phase!=Succeeded,status.phase!=Failed` 排除了终态 Pod（`pkg/scheduler/scheduler.go`），新 Pod 的 PreFilter 看到的计数直接是 0。
 
 ## 六、小结
 

@@ -150,6 +150,29 @@ func (nc *Controller) doNoScheduleTaintingPass(ctx context.Context, nodeName str
 1. 节点条件：`Ready=False` 变成 `not-ready`，`MemoryPressure=True` 变成 `memory-pressure`（第 6–15 行的映射）；
 2. cordon：`spec.unschedulable=true` 变成 `unschedulable`（第 16–22 行）。
 
+控制器跑完一轮之后，被 cordon 的 n1 上两份表示同时存在：
+
+```yaml {linenos=inline}
+# Node：kubectl cordon n1 之后，node-lifecycle-controller 补上同名污点
+apiVersion: v1
+kind: Node
+metadata:
+  name: n1
+spec:
+  unschedulable: true
+  taints:
+  - key: node.kubernetes.io/unschedulable
+    effect: NoSchedule
+    timeAdded: "2026-11-19T08:40:05Z"
+# ...
+```
+
+两份表示的来源和读者不同：
+
+1. 第 7 行是 kubectl 的 patch 写入的，`NodeUnschedulable.Filter` 读的就是它；
+2. 第 9–11 行是 `doNoScheduleTaintingPass` 算出、`SwapNodeControllerTaint` 写回的，`SwapNodeControllerTaint` 会给新加的污点填上 `timeAdded`；这条污点没有 `value`，由 `TaintToleration` 处理；
+3. uncordon 时第 7 行先变成 `false`（或被删掉），第 8–11 行要等控制器下一轮才消失，3.2 节的时间差就在这里。
+
 **这样做的好处是只需要一种机制（污点与容忍）就能表达「哪些 Pod 可以无视节点的某种状态」。** DaemonSet 控制器给它创建的每个 Pod 都加上了一组默认容忍，其中就有这一条（第 2–6 行）：
 
 ```go {linenos=inline}
@@ -186,6 +209,37 @@ func (nc *Controller) doNoScheduleTaintingPass(ctx context.Context, nodeName str
 3. key 为空、`operator: Exists` 的「容忍一切」。
 
 effect 必须为空或 `NoSchedule`，写成 `NoExecute` 的容忍不算。
+
+写进 Pod 的 `tolerations`，三种有效写法和一个无效写法对照如下（实际使用时任选一条即可）：
+
+```yaml {linenos=inline}
+# Pod：能让 NodeUnschedulable 放行的容忍写法（片段）
+spec:
+  tolerations:
+  # 写法 1：Exists，最常见
+  - key: node.kubernetes.io/unschedulable
+    operator: Exists
+    effect: NoSchedule
+  # 写法 2：Equal，value 留空
+  - key: node.kubernetes.io/unschedulable
+    operator: Equal
+    value: ""
+    effect: NoSchedule
+  # 写法 3：key 为空 + Exists，容忍一切污点
+  - operator: Exists
+  # 反例：effect 写成 NoExecute，对 cordon 无效
+  - key: node.kubernetes.io/unschedulable
+    operator: Exists
+    effect: NoExecute
+# ...
+```
+
+逐条对应 `ToleratesTaint` 的判断（`staging/src/k8s.io/api/core/v1/toleration.go`）：
+
+1. 写法 1（第 5–7 行）：effect、key 都相同，`Exists` 不看 value，匹配；
+2. 写法 2（第 9–12 行）：`Equal` 比较 `t.Value == taint.Value`，构造的污点 `Value` 为空，匹配；写成 `value: "true"` 就不匹配；
+3. 写法 3（第 14 行）：key 和 effect 都为空，`Exists` 匹配任何污点。API 校验要求 key 为空时 operator 必须是 `Exists`，所以不存在「key 为空 + Equal」的写法；
+4. 反例（第 16–18 行）：effect 非空且不等于 `NoSchedule`，第一步就返回 false，Pod 照样被 `node(s) were unschedulable` 拒绝。
 
 两份表示、一段异步窗口，解释了 Filter 为什么两边都要看。接下来看反向的动作：uncordon 之后，被拒绝的 Pod 是怎么被叫回队列的。
 
@@ -336,6 +390,28 @@ func (pl *NodeUnschedulable) isSchedulableAfterTargetPodTolerationChange(logger 
 1. 想让某类 Pod 能进入 cordon 的节点（比如节点维护时仍需要运行的诊断工具），给它加 `node.kubernetes.io/unschedulable:NoSchedule` 的容忍，不需要别的手段；
 2. 想要「尽量别去」而不是「绝对别去」，用自定义的 `PreferNoSchedule` 污点，不要用 cordon；
 3. 排查「节点 uncordon 了 Pod 却还 Pending」时，看事件里最近一次失败的插件：如果已经从 `NodeUnschedulable` 变成 `TaintToleration`，说明在等控制器删污点，检查 kube-controller-manager 是否正常。
+
+第 2 条的「尽量别去」写在 Node 上是一条自定义污点，和 cordon 对照：
+
+```yaml {linenos=inline}
+# Node：用 PreferNoSchedule 污点表达「尽量别往这里放」，代替 cordon
+apiVersion: v1
+kind: Node
+metadata:
+  name: n2
+spec:
+  # unschedulable: true   # cordon：硬性排除，由 NodeUnschedulable 在 Filter 拒绝
+  taints:
+  - key: example.com/maintenance
+    value: "planned"
+    effect: PreferNoSchedule
+# ...
+```
+
+两种写法的效果：
+
+1. 第 7 行如果生效，不容忍 `node.kubernetes.io/unschedulable` 的 Pod 在 Filter 阶段被拒，没有回旋余地；
+2. 第 9–11 行的 `PreferNoSchedule` 污点不参与 Filter，只在 `TaintToleration` 的 Score 里被计数，n2 的得分降低；其他节点都放不下时，Pod 仍会落到 n2 上（第 05 篇第四节）。
 
 ## 七、小结
 

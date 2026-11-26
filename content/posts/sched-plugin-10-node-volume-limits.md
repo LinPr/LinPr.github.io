@@ -315,6 +315,41 @@ func (pl *CSILimits) Filter(ctx context.Context, _ fwk.CycleState, pod *v1.Pod, 
 
 generic ephemeral 卷生成的 PVC 名是 `<pod名>-<卷名>`，还要用 `ephemeral.VolumeIsForPod` 校验 PVC 的 owner 确实是这个 Pod，防止同名的无关 PVC 被误用。
 
+在 Pod 里它长这样：
+
+```yaml {linenos=inline}
+# Pod：带一个 generic ephemeral 卷
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cache-0
+spec:
+  volumes:
+  - name: scratch
+    ephemeral:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          storageClassName: ebs-gp3
+          resources:
+            requests:
+              storage: 50Gi
+  containers:
+  - name: app
+    image: redis:7
+    volumeMounts:
+    - name: scratch
+      mountPath: /data
+```
+
+这个卷走的是 `filterAttachableVolumes` 里 `case vol.Ephemeral != nil` 的分支（该代码块第 6–9 行），换算过程分三步：
+
+1. `ephemeral.VolumeClaimName` 用第 5 行的 Pod 名和第 8 行的卷名拼出 `cache-0-scratch`；
+2. ephemeral 控制器按第 10–16 行的模板创建这个 PVC，并把 `ownerReferences` 的 controller 指向 `cache-0`，`VolumeIsForPod` 校验的就是这条引用；
+3. 之后它和普通 PVC 一样进入 `getCSIDriverInfo`：还没绑定时按第 13 行的 StorageClass 走 `getCSIDriverInfoFromSC`（`ebs-gp3` 的定义见下一小节）。
+
+控制器建出 PVC 之前，这个 Pod 在默认 Profile 里走不到本插件的 Filter：排在 PreFilter 链上的 `VolumeBinding` 先因 PVC 不存在返回 `UnschedulableAndUnresolvable`，消息是 `waiting for ephemeral volume controller to create the persistentvolumeclaim "cache-0-scratch"`（下一篇 4.1 节）。
+
 ### 4.4 getCSIDriverInfo：PVC 到 `驱动/句柄` 的换算
 
 这是整个插件最核心的一步。根据 PVC 的状态分三条路：
@@ -402,6 +437,38 @@ func (pl *CSILimits) getCSIDriverInfo(logger klog.Logger, csiNode *storagev1.CSI
 1. 驱动名取 StorageClass 的 `provisioner`（第 7 行；in-tree provisioner 如 `kubernetes.io/aws-ebs` 在第 8–17 行换算成 CSI 驱动名）；
 2. 句柄则是 `<随机前缀>-<命名空间>/<PVC名>`（第 5 行）。
 
+4.2 节算例里的 `pvc-new` 就属于这种情况，它和它的 StorageClass 写成清单是：
+
+```yaml {linenos=inline}
+# StorageClass 与 PVC：4.2 节算例中尚未绑定的 pvc-new
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ebs-gp3
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-new
+  namespace: default
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: ebs-gp3
+  resources:
+    requests:
+      storage: 20Gi
+```
+
+调度时 PVC 上还没有 `spec.volumeName`，三个字段决定了它被算成哪个键：
+
+1. 第 7 行的 `WaitForFirstConsumer` 让 PV 控制器暂不绑定，`getCSIDriverInfo` 第 5–8 行看到 PV 名为空，转去 `getCSIDriverInfoFromSC`；
+2. 驱动名取第 6 行的 `provisioner`，它本身就是 CSI 驱动名，不经过 in-tree 换算；
+3. 句柄由第 13 行的命名空间和第 12 行的名字拼成 `<随机前缀>-default/pvc-new`，正是 4.2 节表里的 `ebs/<prefix>-default/pvc-new`。
+
+如果第 6 行写的是 in-tree 名 `kubernetes.io/aws-ebs`，`GetCSINameFromInTreeName` 会把它换成 `ebs.csi.aws.com`，算出的键不变。
+
 这个设计有两层用意：
 
 1. 随机前缀保证假句柄不会与任何真实 volumeHandle 撞上；
@@ -486,6 +553,43 @@ VA 只覆盖「指向原生 CSI PV」的那部分，有两种 VA 被跳过：
 
 内联卷的 VA（`source.inlineVolumeSpec`）和 in-tree PV 的 VA 因此都只能靠 Pod 那一路计数。只有 `attachRequired: true` 的驱动才会产生 VA，NFS 这类不需要 attach 的驱动不受这一路影响。
 
+对照 4.2 节算例节点上的两个 VA：
+
+```yaml {linenos=inline}
+# VolumeAttachment：attach/detach 控制器为 vol-4 和内联卷 vol-3 创建的对象
+apiVersion: storage.k8s.io/v1
+kind: VolumeAttachment
+metadata:
+  name: csi-8d2f4a
+spec:
+  attacher: ebs.csi.aws.com
+  nodeName: ip-10-0-1-23
+  source:
+    persistentVolumeName: pv-vol-4
+---
+apiVersion: storage.k8s.io/v1
+kind: VolumeAttachment
+metadata:
+  name: csi-51c0e7
+spec:
+  attacher: ebs.csi.aws.com
+  nodeName: ip-10-0-1-23
+  source:
+    inlineVolumeSpec:
+      csi:
+        driver: ebs.csi.aws.com
+        volumeHandle: vol-3
+      accessModes: ["ReadWriteOnce"]
+```
+
+两个对象在 `getNodeVolumeAttachmentInfo` 里的命运不同：
+
+1. 两者第 8、18 行的 `nodeName` 相同，都能通过 `vaIndexer` 按节点名一次取到；
+2. 第一个的第 10 行有 `persistentVolumeName`，函数再取 PV `pv-vol-4`，用它的 `spec.csi.volumeHandle`（`vol-4`）和第 7 行的 `attacher` 拼出 `ebs.csi.aws.com/vol-4`，不在 `attachedVolumes` 里就加一；
+3. 第二个只有第 20–24 行的 `inlineVolumeSpec`，在 `getNodeVolumeAttachmentInfo` 代码块第 8–11 行被跳过，对应 4.2 节表里「`vol-3` 的 VA 没有 PV 名被跳过」。
+
+VA 由 kube-controller-manager 创建、名字是哈希值，用户不需要也不应该手写；排障时 `kubectl get volumeattachment` 看到的就是这样的对象。
+
 数量数完了，还有一道不数数量、只查驱动是否就位的门槛。
 
 ## 五、VolumeLimitScaling：驱动没装好就别来
@@ -512,6 +616,28 @@ VA 只覆盖「指向原生 CSI PV」的那部分，有两种 VA 被跳过：
 
 1. CSIDriver 不存在（可能不是 CSI 驱动）或 `spec.preventPodSchedulingIfMissing` 未设为 true，都视为「已安装」放行；
 2. 驱动明确 opt-in 时，才要求节点的 CSINode 里有这个驱动。
+
+opt-in 写在 CSIDriver 对象上，同一个对象里还可以打开第二节提到的上限周期刷新：
+
+```yaml {linenos=inline}
+# CSIDriver：节点缺驱动时拒绝调度，并让 kubelet 周期刷新卷数上限
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: ebs.csi.aws.com
+spec:
+  attachRequired: true
+  podInfoOnMount: false
+  nodeAllocatableUpdatePeriodSeconds: 60
+  preventPodSchedulingIfMissing: true
+```
+
+四个字段各对应本篇的一处逻辑：
+
+1. 第 10 行为 `true` 时，`checkCSIDriverOnNode` 才去 CSINode 里找这个驱动，找不到就返回 `VolumeLimitScaling` 代码块第 10 行的 `Unschedulable`。字段受 `VolumeLimitScaling` 控制，gate 关闭时 apiserver 在写入时把它清掉（`pkg/registry/storage/csidriver/strategy.go`）；
+2. 第 9 行让 kubelet 每 60 秒重新调用 `NodeGetInfo` 刷新 `allocatable.count`，校验要求不小于 10；
+3. 第 7 行的 `attachRequired: true` 让 attach/detach 控制器为这个驱动的卷创建 VolumeAttachment，4.6 节那一路计数才有数据；
+4. 第 5 行的名字必须和 StorageClass 的 `provisioner`、PV 的 `spec.csi.driver` 一致，`checkCSIDriverOnNode` 按这个名字查找。
 
 这解决的是节点刚启动的窗口期：DaemonSet 形式的 CSI node 插件还没跑起来，CSINode 里没有这个驱动，也就没有上限，老逻辑会直接放行，Pod 调度上去之后挂载失败。
 

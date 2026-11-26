@@ -39,6 +39,26 @@ kubelet 里的 Topology Manager 负责让一个 Pod 拿到的 CPU、内存、设
 1. `container`（默认）逐个容器对齐，不同容器可以落在不同 NUMA 节点；
 2. `pod` 把整个 Pod 当成一个整体，所有容器必须落在同一组 NUMA 节点上。
 
+策略和作用域都在节点的 kubelet 配置文件里设置，要让 CPU 和内存也参与对齐，还要打开 CPU Manager 和 Memory Manager 的 static 策略：
+
+```yaml {linenos=inline}
+# KubeletConfiguration：节点按 single-numa-node 准入
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cpuManagerPolicy: static
+reservedSystemCPUs: "0,1"
+memoryManagerPolicy: Static
+# ...（Static 内存策略还需要 reservedMemory，按节点内存配置）
+topologyManagerPolicy: single-numa-node
+topologyManagerScope: container
+```
+
+这几行各自决定一类资源能否对齐：
+
+1. 第 4–5 行让 CPU Manager 给 Guaranteed Pod 中请求整数 CPU 的容器独占 CPU，有了独占分配，CPU 才会给出 NUMA hint；
+2. 第 6 行对内存做同样的事，由 Memory Manager 给出内存的 NUMA hint；
+3. 第 8–9 行就是上表的策略和前面说的作用域，节点代理会把这两个值写进 NRT 的 `topologyManagerPolicy`、`topologyManagerScope` 属性（见 2.1 节），插件只认 NRT 里的值，不读 kubelet 配置。
+
 被拒绝的 Pod 不会再回到调度队列，原因有两层：
 
 1. kubelet 在 `HandlePodAdditions` 里做准入，失败时调用 `rejectPod`（`pkg/kubelet/kubelet.go`），把 Pod 的 phase 直接写成 `Failed`，reason 是 `TopologyAffinityError`；
@@ -54,6 +74,32 @@ kubelet 里的 Topology Manager 负责让一个 Pod 拿到的 CPU、内存、设
 kube-scheduler 的 `NodeResourcesFit` 只看 `Node.status.allocatable` 减去已分配的总量。
 
 一台双路服务器剩 16 个 CPU，可能是 NUMA 0 剩 6 个、NUMA 1 剩 10 个；剩一张 GPU，可能只挂在 NUMA 1 上。这些信息不在 Node 对象里，调度器无从判断一个「4 CPU + 16Gi 内存 + 1 GPU」的 Guaranteed Pod 能否在单个 NUMA 节点上放下。
+
+这个 Pod 的清单是：
+
+```yaml {linenos=inline}
+# Pod：需要单 NUMA 对齐的 Guaranteed Pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: infer
+spec:
+  schedulerName: topo-aware-scheduler
+  containers:
+  - name: model
+    image: infer:1.0
+    resources:
+      requests: {cpu: "4", memory: 16Gi, nvidia.com/gpu: 1}
+      limits:   {cpu: "4", memory: 16Gi, nvidia.com/gpu: 1}
+```
+
+它会被 kubelet 严格对齐，取决于三处：
+
+1. 第 12–13 行 requests 等于 limits，Pod 是 Guaranteed；CPU 是整数 4，static CPU Manager 才会给它独占 CPU；
+2. 第 12 行的 `nvidia.com/gpu` 由设备插件分配，设备插件为它给出 NUMA hint；
+3. 把第 13 行的 cpu 改成 `"8"`，Pod 变成 Burstable，CPU、内存不再独占、不参与对齐，只剩 GPU 要求落在单个 NUMA 节点上，插件在 Filter 中对它也只检查 GPU（5.2 节）。
+
+第 7 行的 `topo-aware-scheduler` 是仓库示例配置里的 Profile 名，3.2 节会看到这份配置。
 
 NRT 插件的思路是：让节点上的代理把 NUMA 粒度的资源情况写进一个 CRD，调度器在 Filter 阶段用它把 kubelet 的准入逻辑预演一遍。
 
@@ -238,6 +284,35 @@ func initNodeTopologyInformer(ctx context.Context, lh logr.Logger,
 | `preemptionMode` | `Disabled` | 抢占模拟，需要显式设为 `Enabled` |
 
 推荐用 `multiPoint` 启用，这样 PreFilter、Filter、Score、Reserve、PostBind 一并打开。OverReserve 和 DiscardReserved 都依赖 Reserve；只配 `filter` 和 `score`、却设置了 `cacheResyncPeriodSeconds`，缓存永远收不到预留，等于白开。
+
+仓库的 `manifests/noderesourcetopology/scheduler-config.yaml` 正是逐个扩展点列出的写法（而且仍是 `v1beta3`）。按上面的建议改写成 v1：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：用 multiPoint 启用 NodeResourceTopologyMatch 并打开 OverReserve 缓存
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: topo-aware-scheduler
+  plugins:
+    multiPoint:
+      enabled:
+      - name: NodeResourceTopologyMatch
+  pluginConfig:
+  - name: NodeResourceTopologyMatch
+    args:
+      scoringStrategy:
+        type: LeastNUMANodes
+      cacheResyncPeriodSeconds: 5
+      cache:
+        informerMode: Dedicated
+        foreignPodsDetect: All
+```
+
+和仓库示例相比有三处变化：
+
+1. 第 7–9 行用 `multiPoint`，Reserve 和 PostBind 随之启用；仓库示例只列了 `preFilter`、`filter`、`score`，在那份配置上加 `cacheResyncPeriodSeconds` 就是上一段说的「白开」；
+2. 第 15 行大于 0，`initNodeTopologyInformer` 走到 `NewOverReserve`，每 5 秒执行一次 `Resync`；写 0 或不写则是 Passthrough；
+3. 第 14 行把打分策略换成 `LeastNUMANodes`（第六节），第 16–18 行的两项与默认值相同，写出来只是为了标明它们所在的层级。
 
 ## 四、PreFilter：只为抢占服务
 

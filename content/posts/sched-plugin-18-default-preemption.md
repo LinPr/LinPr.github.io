@@ -115,6 +115,25 @@ func SetDefaults_DefaultPreemptionArgs(obj *configv1.DefaultPreemptionArgs) {
 
 校验规则：百分比在 `[0, 100]`，绝对值不小于 0，两者不能同时为 0。它们的用法在第五节讲。
 
+两个参数在调度器配置里按插件名写进 `pluginConfig`：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：调低抢占的候选数阈值
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: default-scheduler
+  pluginConfig:
+  - name: DefaultPreemption
+    args:
+      minCandidateNodesPercentage: 5
+      minCandidateNodesAbsolute: 50
+```
+
+1. 第 7 行的 `name` 决定 `args` 按哪个类型解码（`decodeNestedObjects` 拼出 `DefaultPreemptionArgs`），`args` 里不必写 `apiVersion`/`kind`，写错字段名会被严格解码拒绝；
+2. 只写其中一个字段时，另一个仍由上面的 `SetDefaults_DefaultPreemptionArgs` 补默认值；
+3. 按这组值，第五节表格里 400 个潜在节点那一行，候选数从 100 变成 `max(400×5/100, 50) = 50`。
+
 到这里，插件的整体结构已经清楚了。下面按一次抢占的实际顺序走：入口、资格检查、找候选、模拟受害者、排序、执行。
 
 ## 三、PostFilter 的入口与返回值语义
@@ -205,6 +224,34 @@ func (pl *DefaultPreemption) PodEligibleToPreemptOthers(_ context.Context, pod *
 两条拒绝规则：
 
 **`preemptionPolicy: Never`**（第 3–5 行）。这种 Pod 在队列里仍然按高优先级排在前面，但永远不驱逐别人。适合「我很重要、想先被调度，但不愿意为此打断别人」的批处理任务。`spec.preemptionPolicy` 由 PriorityClass 的同名字段在准入时填入。
+
+和第一节的 `online` 对照，一个「优先级相同但不抢占」的 PriorityClass 只差第 7 行：
+
+```yaml {linenos=inline}
+# PriorityClass：与 online 同为 1000，但不抢占
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: online-nonpreempting
+value: 1000
+preemptionPolicy: Never
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: api-8
+spec:
+  priorityClassName: online-nonpreempting
+  # ...
+```
+
+Priority 准入插件（`plugin/pkg/admission/priority/admission.go`）在 Pod 创建时做三件事：
+
+1. 按第 14 行解析 PriorityClass，把 `spec.priority` 设为 1000，`api-8` 在队列里和 `api-7` 同等排序；
+2. 把第 7 行复制到 `spec.preemptionPolicy`，于是 `PodEligibleToPreemptOthers` 第 3–5 行对它直接返回 `not eligible due to preemptionPolicy=Never.`；
+3. Pod 自己写了与 PriorityClass 不一致的 `priority` 或 `preemptionPolicy`，请求以 Forbidden 被拒。
+
+PriorityClass 不写 `preemptionPolicy` 时默认是 `PreemptLowerPriority`（`pkg/apis/scheduling/v1/defaults.go`）；这个字段和 `value` 创建后都不能修改，想换策略只能新建一个 PriorityClass。
 
 **提名节点上还有因抢占而终止的 Pod**（第 16–25 行）。判断「因抢占而终止」用的是 `PodTerminatingByPreemption`：`DeletionTimestamp` 非空，并且有一个 `DisruptionTarget=True`、`reason=PreemptionByScheduler` 的 condition。这个 condition 正是第九节 Executor 在删除受害者之前打上去的。上一轮抢占的受害者还在优雅退出，此时再抢占一次只会多杀一批 Pod。返回 `<nil, Unschedulable>`，提名保持不变，Pod 等受害者的删除事件。
 
@@ -518,6 +565,35 @@ PDB 的余量是这样一个个扣下去的：
 
 所以 Pod 出现在 `disruptedPods` 里，说明它那一份余量已经从 `disruptionsAllowed` 里扣过，调度器再扣就重复了。
 
+把余量和选择器放回 PDB 对象里看（`status` 由 disruption 控制器和 apiserver 写入）：
+
+```yaml {linenos=inline}
+# PodDisruptionBudget：app=web 至少保留 2 个，3 个健康副本时余量为 1
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web-pdb
+  namespace: default
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: web
+status:
+  currentHealthy: 3
+  desiredHealthy: 2
+  expectedPods: 3
+  disruptionsAllowed: 1
+  # ...
+```
+
+`podIsViolating` 对这个 PDB 的处理分四点：
+
+1. 第 6 行的命名空间和第 9–11 行的选择器决定哪些受害者匹配它，对应上面代码块第 4–10 行；
+2. `pdbsAllowed` 的初值取第 16 行，它由 disruption 控制器按 `currentHealthy − desiredHealthy = 3 − 2` 算出；
+3. 同一节点上 `app: web` 的两个 Pod 都是受害者时，更重要的那个先扣，余量变 0，不违反；另一个再扣，余量变 −1，被判违反；
+4. `selector: {}` 匹配同命名空间的所有 Pod；不写 `selector` 时 `LabelSelectorAsSelector` 返回 `labels.Nothing()`，调度器认为它不匹配任何 Pod。
+
 PodGroup 受害者只要有一个成员违反，整个组都算违反，`ViolateCount` 是违反成员的个数。
 
 到这一步，每个候选节点都有了一份「要驱逐谁、违反几个 PDB」的答案。如果候选不止一个，就要在这些答案之间做选择。
@@ -829,6 +905,43 @@ gated 的 Pod 只会被**gating 插件注册过的事件**考虑。注册 `Assig
 
 从第 3 步到第 6 步，受害者删除和抢占者重新调度之间有一个时间窗，node-2 腾出的 4 核在这段时间里由提名占着。第 5 步出队的如果是优先级不低于 1000 的 Pod，提名挡不住它，这就是第十三节说的「空间可能被别人拿走」。
 
+第 3 步结束时，两个 Pod 上被写入的字段如下（`kubectl get pod -o yaml` 摘录）：
+
+```yaml {linenos=inline}
+# 第 3 步之后：受害者 batch-a 与抢占者 api-7
+apiVersion: v1
+kind: Pod
+metadata:
+  name: batch-a
+  deletionTimestamp: "2026-11-19T03:00:30Z"
+  # ...
+status:
+  conditions:
+  - type: DisruptionTarget
+    status: "True"
+    reason: PreemptionByScheduler
+    # ...
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: api-7
+spec:
+  priorityClassName: online
+  # ...
+status:
+  nominatedNodeName: node-2
+  conditions:
+  - type: PodScheduled
+    status: "False"
+    reason: Unschedulable
+    # ...
+```
+
+1. 第 10–12 行由 Executor 在 DELETE 之前 patch，第 6 行由 apiserver 处理 DELETE 时写入；两者同时存在，正是第四节 `PodTerminatingByPreemption` 的判定条件，`batch-a` 退出之前 `api-7` 不会再发起抢占；
+2. 第 23 行由 `handleSchedulingFailure` 写入，第 25–27 行说明这一轮对 `api-7` 仍是调度失败；
+3. 第 7 步绑定时，binding 子资源把 `PodScheduled` 改成 True，并清空第 23 行。
+
 以上都是单个 Pod 的抢占。PodGroup 走的是另一条路径。
 
 ## 十二、PodGroup 抢占
@@ -841,6 +954,27 @@ gated 的 Pod 只会被**gating 插件注册过的事件**考虑。注册 `Assig
 4. 再逐个尝试放回。
 
 思路与单 Pod 版本相同，只是「放得下」的判断变成了「整个组都放得下」，候选也不再是单个节点，而是一组节点（`candidate.name` 为 `"cluster"`）。`preemptionPolicy` 由 `PodGroupPreemptionPolicy` gate 决定读 PodGroup 的字段还是读组内 Pod 的字段。
+
+影响 PodGroup 抢占的字段都写在 PodGroup 上（`scheduling.k8s.io/v1beta1`，需开启 `GenericWorkload`）：
+
+```yaml {linenos=inline}
+# PodGroup：整组按 online 的优先级调度，作为受害者时整组驱逐
+apiVersion: scheduling.k8s.io/v1beta1
+kind: PodGroup
+metadata:
+  name: train-0
+spec:
+  priorityClassName: online
+  disruptionMode:
+    all: {}
+  schedulingPolicy:
+    gang:
+      minCount: 4
+```
+
+1. 第 7 行：Priority 准入按 PriorityClass 填 `spec.priority`；`PodGroupPreemptionPolicy`（1.37 Alpha）开启时同时填 `spec.preemptionPolicy`，未开启时这个字段不允许出现（`+k8s:ifDisabled("PodGroupPreemptionPolicy")=+k8s:forbidden`）；
+2. 第 8–9 行：`disruptionMode` 默认是 `single`；写成 `all` 后，这个组作为受害者时被 `GetVictimsOnNode` 聚成一个整体（6.1 节），要驱逐就整组驱逐；
+3. 两个字段创建后都不可修改；组内 Pod 的 `priorityClassName` 要和第 7 行一致，否则整组会在调度前的层级校验里失败（[第 21 篇](/posts/sched-plugin-21-gang-scheduling/) 3.2 节）。
 
 ## 十三、边界情况与坑
 

@@ -55,6 +55,31 @@ spec:
 
 所以 `hostNetwork` 的 Pod 只要声明了 `ports`，就会被当作占用了同号的主机端口。这正是想要的效果：hostNetwork 容器直接在主机网络命名空间里监听，端口冲突是真实存在的。
 
+落到清单上，下面这个 Pod 一个 `hostPort` 都没写，`NodePorts` 照样会检查它：
+
+```yaml {linenos=inline}
+# Pod：hostNetwork 模式，只写了 containerPort
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-exporter-x
+spec:
+  hostNetwork: true
+  containers:
+  - name: exporter
+    image: quay.io/prometheus/node-exporter:v1.8.2
+    ports:
+    - containerPort: 9100     # 默认值逻辑补成 hostPort: 9100
+```
+
+这个清单在调度器眼里分三步变成一个端口占用：
+
+1. 第 7 行的 `hostNetwork: true` 让 `defaultHostNetworkPorts` 生效；
+2. 第 12 行只写了 `containerPort`，写入 etcd 之前 `hostPort` 被填成 9100，`protocol` 被填成 `TCP`；
+3. `GetHostPorts` 收集到的是 `0.0.0.0:9100/TCP`，和第一个例子里显式写 `hostPort` 没有区别。
+
+反过来，hostNetwork Pod 不能把 `hostPort` 写成和 `containerPort` 不同的值，`validatePodHostNetworkDeps`（`pkg/apis/core/validation/validation.go`）会以 ``must match `containerPort` when `hostNetwork` is true`` 拒绝。
+
 ## 二、从 Pod 里收集端口
 
 确认了谁来查，接下来看它查什么。端口清单由 `GetHostPorts` 从 Pod spec 里提取：
@@ -107,6 +132,43 @@ func GetHostPorts(pod *v1.Pod) []v1.ContainerPort {
 2. `NodeInfo.update`：Pod 加入或离开节点时维护节点的已用端口。
 
 两边用同一个函数，保证「想要」和「已占」的口径一致。
+
+下面这个 Pod 三个容器都声明了端口，`GetHostPorts` 只收集其中一个：
+
+```yaml {linenos=inline}
+# Pod：sidecar 的 hostPort 会被收集，普通 init 容器的不会
+apiVersion: v1
+kind: Pod
+metadata:
+  name: proxy-with-sidecar
+spec:
+  initContainers:
+  - name: fetch-config            # 普通 init 容器，跑完退出
+    image: busybox:1.36
+    command: ["sh", "-c", "echo fetch"]
+    ports:
+    - containerPort: 8080
+      hostPort: 8080
+  - name: envoy                   # sidecar
+    image: envoyproxy/envoy:v1.31.0
+    restartPolicy: Always
+    ports:
+    - containerPort: 15090
+      hostPort: 15090
+  containers:
+  - name: app
+    image: nginx:1.27
+    ports:
+    - containerPort: 80           # 没有 hostPort
+```
+
+三个容器对应 `GetHostPorts` 的三条路径：
+
+1. `fetch-config` 没有 `restartPolicy`，在 `GetHostPorts` 的 init 容器循环里直接 `continue`，它第 13 行的 8080 不进清单；
+2. `envoy` 第 16 行是 `restartPolicy: Always`，第 19 行的 15090 被收集；
+3. `app` 第 24 行只有 `containerPort`，`hostPort` 为 0，不满足 `hostPort > 0`。
+
+最终清单只有 `0.0.0.0:15090/TCP`，节点上别的 Pod 占着 8080 也不影响这个 Pod 的调度。
 
 端口从哪里收集已经清楚，剩下的是各扩展点分别怎么用它。
 
@@ -297,6 +359,52 @@ func (h HostPortInfo) sanitize(ip, protocol *string) {
 
 协议是三元组的一部分，`TCP 53` 和 `UDP 53` 不冲突，这正是 DNS 服务同时监听两种协议的方式。
 
+把三条规则放到清单上。假设一个节点有两块网卡，地址是 `10.0.0.5` 和 `10.0.0.6`，下面三个 Pod 可以同时调度到它上面：
+
+```yaml {linenos=inline}
+# 三个 Pod 的端口声明，可以共存在同一个节点上
+# Pod lb-a
+spec:
+  containers:
+  - name: lb
+    # ...
+    ports:
+    - containerPort: 80
+      hostIP: 10.0.0.5
+      hostPort: 80
+---
+# Pod lb-b
+spec:
+  containers:
+  - name: lb
+    # ...
+    ports:
+    - containerPort: 80
+      hostIP: 10.0.0.6
+      hostPort: 80
+---
+# Pod dns
+spec:
+  containers:
+  - name: dns
+    # ...
+    ports:
+    - containerPort: 53
+      hostPort: 53
+      protocol: UDP
+    - containerPort: 53
+      hostPort: 53
+      protocol: TCP
+```
+
+三个 Pod 依次落到节点上，`UsedPorts` 的变化和判断如下：
+
+1. `lb-a` 第 9–10 行占住 `10.0.0.5` 下的 `TCP 80`；
+2. `lb-b` 第 19 行的 `hostIP` 是 `10.0.0.6`，`CheckConflict` 只查 `0.0.0.0` 和 `10.0.0.6` 两个 key（规则 3），都没有 `TCP 80`，放行；
+3. `dns` 没写 `hostIP`，按 `0.0.0.0` 处理，第 28–33 行要的是 `UDP 53` 和 `TCP 53`，遍历整张表都查不到，放行；两项协议不同，彼此也不冲突。
+
+反例：再来一个 Pod 只写 `hostPort: 80`、不写 `hostIP`，它按 `0.0.0.0:80/TCP` 查询，遍历整张表时在 `10.0.0.5` 下查到 `TCP 80`（规则 2），这个节点被拒绝。
+
 `IPv6` 的通配地址 `::` 没有被特殊处理，它只是一个普通的 IP 字符串，只会和 `0.0.0.0` 以及自己冲突。在 IPv6 节点上用 `hostIP: "::"` 时要意识到这一点。
 
 ### 3.5 为什么是 Unschedulable
@@ -317,6 +425,59 @@ func (h HostPortInfo) sanitize(ip, protocol *string) {
 3. Filter 通过，调试 Pod 被驱逐，node-exporter 被提名到这个节点。
 
 如果 `NodePorts` 返回的是 `UnschedulableAndUnresolvable`，这个 DaemonSet Pod 会永远 Pending。
+
+这个场景对应的清单如下：
+
+```yaml {linenos=inline}
+# PriorityClass + DaemonSet：高优先级的 node-exporter
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: node-agent-high
+value: 1000000
+description: "node agents that must run on every node"
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      priorityClassName: node-agent-high
+      containers:
+      - name: exporter
+        image: quay.io/prometheus/node-exporter:v1.8.2
+        ports:
+        - containerPort: 9100
+          hostPort: 9100
+---
+# 低优先级的调试 Pod，先占了 9100
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debug-0
+spec:
+  containers:
+  - name: debug
+    image: busybox:1.36
+    command: ["sleep", "infinity"]
+    ports:
+    - containerPort: 9100
+      hostPort: 9100
+```
+
+三处字段共同决定了抢占能成立：
+
+1. 优先级：第 6 行定义 `value: 1000000`，第 22 行通过 `priorityClassName` 引用，Priority 准入插件在 Pod 创建时把它写进 `spec.priority`；`debug-0` 没写 `priorityClassName`，集群里没有 `globalDefault` 的 PriorityClass 时它的优先级是 0。
+2. 端口：第 27–28 行和第 41–42 行都没写 `hostIP` 和 `protocol`，按 `sanitize` 都是 `0.0.0.0:9100/TCP`，`NodePorts` 在 `debug-0` 所在节点返回 `Unschedulable`。
+3. 抢占策略：PriorityClass 没写 `preemptionPolicy`，默认是 `PreemptLowerPriority`。如果写成 `preemptionPolicy: Never`，`DefaultPreemption` 不会为它驱逐任何 Pod，即便失败码是 `Unschedulable`，它也只能等 `debug-0` 自己被删掉。
 
 对比上一篇的 `NodeAffinity` 和下一篇的 [NodeResourcesFit](/posts/sched-plugin-08-node-resources-fit/)：
 
@@ -439,6 +600,32 @@ Pod 内部的端口冲突，调度器不管。`fitsPorts` 只拿待调度 Pod �
 ```
 
 API 校验按字面拼字符串去重（第 2–4 行），`TCP//80`（hostIP 为空）和 `TCP/0.0.0.0/80` 是两个不同的串，能通过校验；在调度器的 `sanitize` 之后它们是同一个三元组。
+
+下面这个 Pod 就属于这种情况：
+
+```yaml {linenos=inline}
+# Pod：能通过 API 校验，调度器却视为同一个三元组
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dup-port
+spec:
+  containers:
+  - name: web
+    image: nginx:1.27
+    ports:
+    - containerPort: 80
+      hostPort: 80               # 校验时拼成 TCP//80
+    - containerPort: 8080
+      hostIP: 0.0.0.0
+      hostPort: 80               # 校验时拼成 TCP/0.0.0.0/80
+```
+
+它在 API 和调度器两侧的遭遇不同：
+
+1. API 校验：`protocol` 先被默认值填成 `TCP`，第 11–12 行和第 13–15 行拼出两个不同的串，`accumulator` 里不重复，创建成功；
+2. 调度器：`GetHostPorts` 收集到两项，`sanitize` 后都是 `0.0.0.0:80/TCP`，但 `fitsPorts` 只拿它们和节点表比，不会发现自相冲突；
+3. 节点上：两个容器端口要映射到同一个主机端口，结果取决于容器运行时和 CNI。
 
 另外，init 容器（包括 sidecar）是逐个单独校验的（源码注释是 `init containers run one-by-one`），sidecar 和应用容器之间的 `hostPort` 重复也不会被 API 拦下。这样的 Pod 能被调度，到了节点上由容器运行时或 CNI 报错。
 

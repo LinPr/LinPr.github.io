@@ -191,6 +191,39 @@ annotation 这段的注释说「可能有多个，合并所有」（第 20–21 
 
 三处都没读到时，用参数指定的默认 profile（第 32–38 行），代表「不受限的 Pod 能调用所有系统调用」。
 
+#### Pod 里的两种 seccompProfile
+
+下面这个 Pod 在 Pod 级引用了 SPO 落盘的 profile，第二个容器又单独写了 `RuntimeDefault`：
+
+```yaml {linenos=inline}
+# Pod：Pod 级引用 SPO profile，一个容器改用 RuntimeDefault（节选）
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx1
+spec:
+  securityContext:
+    seccompProfile:
+      type: Localhost
+      localhostProfile: operator/default/nginx-seccomp.json
+  containers:
+  - name: nginx
+    image: nginx:1.16
+  - name: exporter
+    image: example/exporter:1.0
+    securityContext:
+      seccompProfile:
+        type: RuntimeDefault
+```
+
+`getSyscalls` 对这个 Pod 的处理分三步：
+
+1. 第 7–10 行是 Pod 级来源：`type` 等于 `Localhost`，`parseNameNS` 从第 10 行取最后两段，得到 `default/nginx-seccomp`，读出 CR 并入画像；
+2. 第 16–18 行的 `RuntimeDefault` 不满足 `Type == "Localhost"`，被跳过。`exporter` 实际受容器运行时默认 profile 约束，那几百个系统调用都不在画像里，画像偏小；
+3. 画像已经非空，不会回落到默认 profile。整个 Pod 都只写 `RuntimeDefault` 或什么都不写时，三处来源都读不到，才会用默认 profile 的全集。
+
+apiserver 对这两个字段有配对要求：`type: Localhost` 必须带 `localhostProfile`，其他类型不能带。所以第 10 行的路径只能和第 9 行一起出现。
+
 ### 2.3 参数
 
 默认 profile 由插件参数指定，一共只有两个字段（第 6、9 行）。
@@ -209,6 +242,30 @@ type SySchedArgs struct {
 ```
 
 默认值（`apis/config/v1/defaults.go`）是 `default/all-syscalls`。仓库里提供的全集 profile `manifests/sysched/examples/full.profile.yaml` 却叫 `full-seccomp`（333 个系统调用），`manifests/sysched/scheduler-config.yaml` 因此显式把 `defaultProfileName` 设成了 `full-seccomp`。只用默认参数又没创建 `all-syscalls` 时，未配置 seccomp 的 Pod 画像为空，后果见 4.2。
+
+按当前 API 写出来是这样：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：启用 SySched，默认 profile 指向 full-seccomp
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: default-scheduler
+  plugins:
+    score:
+      enabled:
+      - name: SySched
+  pluginConfig:
+  - name: SySched
+    args:
+      defaultProfileNamespace: default
+      defaultProfileName: full-seccomp
+```
+
+和仓库里的那份相比有两点：
+
+1. 第 13–14 行对应 `DefaultProfileNamespace`、`DefaultProfileName`，v1 类型的 json 键是首字母小写的驼峰；它们指向的 `default/full-seccomp` 必须先由 `full.profile.yaml` 创建，否则未配置 seccomp 的 Pod 照样画像为空；
+2. 第 2 行是 `v1`。仓库那份写的是 `kubescheduler.config.k8s.io/v1beta3`，而 Kubernetes v1.36 的调度器配置只剩 `v1` 一个版本（`pkg/scheduler/apis/config/` 下只有 `v1` 目录），照抄会在加载配置时失败。
 
 单个 Pod 的画像有了，但打分要看的是节点上所有 Pod 的并集。每次打分都重算一遍代价很高，插件为此在内存里维护了一份节点级缓存。
 

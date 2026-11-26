@@ -65,6 +65,40 @@ type NodeResourcesAllocatableArgs struct {
 
 这是一个大致符合通用机型 CPU/内存配比（1:4 左右）量级的折算，但不意味着两者的贡献相等，下面的算例会看到内存往往占主导。
 
+#### 在调度器配置里的写法
+
+上面两个字段落到 `KubeSchedulerConfiguration` 里，是 `pluginConfig` 下的一段 `args`；插件本身还要在 `plugins.score.enabled` 里点名，框架才会调用它的工厂：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：单独一个 Profile 启用 NodeResourcesAllocatable，参数写成默认值
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: allocatable-scheduler
+  plugins:
+    score:
+      enabled:
+      - name: NodeResourcesAllocatable
+        weight: 1
+  pluginConfig:
+  - name: NodeResourcesAllocatable
+    args:
+      mode: Least
+      resources:
+      - name: cpu
+        weight: 1048576
+      - name: memory
+        weight: 1
+```
+
+对照前面的结构体，这段配置分三块：
+
+1. 第 7–10 行把插件挂到 Score 扩展点，`weight: 1` 是插件分数在加权求和时的系数，和第 17、19 行的资源权重是两回事；
+2. 第 14 行对应 `Mode`，第 15–19 行对应 `Resources`，`1048576` 就是 `1<<20`，两者都与 `SetDefaults_NodeResourcesAllocatableArgs` 填的默认值相同；
+3. 第 5 行的 `schedulerName` 决定哪些 Pod 走这个 Profile，Pod 的 `spec.schedulerName` 要写同一个名字。
+
+写错时调度器直接起不来：`weight: 0` 不满足「大于 0」，`mode: least`（小写）也不在 `Least`、`Most` 之内，两者都会让 `ValidateNodeResourcesAllocatableArgs` 返回错误，`NewAllocatable` 失败。
+
 ## 三、源码
 
 整条链路只有三块：工厂把参数变成闭包，`score` 算出原始分，`NormalizeScore` 把它压到 0~100。
@@ -343,6 +377,38 @@ scheduler-plugins 的调度器二进制里，Profile 依然包含 in-tree 的默
 翻转比直觉来得早：small 和 medium 在 Allocatable 上只差 20 分，small 上放一个 Pod 就让它的 Fit 掉 19 分（81 → 62），第 2 个 Pod 就转向了 medium，此后两者交替接收 Pod。large 的合计一直停在 98，远低于另外三个节点，留给了后来的大 Pod。所以在默认权重下，「先填小的」实际是「先填 large 以外的节点」，small 并不会被单独填满。
 
 若希望 Allocatable 的语义更占主导，可以给它更高的 `weight`，或者把 Fit 的打分策略改成 `MostAllocated`。后者在同规格节点之间也做装箱，两者的方向就一致了。
+
+#### 两种调整在配置里的位置
+
+两种做法都只改 Profile，可以单独用，也可以一起用：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration（节选）：提高 Allocatable 的权重，并把 Fit 改成 MostAllocated
+profiles:
+- schedulerName: allocatable-scheduler
+  plugins:
+    score:
+      enabled:
+      - name: NodeResourcesAllocatable
+        weight: 2
+  pluginConfig:
+  - name: NodeResourcesFit
+    args:
+      scoringStrategy:
+        type: MostAllocated
+        resources:
+        - name: cpu
+          weight: 1
+        - name: memory
+          weight: 1
+```
+
+两处改动分别对应上一段的两种做法：
+
+1. 第 8 行的 `weight: 2` 让 Allocatable 的分数在合计里翻倍。代回上面的例子：第 2 个 Pod 时 small 合计 `62 + 200 = 262`，仍高于 medium 的 `94 + 160 = 254`，留在 small；第 3 个 Pod 时 small 上是 3 核 / 6Gi，CPU 项 25、内存项 `(16 − 6) × 100 / 16` 截断为 62，Fit 为 43，合计 243，低于 medium 的 254，才转向 medium。翻转推迟了一个 Pod。
+2. 第 10–18 行改的是 in-tree `NodeResourcesFit` 的参数，`NodeResourcesFit` 本来就在默认插件里，这里只替换它的 `args`。`MostAllocated` 按 `requested * MaxNodeScore / capacity` 打分，第 1 个 Pod 在 small 上的 Fit 分是 `(25 + 12) / 2 = 18`，在 large 上是 `(1 + 0) / 2 = 0`，和 Allocatable 一样偏向 small，而且 small 越满分越高。
+
+仓库自带的 `manifests/noderesources/scheduler-config.yaml` 走的是第三条路：在 `score` 下写 `disabled: - name: "*"`。`expandMultiPointPlugins`（`pkg/scheduler/framework/runtime/framework.go`）看到某个扩展点禁用了 `*`，就不再把默认插件展开到这个扩展点，于是 Score 阶段只剩 Allocatable。**代价是 `TaintToleration`、`NodeAffinity`、`PodTopologySpread`、`InterPodAffinity` 的打分也一起关掉了**，Pod 里写的 `preferredDuringSchedulingIgnoredDuringExecution` 和 `ScheduleAnyway` 拓扑分布不再起作用；Filter 阶段不受影响。
 
 ### 5.3 min-max 归一化的副作用
 

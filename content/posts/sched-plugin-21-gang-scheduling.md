@@ -62,6 +62,42 @@ func applyGangScheduling(config *v1.Plugins) {
 
 apiserver 这一侧不能漏：Pod 写入时会经过 `pkg/api/pod/util.go` 的 `dropDisabledSchedulingGroup`，gate 关闭且旧对象没用过这个字段时，它直接把 `podSpec.SchedulingGroup` 置为 nil。只开调度器、不开 apiserver，Pod 存进 etcd 时已经没有 `schedulingGroup`，调度器看到的只是普通 Pod。
 
+以 kubeadm 的静态 Pod 布局（`/etc/kubernetes/manifests/`）为例，两个组件要加的参数是：
+
+```yaml {linenos=inline}
+# kube-apiserver 与 kube-scheduler 的静态 Pod：只列与 gang 相关的参数
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-apiserver
+  namespace: kube-system
+spec:
+  containers:
+  - name: kube-apiserver
+    command:
+    - kube-apiserver
+    - --feature-gates=GenericWorkload=true
+    - --runtime-config=scheduling.k8s.io/v1beta1=true
+    # ...
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-scheduler
+  namespace: kube-system
+spec:
+  containers:
+  - name: kube-scheduler
+    command:
+    - kube-scheduler
+    - --feature-gates=GenericWorkload=true
+    # ...
+```
+
+1. 第 12 行打开 gate，apiserver 才会保留 Pod 的 `schedulingGroup`；
+2. 第 13 行提供 `scheduling.k8s.io/v1beta1`：这个版本列在 `pkg/controlplane/instance.go` 的 `betaAPIGroupVersionsDisabledByDefault` 里，默认不提供，漏掉它时创建 PodGroup 会报找不到 `PodGroup` 这个 kind；
+3. 第 26 行让调度器的默认 Profile 追加 GangScheduling，并启用 PodGroup 调度周期。
+
 ### 1.2 它挂在哪些扩展点
 
 插件结构体只有两个字段，实现了三个接口：
@@ -201,6 +237,43 @@ spec:
 1. 只创建了 3 个 Pod 时，在 PreEnqueue 被拦，`kubectl describe` 能看到 `waiting for podgroup/default/train-0 to meet its quorum`；
 2. 4 个都到了但集群里只放得下 3 个，在 PodGroup 调度周期里被 PlacementFeasible 判为 Unschedulable，4 个 Pod 一个都不绑定；
 3. 先创建 Pod、后创建 PodGroup，Pod 停在队列的 `incompletePodGroupPods` 里，PreEnqueue 返回 `pod group "train-0" or one of its composite pod group ancestors has not been created yet`。
+
+上面的 Pod 片段第 20–22 行只写了 `requests`，按原样提交会被 apiserver 拒绝：`nvidia.com/gpu` 是扩展资源，不允许超分（`pkg/apis/core/helper` 的 `IsOvercommitAllowed` 只对原生资源成立），校验要求写出 `limits`，报错是 `Limit must be set for non overcommitable resources`。实际提交时写 `limits: {nvidia.com/gpu: 8}` 即可，`requests` 会被默认成同值。
+
+2.1 节说 PodGroup 由控制器从 Workload 模板创建。把模板和实例放在一起，引用关系是这样的：
+
+```yaml {linenos=inline}
+# Workload 模板与由它创建的 PodGroup（scheduling.k8s.io/v1beta1）
+apiVersion: scheduling.k8s.io/v1beta1
+kind: Workload
+metadata:
+  name: train
+spec:
+  podGroupTemplates:
+  - name: workers
+    schedulingPolicy:
+      gang:
+        minCount: 4
+---
+apiVersion: scheduling.k8s.io/v1beta1
+kind: PodGroup
+metadata:
+  name: train-0
+spec:
+  workloadRef:
+    workloadName: train
+    templateName: workers
+  schedulingPolicy:
+    gang:
+      minCount: 4
+```
+
+四个对应关系：
+
+1. 第 7–11 行是模板：一个 Workload 最多 8 个模板，创建后模板不能增删；
+2. 第 18–20 行记录这个 PodGroup 来自哪个 Workload 的哪个模板，创建后不可变；
+3. 第 21–23 行由控制器从模板复制而来，调度器读的是 PodGroup 自己这一份（`GetMinCount` 只看 `PodGroup.Spec`），不会回头读 Workload；
+4. Pod 仍然只写 `schedulingGroup.podGroupName: train-0`，不引用 Workload。
 
 要理解这三种情况，得先把 PodGroup 调度周期整个看一遍。
 
@@ -378,6 +451,35 @@ func (sched *Scheduler) scheduleOnePodGroup(ctx context.Context, podGroupInfo *f
 6. 抢占策略一致。
 
 优先级那一条最容易踩：PodGroup 自己有 `priorityClassName`/`priority` 字段，没设置时 `PodGroupPriority` 返回 0。如果 Pod 设了 `priorityClassName: high`，而 PodGroup 没设，整组会以 `all pods in a pod group hierarchy should have the same priority as the root pod group's priority` 失败。**这类失败反复重试也不会好，必须把优先级同时写到 PodGroup 上。**
+
+正确的写法是两边引用同一个 PriorityClass：
+
+```yaml {linenos=inline}
+# PodGroup 与成员 Pod 写同一个 priorityClassName
+apiVersion: scheduling.k8s.io/v1beta1
+kind: PodGroup
+metadata:
+  name: train-0
+spec:
+  priorityClassName: high
+  schedulingPolicy:
+    gang:
+      minCount: 4
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: train-0-worker-0
+spec:
+  priorityClassName: high
+  schedulingGroup:
+    podGroupName: train-0
+  # ...
+```
+
+1. 两个对象各自经过 Priority 准入：PodGroup 由 `admitPodGroup` 按第 7 行填 `spec.priority`，Pod 按第 17 行填 `spec.priority`，两边都等于 PriorityClass `high` 的 `value`；
+2. Pod 写了第 17 行而 PodGroup 漏掉第 7 行时，PodGroup 的优先级取全局默认 PriorityClass（没有就是 0），与 Pod 不一致，整组以 `PodGroupError` 失败；
+3. PodGroup 的 `priorityClassName` 和 `priority` 创建后都不可修改，Pod 的 `schedulingGroup` 也不可变，写错只能连同 Pod 一起重建，且按第八节第 3 条换一个新的 PodGroup 名字。
 
 ### 3.3 核心算法：逐个试放，每步问一次 PlacementFeasible
 

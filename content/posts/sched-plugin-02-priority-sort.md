@@ -136,6 +136,42 @@ PriorityClass 本身也是一样：`value` 和 `preemptionPolicy` 不可修改�
 
 这个不可变性对队列很重要：堆里元素的排序键如果会变，每次变化都要重新调整堆。priority 不变，`Update` 时 `heap.AddOrUpdate` 里的 `heap.Fix` 基本上不会移动元素。
 
+#### 提交的清单和存下来的清单
+
+创建者只写名字，数值由准入插件补上。下面的 Pod 引用 2.2 节定义的 `batch-high`：
+
+```yaml {linenos=inline}
+# Pod：提交时只写 priorityClassName
+apiVersion: v1
+kind: Pod
+metadata:
+  name: etl-1
+spec:
+  priorityClassName: batch-high
+  containers:
+  - name: main
+    image: busybox
+```
+
+通过准入、写进 etcd 之后，再读出来的 spec 多了两个字段：
+
+```yaml {linenos=inline}
+# Pod etl-1 存储后的 spec：Priority 准入插件补上的字段
+spec:
+  priorityClassName: batch-high
+  priority: 1000
+  preemptionPolicy: PreemptLowerPriority
+  # ...
+```
+
+两段清单的对应关系：
+
+1. 提交时第 7 行的名字交给 `establishPriority`，查到 `batch-high`；查不到就整个请求被拒绝；
+2. 存储后第 4 行的 `priority` 是 PriorityClass 的 `value` 拷贝，`PrioritySort.Less` 经 `PodPriority` 读到的就是它；
+3. 存储后第 5 行的 `preemptionPolicy` 同样来自 PriorityClass，6.2 节的抢占资格只看这个字段。
+
+提交时也可以手写这两个字段，但必须和计算结果一致。比如给 `etl-1` 加上 `priority: 500`，准入插件返回 `Forbidden`，消息是上面准入代码第 12 行的 `the integer value of priority (500) must not be provided in pod spec; priority admission controller computed 1000 from the given PriorityClass name`；`preemptionPolicy` 不一致时也有对应的报错。
+
 ### 2.2 优先级的取值范围
 
 `pkg/apis/scheduling/types.go` 定义了两个上界：
@@ -167,6 +203,26 @@ globalDefault: false
 preemptionPolicy: PreemptLowerPriority   # 不写也会被默认为这个值
 description: "批处理高优先级作业"
 ```
+
+这份清单的四个字段各有作用：
+
+1. 第 5 行的 `value` 在 10 亿以内，是会被拷贝进 Pod `spec.priority` 的那个整数；
+2. 第 6 行 `globalDefault: false` 表示只有显式写 `priorityClassName: batch-high` 的 Pod 才用它；
+3. 第 7 行的 `preemptionPolicy` 决定引用它的 Pod 能否抢占（6.2 节）；
+4. 第 8 行的 `description` 只是说明文字，不参与任何判断。
+
+把 `value` 写到自定义类的上限之外，校验直接拒绝：
+
+```yaml {linenos=inline}
+# 反例：自定义 PriorityClass 的 value 超过 10 亿
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: batch-urgent
+value: 2000000000
+```
+
+第 6 行超过 `HighestUserDefinablePriority`，`ValidatePriorityClass` 返回 `value: Forbidden: maximum allowed value of a user defined priority is 1000000000`。想借用系统档位、把第 5 行改名成 `system-batch-urgent` 也不行：名字以 `system-` 开头又不是两个内置类之一，会被 `IsKnownSystemPriorityClass` 拒绝。
 
 ### 2.3 PodGroup 的 priority
 
@@ -345,6 +401,30 @@ func (bq *backoffQueue) lessBackoffCompletedWithPriority(entity1, entity2 framew
 
 原因在 4.1 的那段代码里：整个调度器只有一个 `PriorityQueue`，所有 profile 的 Pod 都排在同一个 `activeQ` 里，而这个堆只能有一种比较函数。如果两个 profile 的排序规则不同，同一个堆里的元素就无法比较。
 
+下面的配置想让第二个 profile 换成按 QoS 排序，在启动阶段就会被拒绝：
+
+```yaml {linenos=inline}
+# 反例：两个 profile 的 QueueSort 不同
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+  - schedulerName: default-scheduler
+  - schedulerName: qos-scheduler
+    plugins:
+      queueSort:
+        enabled:
+          - name: QOSSort
+        disabled:
+          - name: "*"
+```
+
+校验失败的过程分两步：
+
+1. 默认插件都写在 `MultiPoint` 里，第一个 profile 的 `plugins.queueSort` 经过默认值合并后是空的；第二个 profile 的第 8–12 行合并后是「启用 `QOSSort`、禁用 `*`」；
+2. `validateCommonQueueSort` 用 `apiequality.Semantic.DeepEqual` 比较两者，不相等，报 `profiles[1].plugins.queueSort: ... must be the same for all profiles`。
+
+`QOSSort` 只在 scheduler-plugins 编译的调度器里注册，但这个校验在构建插件之前就执行，所以无论用哪个二进制，报的都是这一条。要用 `QOSSort`，就得把第 7–12 行原样写进每一个 profile。
+
 这也是第 25~27 篇的三个 out-of-tree QueueSort 插件（`QOSSort`、`TopologicalSort`、`Coscheduling`）互斥的原因，而且一旦启用，同一个调度器进程里所有 profile 都要换成同一个。
 
 QueueSort 的职责只有一件：决定谁先出队。而 `spec.priority` 这个字段在调度周期里还会被读到，不看完那几处，就说不清「高优先级」到底意味着什么。
@@ -397,6 +477,25 @@ func (pl *DefaultPreemption) PodEligibleToPreemptOthers(_ context.Context, pod *
 `preemptionPolicy` 同样由准入插件从 PriorityClass 拷贝到 Pod，Pod 上不能直接写一个与之不同的值。设为 `Never` 的 PriorityClass 就是常说的「非抢占优先级」。`PrioritySort` 根本不看这个字段，所以**它的 Pod 在队列里照样按高优先级插队，但调度失败时不会驱逐别人，只能等。**
 
 适合这种策略的是那些「希望尽快被调度、但不值得为它杀掉正在运行的任务」的作业，比如数据分析类的批处理。
+
+这样的 PriorityClass 写出来只多一行：
+
+```yaml {linenos=inline}
+# PriorityClass：插队但不抢占
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: batch-high-nonpreempting
+value: 1000
+preemptionPolicy: Never
+description: "与 batch-high 同档排队，但不驱逐别人"
+```
+
+除了名字和描述，它和 2.2 节的 `batch-high` 只差第 7 行：
+
+1. 第 6 行 `value` 同为 1000，两类 Pod 在 `activeQ` 里属于同一档，彼此只按 `Timestamp` 排；
+2. 第 7 行被准入插件拷贝成 Pod 的 `spec.preemptionPolicy: Never`，`PodEligibleToPreemptOthers` 在上面代码第 3–5 行直接返回 false；
+3. `preemptionPolicy` 不可修改，所以不能把已有的 `batch-high` 原地改成 `Never`，只能像这样另建一个类，让新 Pod 引用它。
 
 ### 6.3 kubelet 的节点压力驱逐
 

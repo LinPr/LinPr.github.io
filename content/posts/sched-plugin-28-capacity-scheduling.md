@@ -344,6 +344,32 @@ func (r *ElasticQuotaReconciler) computeElasticQuotaUsed(ctx context.Context, na
 
 所以一个 Pod 从被调度到容器真正跑起来的这段时间里（拉镜像可能要几分钟），`kubectl get eq` 看到的用量比调度器判定时用的要少。
 
+用 6.4 节算例里 A 的状态举例：a1、a2 已经 Running，a3 刚绑定到节点、还在拉镜像。此时 controller 写出的 ElasticQuota 是：
+
+```yaml {linenos=inline}
+# ElasticQuota：controller 写回的 status.used
+apiVersion: scheduling.x-k8s.io/v1alpha1
+kind: ElasticQuota
+metadata:
+  name: quota-a
+  namespace: team-a
+spec:
+  max:
+    cpu: 6
+  min:
+    cpu: 4
+status:
+  used:
+    cpu: "4"
+```
+
+这几行和两份用量记录的关系如下：
+
+1. 第 13–14 行只有 `cpu`，因为 `newZeroUsed` 只为 `spec.min`、`spec.max` 里出现过的资源名建零值，再累加 Running Pod 的请求；
+2. a3 的 Pod phase 还是 `Pending`，不计入第 14 行，所以这里是 4；
+3. 插件内存里 A 的 `Used.MilliCPU` 此时已经是 6000：a3 在 `Reserve` 时就记了一笔，绑定后 `addPod` 因 `pods` 集合已有它而不再重复计入；
+4. 这个 CRD 声明了 status 子资源（`subresources.status`），用户 `kubectl apply` 的清单里写 `status` 会被忽略，第 12–14 行只能由 controller 通过 status 子资源写入。
+
 更关键的是，调度器根本不读 `status.used`：`addElasticQuota`、`updateElasticQuota`、`addPod` 构造 `ElasticQuotaInfo` 时传入的 `used` 都是 `nil`。不部署 controller，调度完全不受影响，只是看不到 `Used` 列。
 
 controller 计算请求量的函数还有一个实现问题：
@@ -439,6 +465,42 @@ func newElasticQuotaInfo(namespace string, min, max, used v1.ResourceList) *Elas
 仓库 README 的演示只配了 CPU，演示用的 nginx 也只请求了 CPU，所以不会踩到。实际使用时，**`min` 和 `max` 应该把 Pod 会请求的固定维度（至少 cpu 和 memory）都写全**。
 
 `AllowedPodNumber` 是个例外：容器的 requests 里不会出现 `pods`，Pod 的请求量在这个维度上永远是 0，`0 > 0` 不成立，所以不写也没关系。
+
+下面两份配额的差别只在有没有把 memory 写进去：
+
+```yaml {linenos=inline}
+# 反例：min/max 只写了 cpu，Pod 请求了 memory
+apiVersion: scheduling.x-k8s.io/v1alpha1
+kind: ElasticQuota
+metadata:
+  name: quota-a
+  namespace: team-a
+spec:
+  max:
+    cpu: 6
+  min:
+    cpu: 4
+---
+# 正例：Pod 会请求的固定维度都写上
+apiVersion: scheduling.x-k8s.io/v1alpha1
+kind: ElasticQuota
+metadata:
+  name: quota-a
+  namespace: team-a
+spec:
+  max:
+    cpu: 6
+    memory: 12Gi
+  min:
+    cpu: 4
+    memory: 8Gi
+```
+
+同一个请求 `cpu: 2, memory: 1Gi` 的 Pod，在两份配额下的结果：
+
+1. 反例（第 1–11 行）：`max` 不为 nil，`newElasticQuotaInfo` 不填默认值，`Max.Memory` 是 0，`cmp2` 在 memory 维度上算出 `0 + 1Gi > 0`，PreFilter 以 `ElasticQuota team-a is more than Max` 拒绝；
+2. 只给 `max` 补上 memory、`min` 仍只写 cpu 也不行：`Min.Memory` 是 0，请求内存的 Pod 一进 PostFilter，`usedOverMinWith` 就在 memory 维度上为真，这个 Namespace 被当作借用者，失去跨 Namespace 回收的资格；
+3. 正例（第 13–25 行）把 memory 写进 `max` 和 `min`，两个维度各自比较，CPU 用到 4 以内就仍在 `min` 之内。
 
 ## 四、PreFilter：两道检查
 
@@ -956,6 +1018,55 @@ func (p *preemptor) GetOffsetAndNumCandidates(n int32) (int32, int32) {
 {{< figure src="/images/posts/sched-plugins/28-borrow-reclaim.svg" link="/images/posts/sched-plugins/28-borrow-reclaim.svg" caption="A 先借走 B 的闲置 min，B 在自己的 min 以内申请资源时，触发跨 Namespace 抢占，把 A 压回 min（点击查看大图）" >}}
 
 ① A 借用。A 的 Deployment 有 4 个副本。
+
+写成清单，两个 Namespace 各有一份配额，A 的工作负载是一个 4 副本的 Deployment：
+
+```yaml {linenos=inline}
+# quota A：team-a 的 ElasticQuota（quota B 只把名字和 namespace 换成 quota-b、team-b）
+apiVersion: scheduling.x-k8s.io/v1alpha1
+kind: ElasticQuota
+metadata:
+  name: quota-a
+  namespace: team-a
+spec:
+  max:
+    cpu: 6
+  min:
+    cpu: 4
+---
+# A 的工作负载：4 个副本，每个请求 2 CPU
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-a
+  namespace: team-a
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: app-a
+  template:
+    metadata:
+      labels:
+        app: app-a
+    spec:
+      schedulerName: scheduler-plugins-scheduler
+      containers:
+      - name: app
+        image: nginx
+        resources:
+          requests:
+            cpu: 2
+          limits:
+            cpu: 2
+```
+
+清单和算例的对应：
+
+1. 第 8–11 行是 A 的 `max` 6、`min` 4；B 同样是 4 和 6，两个 `min` 相加 8，等于两台节点的 CPU 总量；
+2. 第 20 行的 4 个副本就是 a1～a4，第 35、37 行让每个副本请求 2 CPU；
+3. 这里 `min`、`max` 只写了 cpu，是因为 Pod 只请求 CPU（第三节的反例要求的是「Pod 请求的维度都要写」，这个 Pod 没有请求 memory）；
+4. 第 29 行的 `schedulerName` 把 Pod 交给启用了 `CapacityScheduling` 的 Profile，`ElasticQuota` 本身不指定调度器，配额只对这个调度器调度的 Pod 生效。
 
 1. a1、a2：让 A 用到 4，正好等于 `min`；
 2. a3：检查一 `4 + 2 = 6 ≤ 6`，检查二 `ΣUsed 4 + 2 = 6 ≤ ΣMin 8`，通过，A 开始借用 B 的 `min`；

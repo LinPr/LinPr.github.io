@@ -98,6 +98,33 @@ type DependenciesInfo struct {
 
 `maxNetworkCost` 不写时是 0，意味着跨 zone、跨 region 的任何已知代价都算违反。
 
+在 AppGroup 里，这两个字段挂在每条依赖上：
+
+```yaml {linenos=inline}
+# AppGroup shop 中 frontend 的依赖（节选）
+apiVersion: appgroup.diktyo.x-k8s.io/v1alpha1
+kind: AppGroup
+metadata:
+  name: shop
+  namespace: default
+spec:
+  # ...
+  workloads:
+  - workload: {kind: Deployment, apiVersion: apps/v1, namespace: default, name: frontend, selector: frontend}
+    dependencies:
+    - workload: {kind: Deployment, apiVersion: apps/v1, namespace: default, name: cart, selector: cart}
+      minBandwidth: "100Mi"
+      maxNetworkCost: 8
+    - workload: {kind: Deployment, apiVersion: apps/v1, namespace: default, name: catalog, selector: catalog}
+```
+
+插件对这几行的处理：
+
+1. 第 10 行的 `selector: frontend` 与 Pod 的 `appgroup.diktyo.x-k8s.io.workload: frontend` 相等，`GetDependencyList` 才会取出第 12–15 行这两条依赖；
+2. 第 13 行的 `minBandwidth` 能通过 CRD 校验，但插件不读，写多少都不影响过滤和打分；
+3. 第 14 行的 `maxNetworkCost: 8` 是 frontend 到 cart 的容忍上限，只在跨 zone、跨 region 查到代价时参与比较；同节点、同 zone 在 Filter 里直接算满足；
+4. 第 15 行的 catalog 依赖没写 `maxNetworkCost`，取 0：同节点、同 zone 仍算满足，跨 zone、跨 region 只要代价表里有记录（代价都大于 0）就算违反。第四节算例里 catalog 写的是 15。
+
 依赖列表的提取方式：
 
 ```go {linenos=inline}
@@ -202,6 +229,40 @@ const (
 仓库里的示例 `manifests/networktopology/networkTopology-example.yaml` 用的字段名是 `configMapName`、`costList`、`originCosts`、`costs`，与 CRD 的 `configmapName`、`topologyList`、`originList`、`costList` 对不上。
 
 CRD 把 `configmapName`、`weights[].topologyList` 列为必填，照着这份示例 apply 会被 API Server 拒绝；依赖模块里 `networktopology-api/manifests/example.yaml` 的字段名才是正确的。
+
+两份示例的同一段并排看：
+
+```yaml {linenos=inline}
+# 错误：manifests/networktopology/networkTopology-example.yaml 的写法
+spec:
+  configMapName: "netperfMetrics"
+  weights:
+  - name: "UserDefined"
+    costList:
+    - topologyKey: "topology.kubernetes.io/region"
+      originCosts:
+      - origin: "us-west-1"
+        costs:
+        - {destination: "us-east-1", networkCost: 20}
+---
+# 正确：与 CRD 一致的写法
+spec:
+  configmapName: "netperfMetrics"
+  weights:
+  - name: "UserDefined"
+    topologyList:
+    - topologyKey: "topology.kubernetes.io/region"
+      originList:
+      - origin: "us-west-1"
+        costList:
+        - {destination: "us-east-1", networkCost: 20}
+```
+
+逐层对照：
+
+1. 第 3 行与第 15 行：`configMapName` 和 `configmapName` 只差一个字母大小写，字段名区分大小写，前者是未知字段；
+2. 第 6、8、10 行的 `costList`、`originCosts`、`costs` 应分别是第 18、20、22 行的 `topologyList`、`originList`、`costList`，错误版本恰好把 `costList` 用在了上两层；
+3. 未知字段在 kubectl 的严格字段校验下直接报错；即使绕过校验被裁剪掉，`configmapName` 和 `weights[].topologyList` 两个必填字段也缺失，CRD 的 OpenAPI 校验仍会拒绝。
 
 ## 三、源码
 
@@ -785,6 +846,34 @@ spec:
         costList:
         - {destination: "z3", networkCost: 10}
 ```
+
+代价表里的 region、zone 名字要和节点 label 对上。n-1 和 n-6 的 Node 是：
+
+```yaml {linenos=inline}
+# Node n-1：带标准拓扑 label
+apiVersion: v1
+kind: Node
+metadata:
+  name: n-1
+  labels:
+    kubernetes.io/hostname: n-1
+    topology.kubernetes.io/region: us-west-1
+    topology.kubernetes.io/zone: z1
+---
+# Node n-6：没有拓扑 label
+apiVersion: v1
+kind: Node
+metadata:
+  name: n-6
+  labels:
+    kubernetes.io/hostname: n-6
+```
+
+两个节点在插件里的差别：
+
+1. `GetNodeRegion`、`GetNodeZone` 读的正是第 8、9 行这两个 key，读出 `us-west-1`、`z1`，再拿去和 NetworkTopology 里 `topologyKey` 相同的那一层查 `origin`；
+2. n-6 没有这两行，读出空串，查表时 origin 是 `""`，任何 `costList` 都查不到；
+3. 第 9 行的值必须和代价表的 `origin`/`destination` 字面一致，代价表写 `z1` 而节点 label 写 `us-west-1a`，跨 zone 时同样查不到，Filter 不计数、Score 记 `MaxCost` 100，和 n-6 的遭遇相同。
 
 AppGroup `shop` 里 frontend 依赖 cart（`maxNetworkCost: 8`）和 catalog（`maxNetworkCost: 15`）。已绑定的依赖 Pod：cart-a 在 n-1，cart-b 在 n-2，catalog-a 在 n-3。
 

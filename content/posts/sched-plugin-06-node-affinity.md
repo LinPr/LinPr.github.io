@@ -179,6 +179,77 @@ func (t *nodeSelectorTerm) match(nodeLabels labels.Set, nodeFields fields.Set) (
 2. `Gt`/`Lt` 会把标签值当整数比较；
 3. `NotIn` 和 `DoesNotExist` 对没有这个标签的节点返回 true，这经常被用来「排除某类节点」。
 
+#### 对照：matchExpressions 看标签，matchFields 看名字
+
+上面的 `term.match` 拿 `nodeLabels` 和 `nodeFields` 两份数据去比，它们分别来自节点对象的两个位置。先看节点 n1（后面 3.4 节算例里的 n1 也是它）：
+
+```yaml {linenos=inline}
+# Node：n1 的名字和标签
+apiVersion: v1
+kind: Node
+metadata:
+  name: n1                      # extractNodeFields 只取这一项
+  labels:                       # labels.Set(node.Labels) 取这一整块
+    kubernetes.io/hostname: n1
+    kubernetes.io/os: linux
+    topology.kubernetes.io/zone: cn-a
+    disktype: ssd
+# ...
+```
+
+两份数据和三种写法的对应关系：
+
+1. 第 5 行的 `metadata.name` 进入 `nodeFields`，只有 `matchFields` 会读它；
+2. 第 6–10 行的标签进入 `nodeLabels`，`nodeSelector` 和 `matchExpressions` 都只读它；
+3. 第 7 行的 `kubernetes.io/hostname` 虽然值和名字一样，但它是标签，用 `matchExpressions` 匹配，和 `metadata.name` 是两回事（3.2 节会看到这个区别影响 PreFilter）。
+
+再看一个把两种 requirement 写进同一个 term 的 Pod：
+
+```yaml {linenos=inline}
+# Pod：一个 term 里同时写 matchExpressions 和 matchFields
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pinned
+spec:
+  nodeSelector:
+    kubernetes.io/os: linux
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:                 # term1：本条与下面的 matchFields 是 AND
+          - {key: topology.kubernetes.io/zone, operator: In, values: [cn-a]}
+          matchFields:
+          - {key: metadata.name, operator: In, values: [n1]}
+        - matchExpressions:                 # term2：与 term1 是 OR
+          - {key: node-role.example.com/edge, operator: Exists}
+  containers:
+  - name: app
+    image: nginx:1.27
+```
+
+**这份清单的判定顺序是：先 `nodeSelector`，再逐个 term，term 内所有 requirement 都满足才算命中。** 按行号对照：
+
+1. 第 7–8 行的 `nodeSelector` 由 `RequiredNodeAffinity.Match` 先查，n1 的 `kubernetes.io/os` 是 `linux`，通过；
+2. 第 13–16 行是 term1：`matchExpressions` 和 n1 的标签比，`topology.kubernetes.io/zone` 是 `cn-a`，满足；`matchFields` 和 n1 的名字比，`metadata.name` 是 `n1`，满足；两者 AND，term1 命中，`LazyErrorNodeSelector.Match` 直接返回 `true`；
+3. 第 17–18 行是 term2：任何带 `node-role.example.com/edge` 标签的节点都能命中，不管它叫什么、在哪个 zone。
+
+换成同在 cn-a、没有 edge 标签的 n2：term1 的 `matchExpressions` 满足，但 `matchFields` 要求名字是 `n1`，不满足；term2 也不满足。两个 term 都落空，Filter 返回 `UnschedulableAndUnresolvable`。
+
+三种写法的差别汇总如下：
+
+| | `nodeSelector` | `matchExpressions` | `matchFields` |
+| --- | --- | --- | --- |
+| 读节点的哪部分 | `metadata.labels` | `metadata.labels` | 只有 `metadata.name` |
+| 允许的 key | 任意合法标签键 | 任意合法标签键 | 只有 `metadata.name`，其他 key 校验报 `not a valid field selector key` |
+| 运算符 | 只有等值 | `In`、`NotIn`、`Exists`、`DoesNotExist`、`Gt`、`Lt` | 只有 `In`、`NotIn` |
+| `values` 个数 | 每个键一个值 | `In`/`NotIn` 至少一个，`Exists`/`DoesNotExist` 不能有，`Gt`/`Lt` 恰好一个 | 恰好一个 |
+| 多条之间 | AND | 同一 term 内 AND | 同一 term 内 AND，并与 `matchExpressions` AND |
+| 能否让 PreFilter 缩小候选集 | 不能 | 不能 | `In` 能 |
+
+校验规则出自 `pkg/apis/core/validation/validation.go` 的 `ValidateNodeSelectorRequirement` 和 `ValidateNodeFieldSelectorRequirement`。`nodeSelectorTerms` 里没有 `matchLabels` 字段，那是 `podAffinity` 的 `labelSelector` 才有的写法；按标签等值匹配，要么写进 `nodeSelector`，要么写成 `operator: In` 加一个值。
+
 这些规则都在 component-helpers 的 `nodeaffinity` 包里实现，插件在它外面加上 PreFilterResult 的推导和打分的归一化。下面按扩展点顺序看插件这一层。
 
 ## 三、源码按扩展点拆
@@ -371,6 +442,69 @@ API 校验要求 `metadata.name` 的每条 `In` 只能有一个值，所以「�
 
 三个 Pod 对应 PreFilter 的三种出口：能确定集合就缩小，有一个 term 说不清就放弃，所有 term 都自相矛盾就提前失败。
 
+p1 和 p3 落到清单上是这样（只保留 required 亲和）：
+
+```yaml {linenos=inline}
+# Pod：p1 用两个 term 选 n1 或 n3；p3 在一个 term 里写了两条互相矛盾的节点名
+apiVersion: v1
+kind: Pod
+metadata:
+  name: p1
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchFields:                      # term1
+          - {key: metadata.name, operator: In, values: [n1]}
+        - matchFields:                      # term2，与 term1 是 OR
+          - {key: metadata.name, operator: In, values: [n3]}
+  # ...
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: p3
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchFields:                      # 只有一个 term，下面两条是 AND
+          - {key: metadata.name, operator: In, values: [n1]}
+          - {key: metadata.name, operator: In, values: [n2]}
+  # ...
+```
+
+两个 Pod 都能通过 apiserver 校验，区别在调度器怎么处理：
+
+1. p1 的第 11–14 行是「多选节点」唯一合法的写法。如果合并成一条 `values: [n1, n3]`，`ValidateNodeFieldSelectorRequirement` 会拒绝，报 ``must be only one value when `operator` is 'In' or 'NotIn' for node field selector``；
+2. p3 的第 26–28 行每条都只有一个值，校验逐条检查，不检查条与条之间是否矛盾，所以照样能创建。它要等到 PreFilter 求交集得到空集合，才以 `pod affinity terms conflict` 失败，并一直 Pending。
+
+同样是「只去 n1 或 n3」，改用节点标签写，结果就不一样了：
+
+```yaml {linenos=inline}
+# Pod：p1 的另一种写法，按标签 kubernetes.io/hostname 选节点
+apiVersion: v1
+kind: Pod
+metadata:
+  name: p1-by-label
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - {key: kubernetes.io/hostname, operator: In, values: [n1, n3]}
+  # ...
+```
+
+和 p1 对比有三点不同：
+
+1. 第 11–12 行是 `matchExpressions`，读的是标签，一条 `In` 可以写多个值，不必拆 term；
+2. 这个 term 没有 `MatchFields`，PreFilter 后半段代码块第 19–22 行直接返回 `nil, nil`，候选集不缩小，Filter 要在所有节点上跑一遍才能找出 n1 和 n3；
+3. 由 kubelet 注册的节点，名字和 `kubernetes.io/hostname` 标签取自同一个主机名（`cmd/kubelet/app/server.go` 的 `RunKubelet` 用 `nodeutil.GetHostname` 算出 `hostname`，再把它当 `nodeName`；`pkg/kubelet/kubelet_node_status.go` 写入 `v1.LabelHostname: kl.hostname`），所以两种写法通常命中同一批节点。但标签可以被改，名字不可变。
+
 这个优化的主要受益者是 DaemonSet。DaemonSet 控制器为每个节点创建 Pod 时，会把 Pod 的 required 亲和整个替换成指向单个节点的 term：
 
 ```go {linenos=inline}
@@ -391,6 +525,59 @@ func ReplaceDaemonSetPodNodeNameNodeAffinity(affinity *v1.Affinity, nodename str
 	return affinity
 }
 ```
+
+拿一个模板里自带节点亲和的 DaemonSet 看替换前后的对比：
+
+```yaml {linenos=inline}
+# DaemonSet：模板里用 nodeSelector 和 required 亲和限定节点
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+spec:
+  selector:
+    matchLabels: {app: node-exporter}
+  template:
+    metadata:
+      labels: {app: node-exporter}
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - {key: node-role.example.com/edge, operator: DoesNotExist}
+      containers:
+      - name: exporter
+        image: prom/node-exporter:v1.8.2
+---
+# 控制器为节点 n1 创建的 Pod（节选）
+apiVersion: v1
+kind: Pod
+metadata:
+  generateName: node-exporter-
+  labels: {app: node-exporter}
+  # ...
+spec:
+  nodeSelector:
+    kubernetes.io/os: linux
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchFields:
+          - {key: metadata.name, operator: In, values: [n1]}
+  # ...
+```
+
+模板里的 `matchExpressions` 在 Pod 上消失了，因为控制器已经替调度器判断过它。从模板到 Pod 分四步：
+
+1. 控制器先决定哪些节点要跑 Pod：`nodeShouldRunDaemonPod`（`pkg/controller/daemon/daemon_controller.go`）用 `nodeaffinity.NewRequiredNodeAffinity` 把第 13–20 行的模板约束解析一次，逐个节点 `Match`，用的正是 2.1 节那份 component-helpers 代码；n1 是 Linux、没有 edge 标签，需要一个 Pod；
+2. 创建 Pod 时调用 `ReplaceDaemonSetPodNodeNameNodeAffinity`，模板里已有 required 亲和，于是走上面代码块第 9–14 行，`NodeSelectorTerms` 被整个换成第 39–40 行这一个 `matchFields` term，第 19–20 行的条件不再出现；
+3. 函数只动 `RequiredDuringSchedulingIgnoredDuringExecution`，第 33–34 行的 `nodeSelector` 原样保留，调度器的 Filter 会再查一遍；
+4. Pod 的 `spec.nodeName` 仍为空，进入调度队列；PreFilter 从第 39–40 行推导出 `PreFilterResult{NodeNames: {n1}}`。
 
 5000 个节点的集群里，一个 DaemonSet Pod 原本要在 5000 个节点上跑一遍全部 Filter 插件，有了 `PreFilterResult` 只需跑一个。框架在 `RunPreFilterPlugins` 里把各插件的结果用 `Merge` 求交集，`getCandidateNodes` 再把不在集合里的节点统一标记为：
 

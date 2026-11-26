@@ -193,6 +193,30 @@ type CoschedulingArgs struct {
 
 校验要求前两个非负、第三个在 0~100 之间；`New` 里对 `PodGroupBackoffSeconds < 0` 又检查了一遍。
 
+三个参数都写在 `pluginConfig` 里，键名是 v1 类型的 json tag：
+
+```yaml {linenos=inline}
+# KubeSchedulerConfiguration：Coscheduling 的三个参数
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: scheduler-plugins-scheduler
+  # ...（plugins 同上）
+  pluginConfig:
+  - name: Coscheduling
+    args:
+      permitWaitingTimeSeconds: 60
+      podGroupBackoffSeconds: 30
+      podGroupRejectPercentage: 10
+```
+
+三行参数各自影响一个阶段：
+
+1. 第 10 行是 Permit 的默认等待时长，PodGroup 写了 `scheduleTimeoutSeconds` 时以 PodGroup 为准；
+2. 第 11 行打开 PostFilter 的 backoff，整组被拒后 30 秒内，这个组的 Pod 在 PreFilter 第一道检查就被拒绝；不写或写 0 时，`New` 不设置 `pgBackoff`，没有 backoff；
+3. 第 12 行是 PostFilter 整组拒绝的门槛，`minMember: 10` 时只差 1 个（10%）不拒绝，差 2 个才拒绝；
+4. 三个值写成负数，或第 12 行超过 100，`ValidateCoschedulingArgs` 会拒绝配置，调度器启动失败。
+
 `New` 里有两处初始化：
 
 ```go {linenos=inline}
@@ -433,6 +457,40 @@ func (pgMgr *PodGroupManager) PreFilter(ctx context.Context, pod *corev1.Pod) er
 
 **③ scheduling gate。** `quorumGap` 在第二步之后是「minMember 减 Pod 总数」，通常小于等于 0，表示有富余。每发现一个带 `schedulingGates` 的同组 Pod，就把缺口加一，缺口转正就拒绝。比如 `minMember: 3`、5 个 Pod，富余是 2，可以容忍 2 个 gated Pod；有 3 个 gated 就拒绝。
 
+落到清单上，「`minMember: 3`、5 个 Pod、其中 2 个 gated」是这样的：
+
+```yaml {linenos=inline}
+# PodGroup：至少 3 个成员
+apiVersion: scheduling.x-k8s.io/v1alpha1
+kind: PodGroup
+metadata:
+  name: trainer
+spec:
+  minMember: 3
+---
+# 同组 5 个 Pod 中的一个：带 scheduling gate
+apiVersion: v1
+kind: Pod
+metadata:
+  name: trainer-3
+  labels:
+    scheduling.x-k8s.io/pod-group: trainer
+spec:
+  schedulerName: scheduler-plugins-scheduler
+  schedulingGates:
+  - name: example.com/wait-for-dataset
+  containers:
+  - name: worker
+    image: trainer:2.0
+```
+
+对照 `PodGroupManager.PreFilter` 的检查过程：
+
+1. 第 7 行 `minMember: 3`，第 15 行的标签把 Pod 归到这个组，5 个 Pod 都带这个标签时，第二道检查的 `quorumGap` 是 3 - 5 = -2；
+2. 第 18–19 行的 gate 让这个 Pod 停在 PreEnqueue，不会进入调度周期，第三道检查遇到它把 `quorumGap` 加一；
+3. 另一个 Pod `trainer-4` 也带 gate 时，`quorumGap` 回到 0，其余 3 个 Pod 仍能通过；第三个 Pod 也带 gate，`quorumGap` 变成 1，同组所有 Pod 在 PreFilter 被拒；
+4. gate 只能在创建时写入，之后只能删除不能新增，由负责准备数据的 controller 删除后 Pod 才进入调度队列。
+
 这条检查让 Coscheduling 和 [SchedulingGates](/posts/sched-plugin-01-scheduling-gates/) 配合得上：被 gate 挡住的 Pod 反正进不了调度周期，不应该算作「能参与凑数」的成员。测试里有三个用例分别覆盖「gated 但仍满足 quorum」「gated 导致不足」「全部 gated」。
 
 **④ 集群总资源。** 只有设置了 `minResources` 才做。把 `minResources` 加上 `pods: minMember`，和集群里每个节点的剩余资源逐个相减：
@@ -463,6 +521,26 @@ func CheckClusterResource(ctx context.Context, nodeList []fwk.NodeInfo, resource
 ```
 
 这是一个「剩余资源总和是否够」的检查，节点之间的碎片不在考虑之内：三个节点各剩 2 核，总和 6 核，满足 `minResources: cpu: 6`，但一个要 4 核的 Pod 哪里也放不下。TODO 注释也承认它只是一个必要条件。
+
+这个算例对应的 PodGroup 是：
+
+```yaml {linenos=inline}
+# PodGroup：声明整组至少需要 6 核
+apiVersion: scheduling.x-k8s.io/v1alpha1
+kind: PodGroup
+metadata:
+  name: trainer
+spec:
+  minMember: 3
+  minResources:
+    cpu: "6"
+```
+
+第四道检查实际拿去比较的是 `cpu: 6, pods: 3`：
+
+1. 第 8–9 行的 `minResources` 是这道检查的开关，删掉它，PreFilter 在 `pg.Spec.MinResources == nil` 处直接放行；
+2. 第 7 行的 `minMember` 被 `PreFilter` 当作 `pods` 资源加进 `minResources`，所以节点剩余的 Pod 数量配额也参与比较；
+3. 三个节点各剩 2 核时，`CheckClusterResource` 逐个节点扣减，第三个节点扣完 cpu 归零，返回 nil，检查通过；单个 Pod 要 4 核的碎片问题要到 Filter 阶段才会暴露。
 
 `getNodeResource` 计算节点剩余量时，会先从节点克隆里删掉本组已经在上面的 Pod，因为这些 Pod 的用量本来就包含在 `minResources` 里，不能重复扣除。
 
@@ -875,7 +953,31 @@ PodGroup 的 `status` 不由调度器写，而由 `cmd/controller` 里的 PodGro
 
 对于用 Deployment/ReplicaSet 管理、Pod 失败后会被重建的负载，这意味着 PodGroup 的 phase 会永远停在 Failed，不能再用它判断组的实际状态。好在调度插件完全不读 `status`，Failed 不影响后续调度。
 
-**「失败」的判定很宽。** `Failed != 0 && Failed+Running+Succeeded >= minMember`：只要有一个 Pod 失败，且三类 Pod 加起来够 minMember，就是 Failed。一个 `minMember: 3`、跑了 3 个 Pod 的组，其中一个 Pod 因为 OOM 退出成 Failed，整组就进入终态。
+**「失败」的判定很宽。** `Failed != 0 && Failed+Running+Succeeded >= minMember`：只要有一个 Pod 失败，且三类 Pod 加起来够 minMember，就是 Failed。一个 `minMember: 3`、跑了 3 个 Pod 的组，只要其中一个 Pod 的 phase 变成 `Failed`，整组就进入终态。注意 phase 变成 `Failed` 的前提是 Pod 不会再重启：`restartPolicy: Never` 的 Pod（比如 Job 设置的）容器 OOM 退出后就是 `Failed`；而 Deployment 的 Pod 是 `restartPolicy: Always`，容器 OOM 后由 kubelet 原地重启，phase 保持 `Running`，不会触发这条判定。
+
+这个组的 PodGroup 最终停在：
+
+```yaml {linenos=inline}
+# PodGroup 的 status：一个成员 Failed 后进入终态
+apiVersion: scheduling.x-k8s.io/v1alpha1
+kind: PodGroup
+metadata:
+  name: trainer
+spec:
+  minMember: 3
+status:
+  phase: Failed
+  occupiedBy: default/trainer
+  running: 2
+  failed: 1
+```
+
+几行 status 和 Reconcile 的分支对应如下：
+
+1. 第 11–12 行来自 `getCurrentPodStats`，`failed` 非零且 2 + 1 + 0 达到第 7 行的 `minMember`，于是第 9 行写成 `Failed`；
+2. 之后这个 Pod 被重建、组里 3 个 Pod 重新 Running，Reconcile 在开头遇到 `Failed` 直接返回，第 9 行不再变化；
+3. 第 10 行的 `occupiedBy` 是 Pending → Scheduling 时由 `fillOccupiedObj` 用第一个 Pod 的 owner 填的，格式是 `namespace/ownerName`；
+4. Pod 的 phase 要变成 `Failed`，容器退出后必须不再重启，例如 `restartPolicy: Never` 的 Job Pod 被 OOM 杀掉；ReplicaSet 的 Pod 是 `restartPolicy: Always`，容器 OOM 后由 kubelet 原地重启，Pod 仍是 `Running`。
 
 **48 小时超时实际不会触发。** 判断用的是 `ScheduleStartTime - CreationTimestamp`，但整个仓库里没有任何代码给 `ScheduleStartTime` 赋值（只有测试用例里设置过）。它保持零值，减出来是一个很大的负数，永远不大于 48 小时。
 
