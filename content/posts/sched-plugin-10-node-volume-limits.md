@@ -706,7 +706,9 @@ kubelet 启动时就会创建 CSINode（上面 4.5 节提到的 `initializeCSINo
 
 这从语义上也说得通：Pod 删除后卷还要经过 unmount、detach 才真正释放槽位，调度器不该假设驱逐立即见效。
 
-沿用第六节末尾那个节点（上限 2，Pod A 占着 `vol-a`、`vol-b`，两块盘都有 VA），假设 P 的优先级高于 A，n1 上的抢占模拟分三步：
+沿用第六节末尾那个节点（上限 2，Pod A 占着 `vol-a`、`vol-b`，两块盘都有 VA），假设 P 的优先级高于 A，并且 P 在所有节点上都失败、至少有一个节点返回过 `Unschedulable`。
+
+这时 PostFilter 里的抢占模拟才会启动，它对每个候选节点各做一次试算：在 `NodeInfo` 副本里移除该节点上优先级更低的 Pod，再跑一次 Filter。n1 上分三步：
 
 1. `SelectVictimsOnNode` 先从 `nodeInfo` 副本里移除 A，再对 n1 跑 Filter；
 2. `attachedVolumes` 为空，但 `getNodeVolumeAttachmentInfo` 仍从 VA informer 里读到 `vol-a`、`vol-b`，两者都不在 `attachedVolumes` 中，已用 2；

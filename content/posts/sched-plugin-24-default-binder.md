@@ -314,6 +314,8 @@ func (sched *Scheduler) bind(ctx context.Context, schedFramework framework.Frame
 
 只要有 extender 接手，Bind 插件就不会被调用。源码上方挂着一个 TODO：`Move this to a Plugin`，extender 绑定是 framework 之前的遗留设计。
 
+没有 extender 接手时，`bind` 的最后一行把请求交给 `RunBindPlugins`，由它按配置顺序挨个询问 Bind 插件：
+
 ```go {linenos=inline}
 // pkg/scheduler/framework/runtime/framework.go
 	if len(f.bindPlugins) == 0 {
@@ -396,6 +398,8 @@ cache 的 `AddPod` 识别出这是一个 assumed Pod：
 **不需要超时的原因是绑定周期本身已经闭环**：`util.BindPod` 要么成功（informer 一定会带来确认事件，见 4.1 节），要么返回错误（`handleBindingCycleError` 一定会 `ForgetPod`）。唯一的灰色地带是「API Server 已经写入，但响应在路上丢了」，调度器拿到超时错误而 Pod 实际已绑定。这种情况的处理在下一节。
 
 ## 五、失败回滚
+
+绑定周期里任何一步返回失败，`runBindingCycle` 都会把它交给 `handleBindingCycleError` 收尾。这个函数做的是 assume 和 Reserve 的逆操作：
 
 ```go {linenos=inline}
 // pkg/scheduler/schedule_one.go

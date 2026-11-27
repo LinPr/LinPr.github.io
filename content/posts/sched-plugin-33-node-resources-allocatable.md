@@ -236,7 +236,7 @@ func score(logger klog.Logger, capacity int64, mode config.ModeType) int64 {
 
 ### 3.3 NormalizeScore
 
-原始分的量纲是字节当量，必须先映射到框架约定的 0~100，框架才会拿去和其他插件加权：
+原始分的量纲是字节当量，必须先映射到框架约定的 0~100，框架才会拿去和其他插件加权。这一步每个插件每轮只做一次，位于所有节点的 `Score` 返回之后、加权汇总之前（`pkg/scheduler/framework/runtime/framework.go` 的 `RunScorePlugins`）：
 
 ```go {linenos=inline}
 // pkg/noderesources/allocatable.go

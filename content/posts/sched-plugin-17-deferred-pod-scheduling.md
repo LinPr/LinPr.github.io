@@ -431,7 +431,7 @@ func applyDeferredPodScheduling(config *v1.Plugins) {
 
 ### 5.4 Permit：放得下反而拒绝
 
-Permit 的行为在这个插件里最反直觉：Filter 都通过了，它却返回失败。
+Permit 在 Reserve 之后、调度周期结束前执行，返回 `Wait` 的 Pod 会在绑定周期的 `WaitOnPermit` 处继续等（开篇 3.6 节）。它在这个插件里的行为最反直觉：Filter 都通过了，却返回失败。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/deferredpodscheduling/deferred_pod_scheduling.go

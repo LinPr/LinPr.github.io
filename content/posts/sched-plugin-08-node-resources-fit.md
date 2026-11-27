@@ -1122,7 +1122,7 @@ profiles:
 
 ### 6.7 PlacementScore
 
-`TopologyAwareWorkloadScheduling` 打开后，`Fit` 还要为 PodGroup 的整套放置方案打分：
+`TopologyAwareWorkloadScheduling` 打开后，`Fit` 还要为 PodGroup 的整套放置方案打分。这一步在 PodGroup 调度周期里执行：PlacementGenerate 插件先给出候选方案，逐个试放之后，框架对可行的方案调用各插件的 `ScorePlacement`：
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/noderesources/resource_allocation.go
@@ -1329,7 +1329,9 @@ hint 只拿节点总量和 Pod 关心的那几项做粗筛，第三个事件那�
 
 ### 7.3 Pod 原地缩容
 
-`InPlacePodVerticalScaling` 让运行中的 Pod 可以修改 requests。框架在 Pod 更新时比较新旧请求量：
+`InPlacePodVerticalScaling` 让运行中的 Pod 可以修改 requests。前面 `EventsToRegister` 注册的 `AssignedPod/UpdatePodScaleDown`、`TargetPod/UpdatePodScaleDown` 不是 Pod 更新本身，而是框架从更新里提取出来的动作类型。
+
+提取的条件是请求量变小：框架比较新旧请求量，只有某一项变小才产生这个事件，对应的 hint 才有机会被调用。
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/events.go

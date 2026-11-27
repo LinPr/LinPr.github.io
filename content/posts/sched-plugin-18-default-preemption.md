@@ -646,7 +646,7 @@ PodGroup 受害者只要有一个成员违反，整个组都算违反，`Violate
 
 ## 八、extender 的介入
 
-`callExtenders` 在排序之前执行，规则有三条：
+extender 是调度器之外的 HTTP 服务：在调度器配置里登记后，调度器会在过滤、打分、抢占、绑定这些阶段通过 HTTP 问它的意见（开篇 3.2 节）。在抢占流程里，评估器模拟出候选节点之后、第七节的排序之前调用 `callExtenders`，规则有三条：
 
 1. 只有 `SupportsPreemption()` 且 `IsInterested(pod)` 的 extender 参与；
 2. 它们通过 `ProcessPreemption` 拿到 `节点 → 受害者` 的 map，可以删掉节点、改受害者列表；

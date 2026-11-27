@@ -177,7 +177,9 @@ func (d *stateData) Clone() fwk.StateData {
 
 大多数插件的 CycleState 在 PreFilter 写好后只读，这个不同：Filter 在多个 goroutine 里对不同节点并行执行，每个都要把自己算出的 `PodVolumes` 写进 `podVolumesByNode`。所以结构体内嵌了一把 `sync.Mutex`（第 15 行）。
 
-`Clone`（第 18–20 行）直接返回自身指针，意味着克隆出的 CycleState 和原件共享同一份数据。抢占模拟、被提名 Pod 的 Filter 都会克隆 CycleState，它们写进来的 `podVolumesByNode` 条目也落在同一个 map 上，所以锁必须放在 `stateData` 里而不能依赖 CycleState 自己的同步（Filter 里的注释原话：「the `CycleState` may be duplicated, so we must use a local lock here」）。
+框架在两处克隆 CycleState：所有节点都失败后，抢占为每个候选节点各跑一次模拟（第 18 篇），每次都在副本上移除、加回 Pod；节点上有优先级不低于当前 Pod 的 nominated Pod 时，框架也在副本上把它们加进来再跑一轮 Filter。克隆的意义是让这两条路径拿到独立副本，改动不回流到主调度周期。
+
+`Clone`（第 18–20 行）没有真的复制，直接返回自身指针。于是这两条路径和主调度周期共享同一份数据，它们写进来的 `podVolumesByNode` 条目也落在同一个 map 上，所以锁必须放在 `stateData` 里而不能依赖 CycleState 自己的同步（Filter 里的注释原话：「the `CycleState` may be duplicated, so we must use a local lock here」）。
 
 共享是安全的，因为同一节点无论在哪条路径上算，结果都一样，后写覆盖先写不改变语义。
 
@@ -1170,7 +1172,7 @@ Reserve 之后的任何一步失败（Permit 拒绝、PreBind 出错、Bind 出�
 1. 已经成功写进 API 的 PV，`binding.pv` 已被替换成 API 返回的新对象，版本号与假设版本不同，Restore 不会动它，等 informer 送来新版本自然覆盖；
 2. 还没写进 API 的，假设被删除，cache 回到 informer 的视图。
 
-`handleBindingCycleError` 在调用 Unreserve 之后，还会以 `AssignedPodDelete` 事件触发一次 `MoveAllToActiveOrBackoffQueue`，因为被 forget 的 assumed Pod 占用的资源释放了。
+绑定周期失败时，框架的 `handleBindingCycleError` 在调用 Unreserve 之后，还会以 `AssignedPodDelete` 事件触发一次 `MoveAllToActiveOrBackoffQueue`，因为被 forget 的 assumed Pod 占用的资源释放了。
 
 到这里，插件在调度器内部的工作就结束了。真正把卷绑上去的，是调度器之外的两个组件。
 

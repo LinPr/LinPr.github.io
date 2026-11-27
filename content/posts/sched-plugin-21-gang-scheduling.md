@@ -580,7 +580,7 @@ func (sched *Scheduler) podGroupSchedulingDefaultAlgorithm(ctx context.Context, 
 
 即使漏掉了，下一次 `UpdateSnapshot` 也会把这些临时状态冲掉，不会污染 cache。**这是「all-or-nothing」在调度周期内的实现方式。**
 
-第三处是失败处理：单个 Pod 失败时不跑 PostFilter。`schedulingAlgorithm` 里有一个分支专门处理这种情况（第 4–8 行）：
+第三处是失败处理：单个 Pod 失败时不跑 PostFilter。组里每个成员的试放复用的仍是单 Pod 调度的 `schedulingAlgorithm`（`pkg/scheduler/schedule_one.go`），它在这条路径上多了一个分支：检测到当前处于组调度周期，就跳过 PostFilter（第 4–8 行）：
 
 ```go {linenos=inline}
 // pkg/scheduler/schedule_one.go
@@ -1002,6 +1002,8 @@ func (p *PriorityQueue) isEntityWorthRequeuing(logger klog.Logger, entity framew
 试放结束后，结果要分发给每个 Pod 并写回队列，这是调度周期的最后两步。
 
 ### 7.1 submitPodGroupResult
+
+`submitPodGroupResult` 拿到试放阶段返回的 `podGroupAlgorithmResult`，遍历其中的 `podResults`，逐个 Pod 决定去向。下面是循环体里按状态分发的这一段：
 
 ```go {linenos=inline}
 // pkg/scheduler/schedule_one_podgroup.go

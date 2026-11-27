@@ -835,7 +835,7 @@ Reserve 不写 API、不写 assume cache，只做两件事：
 
 ### 8.2 in-flight 表为什么必须由「分配者」本人写回
 
-`claimTracker.inFlightAllocations` 的注释里描述了两个反例：
+`claimTracker.inFlightAllocations` 记着「哪个 Pod 正在为哪个 claim 选设备」，5.2 节 PreFilter 里让其它 Pod 等待的就是这张表。名额由谁写回、为什么不能让别的 Pod 代写，注释里用两个反例说明：
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/dynamicresources/dra_manager.go
@@ -1053,6 +1053,8 @@ PreBind 写完 claim 后，如果有设备带 binding conditions，就每 5 秒�
 超时的起点是 `allocation.allocationTimestamp`，这个字段也是 PreBind 写入的。
 
 ### 8.5 Unreserve：撤销
+
+Unreserve 由框架在 Reserve 之后的任何一步失败时调用，它要逐条撤销 Pod 的 claim：
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/dynamicresources/dynamicresources.go

@@ -32,7 +32,7 @@ description: "CrossNodePreemption 想解决 in-tree 抢占无法跨节点选受�
 
 ## 一、它要解决什么问题
 
-[DefaultPreemption](/posts/sched-plugin-18-default-preemption/) 的模型是：对每个候选节点，只在这个节点上找低优先级 Pod，移除它们，看抢占者能否放下。这个模型隐含了一个假设：抢占者放不下，原因在这个节点本身，资源不够、端口冲突之类。
+[DefaultPreemption](/posts/sched-plugin-18-default-preemption/) 的模型是：对每个候选节点，只在这个节点上找低优先级 Pod，移除它们，看抢占者能否放下。这一步由 `SelectVictimsOnNode` 完成，每个候选节点调用一次。这个模型隐含了一个假设：抢占者放不下，原因在这个节点本身，资源不够、端口冲突之类。
 
 有一类约束不满足这个假设。PodTopologySpread 的 skew 是按拓扑域计数的，一个 zone 里的匹配 Pod 分布在多个节点上；Pod 间反亲和以 `topologyKey` 为单位，同一 zone 里任何节点上的匹配 Pod 都会导致冲突。这类约束失败时，「罪魁祸首」可能在别的节点上。
 

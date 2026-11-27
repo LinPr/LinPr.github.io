@@ -260,7 +260,9 @@ func (pl *PreemptionToleration) PostFilter(ctx context.Context, state fwk.CycleS
 }
 ```
 
-`DryRunPreemption` 会并行模拟多个节点，**所有节点共用同一个 `curTime`，判定结果不会因为模拟的先后而不同。** `clock` 是 `k8s.io/utils/clock` 的接口，测试里可以注入假时钟。
+第三个参数 `pl` 就是插件自己：它实现了 `preemption.Interface`，`preemption.Evaluator` 为每个候选节点准备一份 `NodeInfo` 和 `CycleState` 的副本，调用插件的 `SelectVictimsOnNode`（第四节）。这套引擎与 in-tree 的 `DefaultPreemption` 共用，[第 18 篇](/posts/sched-plugin-18-default-preemption/)拆过它的完整流程。
+
+`preemption.Evaluator` 的 `DryRunPreemption` 会并行模拟多个节点，**所有节点共用同一个 `curTime`，判定结果不会因为模拟的先后而不同。** `clock` 是 `k8s.io/utils/clock` 的接口，测试里可以注入假时钟。
 
 `curTime` 存在插件结构体上而不是 CycleState 里，能这么做是因为调度周期（包括 PostFilter）是串行执行的，同一时刻只有一个 Pod 在跑 PostFilter。
 

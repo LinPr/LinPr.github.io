@@ -384,6 +384,8 @@ func New(ctx context.Context, obj runtime.Object, handle fwk.Handle) (fwk.Plugin
 }
 ```
 
+第 9 行调用的 `NewClientWithCachedReader`（`pkg/util/client_util.go`）做的是建一套 controller-runtime 缓存，再把它包成 client：
+
 ```go {linenos=inline}
 // pkg/util/client_util.go
 func NewClientWithCachedReader(ctx context.Context, config *rest.Config, scheme *runtime.Scheme) (client.Client, cache.Cache, error) {

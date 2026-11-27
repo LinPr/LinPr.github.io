@@ -402,6 +402,8 @@ profiles:
 
 ### 5.4 RunPlacementScorePlugins 的三段并行
 
+打分和归一化都由框架驱动，插件只提供 `ScorePlacement` 和 `NormalizePlacementScore` 两个函数。`RunPlacementScorePlugins` 把整个流程分成三段，每段按 placement 或按插件并行执行：
+
 ```go {linenos=inline}
 // pkg/scheduler/framework/runtime/framework.go
 		// Run ScorePlacement method for each placement in parallel.
