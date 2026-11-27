@@ -228,7 +228,15 @@ func (pl *NodePorts) PreFilter(ctx context.Context, cycleState fwk.CycleState, p
 
 绝大多数 Pod 没有 `hostPort`，在这里返回 `Skip`（第 16–18 行），整个调度周期里 `NodePorts` 的 Filter 一次都不会被调用。
 
-`Clone` 返回自身，`PreFilterExtensions()` 返回 `nil`。**这两个选择背后是同一个设计：CycleState 里只放待调度 Pod 自己的端口，节点的已用端口不在状态里**。抢占模拟时，`DefaultPreemption` 在克隆出来的 `NodeInfo` 上删除受害者：
+同一个文件里还有两处看起来「什么都没做」的实现：`Clone` 直接返回自身（第 4–8 行），`PreFilterExtensions()` 返回 `nil`。这不是省事，而是由这个插件放在 `CycleState` 里的数据决定的。要看清为什么，先要知道 `PreFilterExtensions` 在什么时候被调用。
+
+正常调度周期里框架从不调用它，它只为抢占服务。一个 Pod 在所有节点上都失败、且至少有一个节点返回 `Unschedulable` 时，调度器进 PostFilter 做抢占模拟，对每个候选节点试算：先把可能被驱逐的 Pod 从节点上移除，重跑一次 Filter，看抢占者放不放得下；放得下再逐个把这些 Pod 加回来（reprieve），看能不能少驱逐几个。
+
+这两次重跑有个前提：PreFilter 写进 `CycleState` 的数据得跟着节点上的 Pod 一起变。跨节点的计数（比如每个 zone 上有几个 Pod）存在 `CycleState` 里，节点上的 Pod 变了它就过期，插件必须收到通知去更新。框架为此提供两个回调 `AddPod`、`RemovePod`，只在抢占模拟时调用，它们就是 `PreFilterExtensions`。
+
+`NodePorts` 用不上这个回调，因为它没往 `CycleState` 里放任何跨节点数据。PreFilter 写进去的只有待调度 Pod 自己的端口切片（第 14–19 行），一个字段都不涉及节点；节点的已用端口每次由 Filter 从 `NodeInfo` 现取（3.3 节的 `nodeInfo.GetUsedPorts()`）。既然状态不会因节点上的 Pod 变化而失效，`Clone` 复制一份和返回自身没有区别，`RemovePod` 也无事可做。
+
+让节点端口表变化的是框架自己的动作。抢占模拟移除受害者时，`DefaultPreemption` 直接在节点副本上调用 `NodeInfo.RemovePod`：
 
 ```go {linenos=inline}
 // pkg/scheduler/framework/plugins/defaultpreemption/default_preemption.go
@@ -240,7 +248,18 @@ func (pl *NodePorts) PreFilter(ctx context.Context, cycleState fwk.CycleState, p
 			status := pl.fh.RunPreFilterExtensionRemovePod(ctx, cycleState, preemptor, pi, nodeInfo)
 ```
 
-`NodeInfo.RemovePod`（第 2–6 行）会顺带调用 `updateUsedPorts` 把受害者的端口从表里拿掉，再跑一次 Filter 就能看到端口被释放。插件不需要在 `RemovePod` 扩展里维护任何东西。对比后面的 `InterPodAffinity`、`PodTopologySpread`，它们在 PreFilter 里预计算了跨节点的计数，就必须实现 `AddPod`/`RemovePod` 来同步这些计数。
+`NodeInfo.RemovePod`（第 2–6 行）会顺带调用 `updateUsedPorts` 把受害者的端口从表里删掉。紧接着重跑的 Filter 读的是同一份 `NodeInfo`，立刻就能看到端口被释放，插件不需要在 `RemovePod` 扩展里维护任何东西。
+
+拿一个具体场景走一遍。node-1 上跑着 `web-1`，占着 `0.0.0.0:8080`；新来的 `web-2` 也要同一个端口，其余节点的端口同样被占：
+
+1. Filter 在 node-1 上查表，`8080` 已被占用，返回 `Unschedulable`；
+2. 所有节点都失败，进 PostFilter。`DefaultPreemption` 选中 node-1，对 `web-1` 做移除，`NodeInfo.RemovePod` 把 `8080` 从端口表删掉；
+3. 重跑 Filter，`web-2` 通过，`web-1` 成为 victim；
+4. `web-1` 被驱逐后，`web-2` 在下一轮调度落到 node-1。
+
+第 2、3 步里 `NodePorts` 没有参与状态维护，它只是在重跑时又查了一次表。
+
+对比后面的 `PodTopologySpread`（第 13 篇）、`InterPodAffinity`（第 14 篇），它们在 PreFilter 里预计算了跨节点的计数，就必须实现 `AddPod`/`RemovePod` 来同步这些计数：否则抢占模拟中被移除的 Pod 还留在计数里，重跑的 Filter 会得出相反的结论。
 
 ### 3.3 Filter：查表
 
