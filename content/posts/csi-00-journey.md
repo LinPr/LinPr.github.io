@@ -6,7 +6,7 @@ tags: ["kubernetes", "csi", "存储", "PersistentVolumeClaim", "csi-driver-host-
 categories: ["Kubernetes"]
 series: ["csi"]
 author: "LinPr"
-description: "CSI 系列开篇。先分清树内卷、local-path-provisioner 和 CSI 驱动这三条链路，再看 CSI 怎么把驱动拆成 controller 与 node 两半、由哪些 sidecar 调用、一个 PVC 从创建到挂载要经过谁。后半篇说明 hostpath 这份示例部署为什么只有一个 Pod，以及这套代码能教你什么、不能教你什么。"
+description: "CSI 系列开篇。先分清树内卷、local-path-provisioner 和 CSI 驱动这三条链路，再看 CSI 怎么把驱动拆成 controller 与 node 两半、由哪些 sidecar 调用、一个 PVC 从创建到挂载要经过谁。系列读两份驱动——csi-driver-host-path 与 csi-driver-nfs，本篇先摆出两者在能力、部署和状态上的差别，后面每篇都对照着讲。"
 ---
 
 一个 Pod 的 `volumes` 里写了一个 `persistentVolumeClaim`，从 `kubectl apply` 到容器里能读写 `/data`，中间经过至少六方：apiserver 记下 PVC、external-provisioner 建出卷、调度器挑节点、external-attacher 把卷挂到节点、kubelet 把它挂进容器、CSI 驱动在每一步响应 gRPC 请求。
@@ -33,9 +33,29 @@ description: "CSI 系列开篇。先分清树内卷、local-path-provisioner 和
 
 之所以要花一节讲清这些，是因为驱动叫 `csi-driver-host-path`，它的卷目录也在宿主机上。**名字像、底层像，链路完全不一样**：这份驱动走的是完整的 CSI 流程，只是把「后端存储」换成了一个本地目录。
 
-## 二、CSI 把驱动拆成两半
+## 二、两份参考实现：hostpath 与 nfs
 
-{{< figure src="/images/posts/csi/00-architecture.svg" link="/images/posts/csi/00-architecture.svg" caption="CSI 驱动在集群里的位置：左侧 sidecar 通过 watch apiserver 的对象来触发调用，右侧 kubelet 在挂载时调用，两者都只是连到驱动进程那个 unix socket 的 gRPC 客户端（点击查看大图）" >}}
+这个系列读两份驱动，不是一份。它们在同一个规范下，取舍几乎处处相反；对着看，才能分清哪些是规范要求的、哪些是某一份实现自己的选择。
+
+1. [`csi-driver-host-path`](https://github.com/kubernetes-csi/csi-driver-host-path)：后端是宿主机上的一个目录。CSI 的接口它几乎全实现，附着、快照、扩容、卷健康、卷组快照都能打开，价值在「接口覆盖全」。
+2. [`csi-driver-nfs`](https://github.com/kubernetes-csi/csi-driver-nfs)：后端是一台 NFS 服务器，一块卷就是服务器上的一个子目录。它没有 attach 的概念，没有 Stage 这一步，快照用 tar 打包，价值在「展示规范里哪些东西可以不要」。
+
+把两者的能力表摆在一起，差别立刻出来：
+
+| 对比项 | hostpath | nfs |
+| --- | --- | --- |
+| 后端 | 宿主机目录 | NFS 服务端的子目录 |
+| Plugin 能力 | controller、卷组快照、拓扑（默认开） | 只有 controller |
+| attach | 实现，默认关闭 | 完全没有 |
+| Stage、Unstage | 声明了 | 没有声明 |
+| 快照 | 复制卷内容 | tar 打包 |
+| 状态 | 本地 `state.json` | 无状态，信息编码在 volume ID 里 |
+
+后面每一篇都按同一顺序展开：先看规范要求什么，再看 hostpath 怎么做、nfs 怎么做，最后说差别说明了什么。第一个差别就在下一节：驱动被拆成两半之后，两份实现在部署上走向了两个方向。
+
+## 三、CSI 把驱动拆成两半
+
+{{< figure src="/images/posts/csi/00-architecture.svg" link="/images/posts/csi/00-architecture.svg" caption="任意 CSI 驱动的通用部署形态：controller 侧由 sidecar watch apiserver 的对象来触发调用，node 侧由 kubelet 在挂载时调用，两侧都只是连到驱动 unix socket 的 gRPC 客户端，后端存储由驱动自己决定（点击查看大图）" >}}
 
 CSI 规范把驱动要提供的能力分成三个 gRPC service，每个驱动都要同时实现它们：
 
@@ -43,7 +63,9 @@ CSI 规范把驱动要提供的能力分成三个 gRPC service，每个驱动都
 2. `Controller`：建卷、删卷、快照、扩容、附着。这些操作管的是集群里的卷，整个集群只需要一份。
 3. `Node`：把卷挂到本节点、再挂进容器。它要访问本机的设备和挂载点，每个节点都要有一份。
 
-这三半在真实驱动里通常部署成两个工作负载：controller 侧是一个单副本的 `Deployment`，node 侧是一个跑在每个节点上的 `DaemonSet`。**驱动本身不 watch Kubernetes 对象**，它只是一个被动的 gRPC 服务端；所有「什么时候该建卷」「什么时候该挂载」的判断，都由 sidecar 和 kubelet 完成，它们再回调驱动。
+这两半在真实驱动里通常部署成两个工作负载：controller 侧是一个单副本的 `Deployment`，node 侧是一个跑在每个节点上的 `DaemonSet`。**驱动本身不 watch Kubernetes 对象**，它只是一个被动的 gRPC 服务端；所有「什么时候该建卷」「什么时候该挂载」的判断，都由 sidecar 和 kubelet 完成，它们再回调驱动。
+
+上面这张图画的是**任意 CSI 驱动**都成立的形态，不是某一份驱动的部署。示例驱动 hostpath 在这里有两处偏离，第五节会对着这张图讲清楚。
 
 | 组件 | 监听什么 | 调用驱动的哪个方法 |
 | --- | --- | --- |
@@ -56,7 +78,7 @@ CSI 规范把驱动要提供的能力分成三个 gRPC service，每个驱动都
 
 这张表解释了一个新手常见的误解：**驱动并不「知道」有 Pod 要用卷，是 sidecar 把对象变化翻译成了 RPC 调用。**
 
-## 三、一次 PVC 的完整时序
+## 四、一次 PVC 的完整时序
 
 把上面这些组件串起来，一个 PVC 的完整路径如下：
 
@@ -100,7 +122,7 @@ spec:
 
 **hostpath 默认没有开启 attach，所以第 4 步平时不会发生。** 部署清单里虽然有 `csi-attacher`，但驱动启动时没有传 `--enable-attach`，`ControllerGetCapabilities` 就不会返回 `PUBLISH_UNPUBLISH_VOLUME`，attacher 认为这个驱动不需要附着，既不创建 `VolumeAttachment`，也不会调用 `ControllerPublishVolume`。读代码时看到 `ControllerPublishVolume` 实现得很简单，原因就在这里，第 05 篇会展开。
 
-## 四、这份部署为什么只有一个 Pod
+## 五、这份部署为什么只有一个 Pod
 
 前面说 controller 侧和 node 侧通常分成两个工作负载，hostpath 却把它们塞进了同一个 Pod。部署清单里只有一个工作负载，`replicas` 写死为 1：
 
@@ -138,7 +160,7 @@ spec:
 
 真实驱动不会这么部署。它们的 controller 是 `Deployment`，node 是 `DaemonSet`，两份二进制可以相同，也可以不同；node 侧还要挂载 `/var/lib/kubelet/pods` 并开 `mountPropagation: Bidirectional`，才能把挂载点传播给 kubelet。读这份示例时，**心里要留一份「正常情况下应该是两个工作负载」的对照**，否则容易把单节点的简化当成 CSI 的通用做法。
 
-## 五、这份代码能教你什么，不能教你什么
+## 六、这两份代码能教你什么，不能教你什么
 
 值得读的地方：
 
@@ -155,19 +177,21 @@ spec:
 3. 没有后端 API 交互、重试、限流、指标这些工程化内容；
 4. 错误处理基本只覆盖了正常路径。
 
-## 六、系列路线
+把两份驱动放在一起看，才能看到最关键的一条：**规范没有要求实现全部方法，能力表就是用来声明「这部分我不做」的。** hostpath 把接口几乎全实现了一遍，nfs 只保留文件存储真正需要的那些——没有 attach、没有 Stage、没有拓扑。两种都合法，选择取决于后端是什么。
 
-后面九篇按「先看清结构、再逐个接口」的顺序展开：
+## 七、系列路线
 
-1. 01 CSI 规范：能力协商决定了谁在什么时候调用你
-2. 02 驱动进程：从命令行参数到 unix socket，再到自我介绍
-3. 03 状态存储：驱动怎么记住自己建过哪些卷
-4. 04 CreateVolume 与 DeleteVolume：幂等、容量和错误码
-5. 05 附着、快照与扩容：控制器侧另外三件事
-6. 06 NodeStage 与 NodePublish：一个卷怎么变成容器里的挂载点
+后面九篇都按「规范怎么说 → hostpath 怎么做 → nfs 怎么做」的顺序展开：
+
+1. 01 CSI 规范：能力协商决定了谁在什么时候调用你（两份能力表先对照一遍）
+2. 02 驱动进程：从命令行参数到 unix socket，再到自我介绍（两份启动路径的差别）
+3. 03 状态存储：hostpath 的 state.json 与 nfs 的无状态
+4. 04 CreateVolume 与 DeleteVolume：幂等、容量和错误码（两份实现对照）
+5. 05 附着、快照与扩容：nfs 为什么一条都用不上
+6. 06 NodeStage 与 NodePublish：两步挂载和一步挂载
 7. 07 节点侧其余接口：块设备、能力声明、拓扑与卷健康
-8. 08 跟着一个 5Gi 的 PVC 走完全程：每一步是谁触发的
-9. 09 对照 csi-driver-nfs：同一个规范，另一种取舍
+8. 08 跟着一个 5Gi 的 PVC 走完全程：两份驱动并排
+9. 09 两份驱动放在一起看：CSI 的共性与取舍
 10. 10 csi-sanity：用规范测试验收一个驱动
 
-读每一篇时可以带着三个问题：这个接口由谁调用、它必须幂等吗、它依赖驱动事先声明了哪条能力。三个问题答得上来，这个接口就算读懂了。
+读每一篇时可以带着三个问题：这个接口由谁调用、它必须幂等吗、两份驱动分别选择做还是不做。三个问题答得上来，这个接口就算读懂了。
