@@ -183,15 +183,15 @@ spec:
 
 后面九篇都按「规范怎么说 → hostpath 怎么做 → nfs 怎么做」的顺序展开：
 
-1. 01 CSI 规范：能力协商决定了谁在什么时候调用你（两份能力表先对照一遍）
-2. 02 驱动进程：从命令行参数到 unix socket，再到自我介绍（两份启动路径的差别）
-3. 03 状态存储：hostpath 的 state.json 与 nfs 的无状态
-4. 04 CreateVolume 与 DeleteVolume：幂等、容量和错误码（两份实现对照）
-5. 05 附着、快照与扩容：nfs 为什么一条都用不上
-6. 06 NodeStage 与 NodePublish：两步挂载和一步挂载
-7. 07 节点侧其余接口：块设备、能力声明、拓扑与卷健康
-8. 08 跟着一个 5Gi 的 PVC 走完全程：两份驱动并排
-9. 09 两份驱动放在一起看：CSI 的共性与取舍
-10. 10 csi-sanity：用规范测试验收一个驱动
+1. [01 CSI 规范](/posts/csi-01-spec/)：能力协商决定了谁在什么时候调用你
+2. [02 驱动进程](/posts/csi-02-process/)：从命令行参数到 unix socket，再到自我介绍
+3. [03 状态存储](/posts/csi-03-state/)：hostpath 的 state.json 与 nfs 的无状态
+4. [04 CreateVolume 与 DeleteVolume](/posts/csi-04-create-delete/)：幂等、容量和错误码
+5. [05 附着、快照与扩容](/posts/csi-05-attach-snapshot-expand/)：nfs 为什么一条都用不上
+6. [06 NodeStage 与 NodePublish](/posts/csi-06-node-mount/)：两步挂载和一步挂载
+7. [07 节点侧其余接口](/posts/csi-07-node-rest/)：块设备、能力声明、拓扑与卷健康
+8. [08 跟着一个 5Gi 的 PVC 走完全程](/posts/csi-08-lifecycle/)：两份驱动并排
+9. [09 两份驱动放在一起看](/posts/csi-09-compare/)：CSI 的共性与取舍
+10. [10 csi-sanity](/posts/csi-10-sanity/)：用规范测试验收一个驱动
 
 读每一篇时可以带着三个问题：这个接口由谁调用、它必须幂等吗、两份驱动分别选择做还是不做。三个问题答得上来，这个接口就算读懂了。

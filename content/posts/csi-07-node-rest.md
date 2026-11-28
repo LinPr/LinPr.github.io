@@ -283,10 +283,11 @@ func ReadEffectiveVolumeHealthMarker(stateDir, volID string, scope VolumeHealthS
 
 **为什么用文件而不是直接返回**：hostpath 没有真正的后端可查，它需要一种「外部能写、驱动能读」的通道来模拟故障。标记文件就是这个通道，仓库里配了 `cmd/healthctl` 这个命令行工具，可以手工写入一条健康标记：
 
-```bash
+```bash {linenos=inline}
 # 给 volume-1 在 node 侧写一条 DEGRADED 标记
-healthctl -statedir /csi-data-dir volume write volume-1 --scope node \
-  --status DEGRADED --reason IOError --message "backend disk failing"
+healthctl -statedir /csi-data-dir mark-volume-unhealthy volume-1 \
+  --scope node --status DEGRADED --reason IOError \
+  --message "backend disk failing"
 ```
 
 写完之后，kubelet 下次调 `NodeGetVolumeHealth`（`--node-status-update-frequency`，默认 10 秒）就能看到，进而影响 Pod 的 `VolumeHealth` 状况。**真实驱动不会用文件**——它们直接查后端，但接口形态是一样的。
