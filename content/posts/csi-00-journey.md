@@ -55,7 +55,7 @@ description: "CSI 系列开篇。先分清树内卷、local-path-provisioner 和
 
 ## 三、CSI 把驱动拆成两半
 
-{{< figure src="/images/posts/csi/00-architecture.svg" link="/images/posts/csi/00-architecture.svg" caption="任意 CSI 驱动的通用部署形态：controller 侧由 sidecar watch apiserver 的对象来触发调用，node 侧由 kubelet 在挂载时调用，两侧都只是连到驱动 unix socket 的 gRPC 客户端，后端存储由驱动自己决定（点击查看大图）" >}}
+{{< figure src="/images/posts/csi/00-architecture.svg" link="/images/posts/csi/00-architecture.svg" caption="任意 CSI 驱动的通用形态，四个步骤：① sidecar watch apiserver 的对象变化；② 调驱动的 Controller 服务；③ kubelet 调驱动的 Node 服务；④ 驱动把请求翻译成对后端存储的操作（点击查看大图）" >}}
 
 CSI 规范把驱动要提供的能力分成三个 gRPC service，每个驱动都要同时实现它们：
 
