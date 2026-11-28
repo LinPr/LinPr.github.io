@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 690" width="1000" height="690" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 z" fill="#94a3b8"/></marker></defs>
+<rect width="1000" height="690" fill="#ffffff"/>
+<text x="500.0" y="36.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">CSI 驱动在集群里的位置：谁在哪里，通过哪个 socket 说话</text>
+<text x="500.0" y="62.0" font-size="12.5" fill="#64748b" text-anchor="middle">左列 watch apiserver 的对象，右列由 kubelet 驱动，两者都只是连到驱动进程的 gRPC 客户端</text>
+<rect x="260.0" y="86.0" width="500.0" height="104.0" rx="8" fill="#f1f5f9" stroke="#475569" stroke-width="1.2"/>
+<text x="274.0" y="110.0" font-size="13.5" fill="#475569" text-anchor="start" font-weight="700">kube-apiserver</text>
+<rect x="274.0" y="120.0" width="158.7" height="24.0" rx="12" fill="#f1f5f9" stroke="#475569" stroke-width="1"/>
+<text x="353.4" y="136.0" font-size="10.5" fill="#475569" text-anchor="middle">PersistentVolumeClaim</text>
+<rect x="440.7" y="120.0" width="126.2" height="24.0" rx="12" fill="#f1f5f9" stroke="#475569" stroke-width="1"/>
+<text x="503.8" y="136.0" font-size="10.5" fill="#475569" text-anchor="middle">PersistentVolume</text>
+<rect x="574.9" y="120.0" width="126.2" height="24.0" rx="12" fill="#f1f5f9" stroke="#475569" stroke-width="1"/>
+<text x="638.0" y="136.0" font-size="10.5" fill="#475569" text-anchor="middle">VolumeAttachment</text>
+<rect x="274.0" y="150.0" width="113.1" height="24.0" rx="12" fill="#f1f5f9" stroke="#475569" stroke-width="1"/>
+<text x="330.6" y="166.0" font-size="10.5" fill="#475569" text-anchor="middle">VolumeSnapshot</text>
+<rect x="395.1" y="150.0" width="145.7" height="24.0" rx="12" fill="#f1f5f9" stroke="#475569" stroke-width="1"/>
+<text x="468.0" y="166.0" font-size="10.5" fill="#475569" text-anchor="middle">CSIDriver / CSINode</text>
+<rect x="36.0" y="300.0" width="250.0" height="210.0" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.2"/>
+<text x="50.0" y="324.0" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">controller 侧 sidecar</text>
+<text x="50.0" y="344.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="700">external-provisioner</text>
+<text x="50.0" y="360.0" font-size="11.5" fill="#64748b" text-anchor="start">PVC → CreateVolume</text>
+<text x="50.0" y="384.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="700">external-attacher</text>
+<text x="50.0" y="400.0" font-size="11.5" fill="#64748b" text-anchor="start">VolumeAttachment → Publish</text>
+<text x="50.0" y="424.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="700">external-snapshotter</text>
+<text x="50.0" y="440.0" font-size="11.5" fill="#64748b" text-anchor="start">VolumeSnapshot → Snapshot</text>
+<text x="50.0" y="464.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="700">external-resizer</text>
+<text x="50.0" y="480.0" font-size="11.5" fill="#64748b" text-anchor="start">PVC 扩容 → Expand</text>
+<rect x="714.0" y="300.0" width="250.0" height="210.0" rx="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="728.0" y="324.0" font-size="13.5" fill="#059669" text-anchor="start" font-weight="700">节点上</text>
+<text x="728.0" y="344.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="700">kubelet</text>
+<text x="728.0" y="360.0" font-size="11.5" fill="#64748b" text-anchor="start">调 NodeStage / NodePublish</text>
+<text x="728.0" y="384.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="700">node-driver-registrar</text>
+<text x="728.0" y="400.0" font-size="11.5" fill="#64748b" text-anchor="start">注册到 kubelet 的插件目录</text>
+<text x="728.0" y="424.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="700">liveness-probe</text>
+<text x="728.0" y="440.0" font-size="11.5" fill="#64748b" text-anchor="start">定期调 Probe，失败重启容器</text>
+<text x="728.0" y="464.0" font-size="12.5" fill="#1e293b" text-anchor="start" font-weight="700">挂载点</text>
+<text x="728.0" y="480.0" font-size="11.5" fill="#64748b" text-anchor="start">在 /var/lib/kubelet/pods 下</text>
+<rect x="330.0" y="300.0" width="340.0" height="210.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="344.0" y="324.0" font-size="13.5" fill="#7c3aed" text-anchor="start" font-weight="700">hostpath 驱动进程（一个 Pod）</text>
+<text x="344.0" y="346.0" font-size="12.5" fill="#64748b" text-anchor="start">unix socket：/csi/csi.sock</text>
+<text x="344.0" y="364.0" font-size="12.5" fill="#1e293b" text-anchor="start">同一个 gRPC 服务里注册三个 service：</text>
+<text x="352.0" y="388.0" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">Identity</text>
+<text x="426.0" y="388.0" font-size="12" fill="#1e293b" text-anchor="start">GetPluginInfo、Probe、能力声明</text>
+<text x="352.0" y="414.0" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">Controller</text>
+<text x="426.0" y="414.0" font-size="12" fill="#1e293b" text-anchor="start">建卷、快照、扩容、附着</text>
+<text x="352.0" y="440.0" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">Node</text>
+<text x="426.0" y="440.0" font-size="12" fill="#1e293b" text-anchor="start">Stage、Publish、统计、健康</text>
+<text x="344.0" y="486.0" font-size="11.5" fill="#64748b" text-anchor="start">状态记在 /csi-data-dir 下的 JSON 文件里</text>
+<rect x="300.0" y="546.0" width="400.0" height="62.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="314.0" y="570.0" font-size="13" fill="#ea580c" text-anchor="start" font-weight="700">宿主机目录</text>
+<text x="314.0" y="590.0" font-size="12" fill="#1e293b" text-anchor="start">/var/lib/csi-hostpath-data/&lt;volume-id&gt;，bind mount 给容器</text>
+<text x="314.0" y="606.0" font-size="11.5" fill="#64748b" text-anchor="start">节点与节点之间没有任何共享，所以只能单节点使用</text>
+<path d="M260.0,138.0 L161.0,138.0 L161.0,299.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<text x="170.0" y="130.0" font-size="11.5" fill="#64748b" text-anchor="start">watch</text>
+<path d="M287.0,380.0 L329.0,380.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<text x="308.0" y="372.0" font-size="11.5" fill="#2563eb" text-anchor="middle">gRPC</text>
+<path d="M713.0,380.0 L671.0,380.0" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<text x="692.0" y="372.0" font-size="11.5" fill="#059669" text-anchor="middle">gRPC</text>
+<path d="M500.0,511.0 L500.0,545.0" stroke="#7c3aed" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<path d="M760.0,176.0 L838.0,176.0 L838.0,299.0" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<text x="770.0" y="168.0" font-size="11.5" fill="#059669" text-anchor="start">Pod spec</text>
+<rect x="36.0" y="636.0" width="118.7" height="24.0" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="1"/>
+<text x="95.4" y="652.0" font-size="12" fill="#2563eb" text-anchor="middle">sidecar / 集群侧</text>
+<rect x="164.7" y="636.0" width="51.8" height="24.0" rx="12" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1"/>
+<text x="190.6" y="652.0" font-size="12" fill="#7c3aed" text-anchor="middle">驱动进程</text>
+<rect x="226.5" y="636.0" width="89.0" height="24.0" rx="12" fill="#ecfdf5" stroke="#059669" stroke-width="1"/>
+<text x="271.0" y="652.0" font-size="12" fill="#059669" text-anchor="middle">kubelet 侧</text>
+<rect x="325.4" y="636.0" width="36.9" height="24.0" rx="12" fill="#fff7ed" stroke="#ea580c" stroke-width="1"/>
+<text x="343.9" y="652.0" font-size="12" fill="#ea580c" text-anchor="middle">存储</text>
+<rect x="372.3" y="636.0" width="51.8" height="24.0" rx="12" fill="#f1f5f9" stroke="#475569" stroke-width="1"/>
+<text x="398.2" y="652.0" font-size="12" fill="#475569" text-anchor="middle">集群对象</text>
+</svg>
