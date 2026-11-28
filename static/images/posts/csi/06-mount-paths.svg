@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" width="1000" height="560" font-family="ui-sans-serif,-apple-system,system-ui,'PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="6.5" refY="3" orient="auto"><path d="M0,0 L6.5,3 L0,6 z" fill="#94a3b8"/></marker></defs>
+<rect width="1000" height="560" fill="#ffffff"/>
+<text x="500.0" y="36.0" font-size="19" fill="#1e293b" text-anchor="middle" font-weight="700">一个卷怎么变成容器里的目录：hostpath 两步，nfs 一步</text>
+<text x="500.0" y="62.0" font-size="12.5" fill="#64748b" text-anchor="middle">kubelet 给同一个卷准备两个路径：staging 路径每节点一份，target 路径每个 Pod 一份</text>
+<text x="40.0" y="108.0" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">hostpath（声明了 STAGE_UNSTAGE_VOLUME）</text>
+<rect x="40.0" y="128.0" width="200.0" height="78.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="56.0" y="152.0" font-size="12.5" fill="#ea580c" text-anchor="start" font-weight="700">宿主机目录</text>
+<text x="56.0" y="174.0" font-size="11" fill="#1e293b" text-anchor="start">/var/lib/csi-hostpath-data/</text>
+<text x="56.0" y="192.0" font-size="11" fill="#64748b" text-anchor="start">&lt;volume-id&gt;</text>
+<rect x="290.0" y="128.0" width="240.0" height="90.0" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+<text x="306.0" y="150.0" font-size="12.5" fill="#7c3aed" text-anchor="start" font-weight="700">NodeStageVolume</text>
+<text x="306.0" y="170.0" font-size="10.5" fill="#1e293b" text-anchor="start">把 kubelet 给的 staging 路径写进状态</text>
+<text x="306.0" y="186.0" font-size="10" fill="#64748b" text-anchor="start">/var/lib/kubelet/plugins/kubernetes.io/</text>
+<text x="306.0" y="200.0" font-size="10" fill="#64748b" text-anchor="start">csi/&lt;driver&gt;/&lt;hash&gt;/globalmount</text>
+<rect x="580.0" y="128.0" width="180.0" height="90.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="596.0" y="150.0" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">NodePublishVolume</text>
+<text x="596.0" y="170.0" font-size="10.5" fill="#1e293b" text-anchor="start">bind mount 数据目录</text>
+<text x="596.0" y="186.0" font-size="10.5" fill="#1e293b" text-anchor="start">到 target 路径</text>
+<text x="596.0" y="202.0" font-size="10" fill="#64748b" text-anchor="start">readOnly 时加 ro</text>
+<path d="M240.0,173.0 L289.0,173.0" stroke="#2563eb" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<text x="250.0" y="166.0" font-size="10.5" fill="#64748b" text-anchor="start">读</text>
+<path d="M530.0,173.0 L579.0,173.0" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="800.0" y="128.0" width="160.0" height="90.0" rx="8" fill="#f1f5f9" stroke="#475569" stroke-width="1.2"/>
+<text x="816.0" y="150.0" font-size="12" fill="#475569" text-anchor="start" font-weight="700">target 路径</text>
+<text x="816.0" y="170.0" font-size="10" fill="#1e293b" text-anchor="start">/var/lib/kubelet/pods/</text>
+<text x="816.0" y="186.0" font-size="10" fill="#1e293b" text-anchor="start">&lt;uid&gt;/volumes/</text>
+<text x="816.0" y="202.0" font-size="10" fill="#64748b" text-anchor="start">kubernetes.io~csi/&lt;pv&gt;/mount</text>
+<path d="M760.0,173.0 L799.0,173.0" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="800.0" y="250.0" width="160.0" height="60.0" rx="8" fill="#f1f5f9" stroke="#475569" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="816.0" y="272.0" font-size="12" fill="#475569" text-anchor="start" font-weight="700">容器 /data</text>
+<text x="816.0" y="292.0" font-size="10" fill="#64748b" text-anchor="start">kubelet 用 target 路径挂进去</text>
+<path d="M880.0,218.0 L880.0,249.0" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<path d="M410.0,218.0 L410.0,236.0 L789.0,236.0" stroke="#7c3aed" stroke-width="1.6" fill="none" marker-end="url(#a)" stroke-dasharray="5 4"/>
+<text x="300.0" y="252.0" font-size="10.5" fill="#64748b" text-anchor="start">Stage 不走数据：staging 路径在这份驱动里没有实际挂载</text>
+<text x="40.0" y="410.0" font-size="13.5" fill="#2563eb" text-anchor="start" font-weight="700">nfs（没有声明 STAGE_UNSTAGE_VOLUME）</text>
+<rect x="40.0" y="430.0" width="200.0" height="70.0" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.2"/>
+<text x="56.0" y="452.0" font-size="12.5" fill="#ea580c" text-anchor="start" font-weight="700">NFS 服务端</text>
+<text x="56.0" y="472.0" font-size="10.5" fill="#1e293b" text-anchor="start">server:/share/subdir</text>
+<text x="56.0" y="490.0" font-size="10.5" fill="#64748b" text-anchor="start">网络文件系统，可多节点同时挂</text>
+<rect x="290.0" y="430.0" width="200.0" height="70.0" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.2"/>
+<text x="306.0" y="452.0" font-size="12.5" fill="#059669" text-anchor="start" font-weight="700">NodePublishVolume</text>
+<text x="306.0" y="472.0" font-size="11" fill="#1e293b" text-anchor="start">直接 mount 到 target 路径</text>
+<text x="306.0" y="490.0" font-size="11" fill="#64748b" text-anchor="start">没有 Stage 这一步</text>
+<rect x="540.0" y="430.0" width="200.0" height="70.0" rx="8" fill="#f1f5f9" stroke="#475569" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="556.0" y="452.0" font-size="12" fill="#475569" text-anchor="start" font-weight="700">target 路径</text>
+<text x="556.0" y="472.0" font-size="10.5" fill="#1e293b" text-anchor="start">/var/lib/kubelet/pods/</text>
+<text x="556.0" y="488.0" font-size="10.5" fill="#64748b" text-anchor="start">&lt;uid&gt;/volumes/.../mount</text>
+<path d="M240.0,465.0 L289.0,465.0" stroke="#ea580c" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<path d="M490.0,465.0 L539.0,465.0" stroke="#059669" stroke-width="1.6" fill="none" marker-end="url(#a)"/>
+<rect x="40.0" y="524.0" width="99.9" height="22.0" rx="11" fill="#fff7ed" stroke="#ea580c" stroke-width="1"/>
+<text x="90.0" y="539.0" font-size="10.5" fill="#ea580c" text-anchor="middle">后端 / 文件系统</text>
+<rect x="147.9" y="524.0" width="60.0" height="22.0" rx="11" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1"/>
+<text x="177.9" y="539.0" font-size="10.5" fill="#7c3aed" text-anchor="middle">驱动处理</text>
+<rect x="215.9" y="524.0" width="60.0" height="22.0" rx="11" fill="#ecfdf5" stroke="#059669" stroke-width="1"/>
+<text x="245.9" y="539.0" font-size="10.5" fill="#059669" text-anchor="middle">挂载动作</text>
+<rect x="283.9" y="524.0" width="110.4" height="22.0" rx="11" fill="#f1f5f9" stroke="#475569" stroke-width="1"/>
+<text x="339.1" y="539.0" font-size="10.5" fill="#475569" text-anchor="middle">kubelet 给的路径</text>
+</svg>
